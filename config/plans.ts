@@ -23,7 +23,7 @@ export const plans = {
     features: {
       maxAgents: 25,
       maxMinutesPerMonth: 5000,
-      maxIntegrations: -1, // unlimited
+      maxIntegrations: -1,
       storageGB: 50,
     },
     features_list: [
@@ -39,7 +39,7 @@ export const plans = {
   },
   enterprise: {
     name: "Enterprise",
-    price: null, // custom pricing
+    price: null,
     features: {
       maxAgents: -1,
       maxMinutesPerMonth: -1,

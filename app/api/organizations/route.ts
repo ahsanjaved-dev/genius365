@@ -3,7 +3,6 @@ import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { updateOrganizationSchema } from "@/types/api.types"
 
-// GET /api/organizations - Get current user's organization
 export async function GET() {
   try {
     const auth = await getAuthContext()
@@ -16,13 +15,11 @@ export async function GET() {
   }
 }
 
-// PATCH /api/organizations - Update current organization
 export async function PATCH(request: NextRequest) {
   try {
     const auth = await getAuthContext()
     if (!auth) return unauthorized()
 
-    // Only owner/admin can update organization
     if (!["owner", "admin"].includes(auth.user.role)) {
       return apiError("Only owners and admins can update organization settings", 403)
     }

@@ -2,7 +2,6 @@ import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, unauthorized, serverError } from "@/lib/api/helpers"
 import type { DashboardStats } from "@/types/database.types"
 
-// GET /api/dashboard/stats - Get dashboard statistics
 export async function GET() {
   try {
     const auth = await getAuthContext()
@@ -10,21 +9,17 @@ export async function GET() {
 
     const orgId = auth.organization.id
 
-    // Get counts in parallel
     const [agentsResult, conversationsResult, usageResult] = await Promise.all([
-      // Total agents
       auth.supabase
         .from("ai_agents")
         .select("*", { count: "exact", head: true })
         .eq("organization_id", orgId),
 
-      // Total conversations
       auth.supabase
         .from("conversations")
         .select("*", { count: "exact", head: true })
         .eq("organization_id", orgId),
 
-      // Usage this month
       auth.supabase
         .from("usage_tracking")
         .select("resource_type, quantity, total_cost")
@@ -35,7 +30,6 @@ export async function GET() {
         ),
     ])
 
-    // Calculate totals from usage
     let totalMinutes = 0
     let totalCost = 0
 
@@ -48,7 +42,6 @@ export async function GET() {
       })
     }
 
-    // Get conversations this month
     const { count: conversationsThisMonth } = await auth.supabase
       .from("conversations")
       .select("*", { count: "exact", head: true })

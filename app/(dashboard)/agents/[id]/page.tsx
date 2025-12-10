@@ -25,7 +25,6 @@ export default function EditAgentPage() {
     }
   }
 
-  // Loading State
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -37,7 +36,6 @@ export default function EditAgentPage() {
     )
   }
 
-  // Error State
   if (error || !agent) {
     return (
       <div className="max-w-md mx-auto text-center py-12">
@@ -60,7 +58,6 @@ export default function EditAgentPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/agents">
@@ -73,7 +70,6 @@ export default function EditAgentPage() {
         </div>
       </div>
 
-      {/* Error Display */}
       {updateMutation.error && (
         <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-lg border border-red-200 dark:border-red-800">
           <p className="font-medium">Failed to update agent</p>
@@ -81,7 +77,6 @@ export default function EditAgentPage() {
         </div>
       )}
 
-      {/* Form */}
       <AgentForm
         initialData={agent}
         onSubmit={handleSubmit}

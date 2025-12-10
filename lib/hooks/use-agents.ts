@@ -13,7 +13,6 @@ interface UseAgentsParams {
   isActive?: boolean
 }
 
-// Fetch agents list
 export function useAgents(params?: UseAgentsParams) {
   const searchParams = new URLSearchParams()
   if (params?.page) searchParams.set("page", params.page.toString())
@@ -35,7 +34,6 @@ export function useAgents(params?: UseAgentsParams) {
   })
 }
 
-// Fetch single agent
 export function useAgent(id: string | null) {
   return useQuery({
     queryKey: [AGENTS_KEY, id],
@@ -52,7 +50,6 @@ export function useAgent(id: string | null) {
   })
 }
 
-// Create agent mutation
 export function useCreateAgent() {
   const queryClient = useQueryClient()
 
@@ -76,7 +73,6 @@ export function useCreateAgent() {
   })
 }
 
-// Update agent mutation
 export function useUpdateAgent() {
   const queryClient = useQueryClient()
 
@@ -101,7 +97,6 @@ export function useUpdateAgent() {
   })
 }
 
-// Delete agent mutation
 export function useDeleteAgent() {
   const queryClient = useQueryClient()
 

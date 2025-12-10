@@ -31,12 +31,10 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Notifications */}
         <Button variant="ghost" size="icon">
           <Bell className="w-5 h-5" />
         </Button>
 
-        {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">

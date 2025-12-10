@@ -7,14 +7,9 @@ export interface AuthContext {
   supabase: Awaited<ReturnType<typeof createClient>>
 }
 
-/**
- * Get authenticated user and their organization
- * Use this in API routes that need user context
- */
 export async function getAuthContext(): Promise<AuthContext | null> {
   const supabase = await createClient()
 
-  // Get authenticated user
   const {
     data: { user: authUser },
     error: authError,
@@ -24,7 +19,6 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     return null
   }
 
-  // Get user profile with organization
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("*, organization:organizations(*)")
@@ -42,16 +36,10 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   }
 }
 
-/**
- * Check if user has required role
- */
 export function hasRole(user: User, requiredRoles: string[]): boolean {
   return requiredRoles.includes(user.role)
 }
 
-/**
- * Check if user is owner or admin
- */
 export function isAdmin(user: User): boolean {
   return hasRole(user, ["owner", "admin"])
 }

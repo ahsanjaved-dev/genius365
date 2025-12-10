@@ -7,7 +7,6 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// GET /api/agents/[id] - Get single agent
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const auth = await getAuthContext()
@@ -33,7 +32,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// PATCH /api/agents/[id] - Update agent
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const auth = await getAuthContext()
@@ -78,7 +76,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/agents/[id] - Delete agent
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const auth = await getAuthContext()
@@ -86,7 +83,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params
 
-    // Check agent exists and belongs to org
     const { data: existing } = await auth.supabase
       .from("ai_agents")
       .select("id")

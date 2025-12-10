@@ -9,7 +9,6 @@ export default function DashboardPage() {
         <p className="text-gray-600 mt-1">Welcome back! Here's your overview.</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -56,7 +55,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
       <Card>
         <CardHeader>
           <CardTitle>Quick Start</CardTitle>

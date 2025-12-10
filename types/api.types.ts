@@ -6,11 +6,6 @@ import type {
   TranscriberProvider,
 } from "./database.types"
 
-// ============================================
-// ZOD SCHEMAS - For validation
-// ============================================
-
-// Agent Creation Schema
 export const createAgentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional(),
@@ -47,11 +42,9 @@ export const createAgentSchema = z.object({
 
 export type CreateAgentInput = z.infer<typeof createAgentSchema>
 
-// Agent Update Schema
 export const updateAgentSchema = createAgentSchema.partial()
 export type UpdateAgentInput = z.infer<typeof updateAgentSchema>
 
-// Organization Update Schema
 export const updateOrganizationSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   branding_config: z
@@ -67,7 +60,6 @@ export const updateOrganizationSchema = z.object({
 
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
 
-// Integration Creation Schema
 export const createIntegrationSchema = z.object({
   integration_type: z.enum([
     "make",
@@ -84,10 +76,6 @@ export const createIntegrationSchema = z.object({
 })
 
 export type CreateIntegrationInput = z.infer<typeof createIntegrationSchema>
-
-// ============================================
-// PROVIDER CONFIG TYPES
-// ============================================
 
 export interface VapiAgentConfig {
   name: string

@@ -49,10 +49,8 @@ export default function SignupPage() {
         throw new Error(data.error || "Failed to sign up")
       }
 
-      // Show success message
       setSuccess(data.message)
 
-      // Redirect to login after 2 seconds
       setTimeout(() => {
         router.push("/login")
       }, 2000)

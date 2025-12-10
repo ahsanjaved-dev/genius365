@@ -29,7 +29,6 @@ export default function AgentsPage() {
   const deleteMutation = useDeleteAgent()
   const updateMutation = useUpdateAgent()
 
-  // Filter agents by search query
   const filteredAgents = data?.data?.filter((agent) =>
     agent.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -58,7 +57,6 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">AI Agents</h1>
@@ -72,7 +70,6 @@ export default function AgentsPage() {
         </Button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -96,14 +93,12 @@ export default function AgentsPage() {
         </Select>
       </div>
 
-      {/* Loading State */}
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
 
-      {/* Error State */}
       {error && (
         <div className="text-center py-12 border rounded-lg bg-red-50 dark:bg-red-900/20">
           <p className="text-red-600 dark:text-red-400">Failed to load agents. Please try again.</p>
@@ -113,7 +108,6 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Empty State */}
       {!isLoading && !error && filteredAgents?.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <Bot className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -134,7 +128,6 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Agents Grid */}
       {filteredAgents && filteredAgents.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAgents.map((agent) => (
@@ -148,14 +141,12 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Pagination Info */}
       {data && data.total > 0 && (
         <div className="text-center text-sm text-muted-foreground">
           Showing {filteredAgents?.length} of {data.total} agents
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <DeleteAgentDialog
         open={!!deleteAgent}
         onOpenChange={(open) => !open && setDeleteAgent(null)}

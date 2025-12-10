@@ -1,24 +1,17 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-// ============================================
-// ENUMS - Type-safe string literals
-// ============================================
-
 export type PlanTier = "starter" | "professional" | "enterprise"
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "unpaid"
 export type UserRole = "owner" | "admin" | "member"
 
-// AI Provider Types
 export type AgentProvider = "vapi" | "retell" | "synthflow"
 export type VoiceProvider = "elevenlabs" | "deepgram" | "azure" | "openai" | "cartesia"
 export type ModelProvider = "openai" | "anthropic" | "google" | "groq"
 export type TranscriberProvider = "deepgram" | "assemblyai" | "openai"
 
-// Integration Types
 export type IntegrationType = "make" | "ghl" | "twilio" | "slack" | "zapier" | "calendar" | "crm"
 export type IntegrationStatus = "active" | "inactive" | "error"
 
-// Conversation Types
 export type CallDirection = "inbound" | "outbound"
 export type CallStatus =
   | "initiated"
@@ -28,7 +21,6 @@ export type CallStatus =
   | "failed"
   | "no-answer"
 
-// Usage Types
 export type ResourceType =
   | "voice_minutes"
   | "api_calls"
@@ -37,12 +29,7 @@ export type ResourceType =
   | "llm_tokens"
   | "stt_minutes"
 
-// Billing Types
 export type InvoiceStatus = "draft" | "open" | "paid" | "void" | "uncollectible"
-
-// ============================================
-// CONFIG INTERFACES
-// ============================================
 
 export interface ResourceLimits {
   max_agents: number
@@ -89,10 +76,6 @@ export interface CostBreakdown {
   telephony_cost?: number
   total?: number
 }
-
-// ============================================
-// DATABASE SCHEMA TYPES
-// ============================================
 
 export interface Database {
   public: {
@@ -521,10 +504,6 @@ export interface Database {
   }
 }
 
-// ============================================
-// HELPER TYPES - For easier usage in components
-// ============================================
-
 export type Organization = Database["public"]["Tables"]["organizations"]["Row"]
 export type OrganizationInsert = Database["public"]["Tables"]["organizations"]["Insert"]
 export type OrganizationUpdate = Database["public"]["Tables"]["organizations"]["Update"]
@@ -553,10 +532,6 @@ export type BillingInvoice = Database["public"]["Tables"]["billing_invoices"]["R
 export type BillingInvoiceInsert = Database["public"]["Tables"]["billing_invoices"]["Insert"]
 export type BillingInvoiceUpdate = Database["public"]["Tables"]["billing_invoices"]["Update"]
 
-// ============================================
-// API RESPONSE TYPES
-// ============================================
-
 export interface ApiResponse<T> {
   data?: T
   error?: string
@@ -571,19 +546,16 @@ export interface PaginatedResponse<T> {
   totalPages: number
 }
 
-// User with organization data
 export interface UserWithOrganization extends User {
   organization: Organization
 }
 
-// Agent with stats
 export interface AgentWithStats extends AIAgent {
   total_conversations?: number
   total_minutes?: number
   total_cost?: number
 }
 
-// Dashboard stats
 export interface DashboardStats {
   total_agents: number
   total_conversations: number

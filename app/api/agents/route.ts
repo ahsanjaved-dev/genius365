@@ -3,7 +3,6 @@ import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { createAgentSchema } from "@/types/api.types"
 
-// GET /api/agents - List all agents for the organization
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthContext()
@@ -21,7 +20,6 @@ export async function GET(request: NextRequest) {
       .eq("organization_id", auth.organization.id)
       .order("created_at", { ascending: false })
 
-    // Apply filters
     if (provider) {
       query = query.eq("provider", provider)
     }
@@ -29,7 +27,6 @@ export async function GET(request: NextRequest) {
       query = query.eq("is_active", isActive === "true")
     }
 
-    // Pagination
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
     query = query.range(from, to)
@@ -54,7 +51,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/agents - Create a new agent
 export async function POST(request: NextRequest) {
   try {
     const auth = await getAuthContext()
@@ -67,7 +63,6 @@ export async function POST(request: NextRequest) {
       return apiError(validation.error.issues[0].message)
     }
 
-    // Check agent limit
     const { count } = await auth.supabase
       .from("ai_agents")
       .select("*", { count: "exact", head: true })
