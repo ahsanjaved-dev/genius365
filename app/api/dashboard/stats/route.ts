@@ -1,33 +1,51 @@
+import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, unauthorized, serverError } from "@/lib/api/helpers"
 import type { DashboardStats } from "@/types/database.types"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthContext()
     if (!auth) return unauthorized()
 
+    const searchParams = request.nextUrl.searchParams
+    const departmentId = searchParams.get("department_id")
     const orgId = auth.organization.id
 
+    // If department_id is provided, filter by department
+    // Otherwise, show organization-wide stats
+    const agentQuery = auth.supabase
+      .from("ai_agents")
+      .select("*", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .is("deleted_at", null)
+
+    const conversationQuery = auth.supabase
+      .from("conversations")
+      .select("*", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .is("deleted_at", null)
+
+    const usageQuery = auth.supabase
+      .from("usage_tracking")
+      .select("resource_type, quantity, total_cost")
+      .eq("organization_id", orgId)
+      .gte(
+        "recorded_at",
+        new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+      )
+
+    // Apply department filter if provided
+    if (departmentId && departmentId !== "all") {
+      agentQuery.eq("department_id", departmentId)
+      conversationQuery.eq("department_id", departmentId)
+      usageQuery.eq("department_id", departmentId)
+    }
+
     const [agentsResult, conversationsResult, usageResult] = await Promise.all([
-      auth.supabase
-        .from("ai_agents")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId),
-
-      auth.supabase
-        .from("conversations")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId),
-
-      auth.supabase
-        .from("usage_tracking")
-        .select("resource_type, quantity, total_cost")
-        .eq("organization_id", orgId)
-        .gte(
-          "recorded_at",
-          new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-        ),
+      agentQuery,
+      conversationQuery,
+      usageQuery,
     ])
 
     let totalMinutes = 0
@@ -42,11 +60,19 @@ export async function GET() {
       })
     }
 
-    const { count: conversationsThisMonth } = await auth.supabase
+    // Get conversations this month
+    const conversationsThisMonthQuery = auth.supabase
       .from("conversations")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", orgId)
+      .is("deleted_at", null)
       .gte("created_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+
+    if (departmentId && departmentId !== "all") {
+      conversationsThisMonthQuery.eq("department_id", departmentId)
+    }
+
+    const { count: conversationsThisMonth } = await conversationsThisMonthQuery
 
     const stats: DashboardStats = {
       total_agents: agentsResult.count || 0,

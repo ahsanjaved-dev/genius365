@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,15 +13,19 @@ import {
   Plus,
   ArrowRight,
   TrendingUp,
+  Users,
+  Building2,
 } from "lucide-react"
 import Link from "next/link"
 import type { DashboardStats } from "@/types/database.types"
+import { DepartmentSelector } from "@/components/dashboard/department-selector"
 
-function useDashboardStats() {
+function useDashboardStats(departmentId: string) {
   return useQuery({
-    queryKey: ["dashboard-stats"],
+    queryKey: ["dashboard-stats", departmentId],
     queryFn: async (): Promise<DashboardStats> => {
-      const res = await fetch("/api/dashboard/stats")
+      const params = departmentId ? `?department_id=${departmentId}` : ""
+      const res = await fetch(`/api/dashboard/stats${params}`)
       if (!res.ok) {
         const error = await res.json()
         throw new Error(error.error || "Failed to fetch stats")
@@ -28,12 +33,14 @@ function useDashboardStats() {
       const json = await res.json()
       return json.data
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
+    staleTime: 2 * 60 * 1000, // Consider fresh for 2 minutes
   })
 }
 
 export default function DashboardPage() {
-  const { data: stats, isLoading, error } = useDashboardStats()
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("all")
+  const { data: stats, isLoading, error } = useDashboardStats(selectedDepartment)
 
   const statCards = [
     {
@@ -57,7 +64,7 @@ export default function DashboardPage() {
     {
       title: "Minutes Used",
       value: stats?.minutes_this_month?.toFixed(0) ?? 0,
-      subtitle: "of 1,000 minutes",
+      subtitle: "This month",
       icon: Clock,
       href: "/analytics",
       color: "text-orange-600",
@@ -76,19 +83,28 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header with Department Selector */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Welcome back! Here's your overview.</p>
+          <p className="text-muted-foreground mt-1">
+            {selectedDepartment === "all"
+              ? "Overview of all your departments"
+              : "Department overview"}
+          </p>
         </div>
-        <Button asChild>
-          <Link href="/agents/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Agent
-          </Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          <DepartmentSelector value={selectedDepartment} onChange={setSelectedDepartment} />
+          <Button asChild>
+            <Link href="/agents/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Agent
+            </Link>
+          </Button>
+        </div>
       </div>
 
+      {/* Error State */}
       {error && (
         <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
           <CardContent className="pt-6">
@@ -107,6 +123,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card) => {
           const Icon = card.icon
@@ -138,66 +155,103 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-green-600" />
-              Quick Start
+              Quick Actions
             </CardTitle>
-            <CardDescription>Get started by creating your first AI voice agent</CardDescription>
+            <CardDescription>Get started with common tasks</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button asChild className="flex-1">
-                <Link href="/agents/new">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Agent
-                </Link>
-              </Button>
-              <Button variant="outline" asChild className="flex-1">
-                <Link href="/agents">
-                  View All Agents
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
+          <CardContent className="space-y-3">
+            <Button asChild className="w-full justify-start">
+              <Link href="/agents/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Create New Agent
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/agents">
+                <Bot className="mr-2 h-4 w-4" />
+                View All Agents
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/conversations">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                View Conversations
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Resources</CardTitle>
-            <CardDescription>Learn how to get the most out of Inspralv</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-blue-600" />
+              Department Management
+            </CardTitle>
+            <CardDescription>Manage your departments and teams</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <Link
-                href="#"
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors"
-              >
-                <span className="font-medium">Getting Started Guide</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          <CardContent className="space-y-3">
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/departments">
+                <Building2 className="mr-2 h-4 w-4" />
+                View Departments
               </Link>
-              <Link
-                href="#"
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors"
-              >
-                <span className="font-medium">API Documentation</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/departments/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Department
               </Link>
-              <Link
-                href="#"
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors"
-              >
-                <span className="font-medium">Integration Examples</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/users">
+                <Users className="mr-2 h-4 w-4" />
+                Manage Users
               </Link>
-            </div>
+            </Button>
           </CardContent>
         </Card>
       </div>
 
+      {/* Resources */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Resources & Documentation</CardTitle>
+          <CardDescription>Learn how to get the most out of Inspralv</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Link
+              href="#"
+              className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
+            >
+              <span className="font-medium">Getting Started Guide</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+            <Link
+              href="#"
+              className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
+            >
+              <span className="font-medium">API Documentation</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+            <Link
+              href="#"
+              className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
+            >
+              <span className="font-medium">Integration Examples</span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Empty State */}
       {!isLoading && stats?.total_agents === 0 && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">

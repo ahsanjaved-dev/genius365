@@ -10,56 +10,77 @@ export interface AuthContext {
 }
 
 export async function getAuthContext(): Promise<AuthContext | null> {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const {
-    data: { user: authUser },
-    error: authError,
-  } = await supabase.auth.getUser()
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabase.auth.getUser()
 
-  if (authError || !authUser) {
+    if (authError || !authUser) {
+      console.log("[getAuthContext] No auth user:", authError?.message)
+      return null
+    }
+
+    // Get user with organization - with retry logic
+    let user = null
+    let userError = null
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await supabase
+        .from("users")
+        .select(`*, organization:organizations(*)`)
+        .eq("id", authUser.id)
+        .single()
+
+      user = result.data
+      userError = result.error
+
+      if (user) break
+
+      // Wait before retry
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
+      }
+    }
+
+    if (userError) {
+      console.error(
+        "[getAuthContext] User query error:",
+        userError.message,
+        "for user:",
+        authUser.id
+      )
+    }
+
+    if (!user) {
+      console.error("[getAuthContext] No user row found for:", authUser.id)
+      return null
+    }
+
+    // Get user's department permissions
+    const { data: departmentPermissions, error: deptError } = await supabase
+      .from("department_permissions")
+      .select(`*, department:departments(*)`)
+      .eq("user_id", authUser.id)
+      .is("revoked_at", null)
+
+    if (deptError) {
+      console.error("[getAuthContext] Department permissions error:", deptError)
+    }
+
+    return {
+      user: user as User,
+      organization: (user as any).organization as Organization,
+      departments: (departmentPermissions || []) as (DepartmentPermission & {
+        department: Department
+      })[],
+      supabase,
+    }
+  } catch (error) {
+    console.error("[getAuthContext] Unexpected error:", error)
     return null
-  }
-
-  // Get user with organization
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select(
-      `
-      *,
-      organization:organizations(*)
-    `
-    )
-    .eq("id", authUser.id)
-    .single()
-
-  if (userError || !user) {
-    return null
-  }
-
-  // Get user's department permissions
-  const { data: departmentPermissions, error: deptError } = await supabase
-    .from("department_permissions")
-    .select(
-      `
-      *,
-      department:departments(*)
-    `
-    )
-    .eq("user_id", authUser.id)
-    .is("revoked_at", null)
-
-  if (deptError) {
-    console.error("Error fetching department permissions:", deptError)
-  }
-
-  return {
-    user: user as User,
-    organization: (user as any).organization as Organization,
-    departments: (departmentPermissions || []) as (DepartmentPermission & {
-      department: Department
-    })[],
-    supabase,
   }
 }
 

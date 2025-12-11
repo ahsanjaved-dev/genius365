@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 
 export function useAuth() {
   const router = useRouter()
-  const supabase = createClient()
+
+  // ✅ Memoize the client to prevent re-creation on every render
+  const supabase = useMemo(() => createClient(), [])
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut()

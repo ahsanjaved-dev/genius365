@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { navItems, siteConfig } from "@/config/site"
+import { siteConfig } from "@/config/site"
 import { Button } from "@/components/ui/button"
 import {
   LayoutDashboard,
@@ -14,18 +14,22 @@ import {
   CreditCard,
   Settings,
   LogOut,
+  Building2,
+  Users,
 } from "lucide-react"
 import { useAuth } from "@/lib/hooks/use-auth"
 
-const iconMap: Record<string, any> = {
-  Dashboard: LayoutDashboard,
-  Agents: Bot,
-  Conversations: MessageSquare,
-  Integrations: Plug,
-  Analytics: BarChart3,
-  Billing: CreditCard,
-  Settings: Settings,
-}
+const navigation = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Agents", href: "/agents", icon: Bot },
+  { title: "Conversations", href: "/conversations", icon: MessageSquare },
+  { title: "Departments", href: "/departments", icon: Building2 },
+  { title: "Users", href: "/users", icon: Users },
+  { title: "Integrations", href: "/integrations", icon: Plug },
+  { title: "Analytics", href: "/analytics", icon: BarChart3 },
+  { title: "Billing", href: "/billing", icon: CreditCard },
+  { title: "Settings", href: "/settings", icon: Settings },
+]
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -38,9 +42,9 @@ export function Sidebar() {
         <p className="text-xs text-gray-400 mt-1">AI Voice Platform</p>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
-          const Icon = iconMap[item.title]
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navigation.map((item) => {
+          const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
 
           return (
@@ -54,7 +58,7 @@ export function Sidebar() {
                   : "text-gray-300 hover:bg-gray-800 hover:text-white"
               )}
             >
-              {Icon && <Icon className="w-5 h-5" />}
+              <Icon className="w-5 h-5" />
               <span>{item.title}</span>
             </Link>
           )

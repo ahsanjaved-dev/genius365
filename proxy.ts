@@ -26,7 +26,9 @@ export async function proxy(request: NextRequest) {
   const authPaths = ["/login", "/signup"]
   const isAuthPath = authPaths.some((path) => request.nextUrl.pathname.startsWith(path))
 
-  if (isAuthPath && user) {
+  const isSetupFlow = request.nextUrl.searchParams.get("setup") === "true"
+
+  if (isAuthPath && user && !isSetupFlow) {
     return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
