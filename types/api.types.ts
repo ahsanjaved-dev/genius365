@@ -110,3 +110,25 @@ export interface SynthflowAgentConfig {
   model_id: string
   instructions: string
 }
+
+export const createDepartmentSchema = z.object({
+  name: z.string().min(1, "Name is required").max(255),
+  description: z.string().max(1000).optional(),
+  slug: z
+    .string()
+    .min(1, "Slug is required")
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  resource_limits: z
+    .object({
+      max_agents: z.number().min(1).max(100).optional(),
+      max_users: z.number().min(1).max(100).optional(),
+      max_minutes_per_month: z.number().min(0).optional(),
+    })
+    .optional(),
+})
+
+export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>
+
+export const updateDepartmentSchema = createDepartmentSchema.partial()
+export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>
