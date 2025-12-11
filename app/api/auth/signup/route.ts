@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       id: authData.user.id,
       organization_id: orgData.id,
       email: email,
-      role: "owner",
+      role: "org_owner",
       last_login_at: new Date().toISOString(),
     })
 

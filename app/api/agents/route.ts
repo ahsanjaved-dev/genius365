@@ -1,7 +1,9 @@
+// app/api/agents/route.ts
 import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { createAgentSchema } from "@/types/api.types"
+import type { AgentProvider } from "@/types/database.types"
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +15,7 @@ export async function GET(request: NextRequest) {
     const pageSize = parseInt(searchParams.get("pageSize") || "10")
     const provider = searchParams.get("provider")
     const isActive = searchParams.get("isActive")
+    const departmentId = searchParams.get("department_id")
 
     let query = auth.supabase
       .from("ai_agents")
@@ -21,10 +24,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (provider) {
-      query = query.eq("provider", provider)
+      query = query.eq("provider", provider as AgentProvider) // FIX: Cast to AgentProvider
     }
     if (isActive !== null) {
       query = query.eq("is_active", isActive === "true")
+    }
+    if (departmentId) {
+      query = query.eq("department_id", departmentId)
     }
 
     const from = (page - 1) * pageSize
@@ -63,20 +69,40 @@ export async function POST(request: NextRequest) {
       return apiError(validation.error.issues[0].message)
     }
 
+    // FIX: Get department_id from request body or use first available department
+    const departmentId = body.department_id || auth.departments[0]?.department_id
+
+    if (!departmentId) {
+      return apiError("No department available. Please create a department first.")
+    }
+
+    // Check agent limit for this department
     const { count } = await auth.supabase
       .from("ai_agents")
       .select("*", { count: "exact", head: true })
-      .eq("organization_id", auth.organization.id)
+      .eq("department_id", departmentId)
 
-    const limits = auth.organization.resource_limits as { max_agents: number }
+    // Get department limits
+    const { data: department } = await auth.supabase
+      .from("departments")
+      .select("resource_limits")
+      .eq("id", departmentId)
+      .single()
+
+    const limits = (department?.resource_limits as any) || { max_agents: 5 }
     if (count && count >= limits.max_agents) {
-      return apiError(`Agent limit reached. Your plan allows ${limits.max_agents} agents.`, 403)
+      return apiError(
+        `Agent limit reached for this department. Maximum: ${limits.max_agents} agents.`,
+        403
+      )
     }
 
+    // FIX: Add department_id to insert
     const { data: agent, error } = await auth.supabase
       .from("ai_agents")
       .insert({
         organization_id: auth.organization.id,
+        department_id: departmentId, // FIX: Added this required field
         created_by: auth.user.id,
         name: validation.data.name,
         description: validation.data.description,
