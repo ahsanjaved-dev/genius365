@@ -83,7 +83,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Department Selector */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
@@ -104,7 +103,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Error State */}
       {error && (
         <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
           <CardContent className="pt-6">
@@ -123,7 +121,6 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card) => {
           const Icon = card.icon
@@ -155,7 +152,6 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -218,7 +214,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Resources */}
       <Card>
         <CardHeader>
           <CardTitle>Resources & Documentation</CardTitle>
@@ -251,7 +246,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Empty State */}
       {!isLoading && stats?.total_agents === 0 && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">

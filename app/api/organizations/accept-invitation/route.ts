@@ -1,4 +1,3 @@
-// app/api/organizations/accept-invitation/route.ts
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { apiResponse, apiError, serverError, notFound } from "@/lib/api/helpers"
@@ -23,7 +22,6 @@ export async function POST(request: NextRequest) {
 
     const { organization_id, password, first_name, last_name } = validation.data
 
-    // Get organization
     const { data: organization, error: orgError } = await supabase
       .from("organizations")
       .select("*")
@@ -35,7 +33,6 @@ export async function POST(request: NextRequest) {
       return notFound("Organization")
     }
 
-    // Check if organization already has an owner
     const { data: existingOwner } = await supabase
       .from("users")
       .select("id")
@@ -47,7 +44,6 @@ export async function POST(request: NextRequest) {
       return apiError("This organization already has an owner")
     }
 
-    // Get current authenticated user (they should have just signed up)
     const {
       data: { user: authUser },
     } = await supabase.auth.getUser()
@@ -56,7 +52,6 @@ export async function POST(request: NextRequest) {
       return apiError("Please sign up first")
     }
 
-    // Create user record
     const { error: userError } = await supabase.from("users").insert({
       id: authUser.id,
       organization_id: organization.id,
@@ -73,7 +68,6 @@ export async function POST(request: NextRequest) {
       return apiError("Failed to create user profile")
     }
 
-    // Update organization
     await supabase
       .from("organizations")
       .update({

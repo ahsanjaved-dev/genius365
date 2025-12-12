@@ -1,4 +1,3 @@
-// app/api/super-admin/organizations/[id]/route.ts
 import { NextRequest } from "next/server"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
 import { apiResponse, apiError, unauthorized, notFound, serverError } from "@/lib/api/helpers"
@@ -16,7 +15,6 @@ const updateOrganizationSchema = z.object({
   features: z.record(z.string(), z.unknown()).optional(),
 })
 
-// GET /api/super-admin/organizations/[id] - Get organization details
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await getSuperAdminContext()
@@ -49,7 +47,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// PATCH /api/super-admin/organizations/[id] - Update organization
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await getSuperAdminContext()
@@ -67,8 +64,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .from("organizations")
       .update({
         ...validation.data,
-        resource_limits: validation.data.resource_limits as any, // Cast to Json
-        features: validation.data.features as any, // Cast to Json
+        resource_limits: validation.data.resource_limits as any,
+        features: validation.data.features as any,
       })
       .eq("id", id)
       .select()
@@ -86,7 +83,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/super-admin/organizations/[id] - Soft delete organization
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await getSuperAdminContext()

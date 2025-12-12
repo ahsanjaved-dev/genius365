@@ -1,4 +1,3 @@
-// app/(super-admin)/layout.tsx
 import { redirect } from "next/navigation"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
 import { SuperAdminSidebar } from "@/components/super-admin/sidebar"

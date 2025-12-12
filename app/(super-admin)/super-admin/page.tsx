@@ -1,4 +1,3 @@
-// app/(super-admin)/super-admin/page.tsx
 "use client"
 
 import { useState } from "react"
@@ -29,7 +28,6 @@ export default function SuperAdminDashboard() {
     status: statusFilter !== "all" ? statusFilter : undefined,
   })
 
-  // Calculate stats
   const stats = {
     total_organizations: data?.total || 0,
     active_organizations:
@@ -41,7 +39,6 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
@@ -55,7 +52,6 @@ export default function SuperAdminDashboard() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -102,7 +98,6 @@ export default function SuperAdminDashboard() {
         </Card>
       </div>
 
-      {/* Filters */}
       <Card>
         <CardHeader>
           <CardTitle>Organizations</CardTitle>
@@ -145,7 +140,6 @@ export default function SuperAdminDashboard() {
             </Select>
           </div>
 
-          {/* Organizations List */}
           {isLoading && (
             <div className="text-center py-12">
               <p className="text-muted-foreground">Loading organizations...</p>
@@ -180,7 +174,6 @@ export default function SuperAdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Create Organization Dialog */}
       <CreateOrganizationDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>
   )

@@ -1,4 +1,3 @@
-// app/api/super-admin/organizations/route.ts
 import { NextRequest } from "next/server"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
@@ -11,7 +10,6 @@ const createOrganizationSchema = z.object({
   trial_days: z.number().min(0).max(90).default(14),
 })
 
-// GET /api/super-admin/organizations - List all organizations
 export async function GET(request: NextRequest) {
   try {
     const context = await getSuperAdminContext()
@@ -66,7 +64,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/super-admin/organizations - Create new organization
 export async function POST(request: NextRequest) {
   try {
     const context = await getSuperAdminContext()
@@ -81,7 +78,6 @@ export async function POST(request: NextRequest) {
 
     const { name, email, plan_tier, trial_days } = validation.data
 
-    // Generate slug from name
     const baseSlug =
       name
         .toLowerCase()
@@ -92,7 +88,6 @@ export async function POST(request: NextRequest) {
     let finalSlug = baseSlug
     let counter = 0
 
-    // Check for slug uniqueness
     while (true) {
       const { data: existingOrg } = await context.supabase
         .from("organizations")
@@ -106,11 +101,9 @@ export async function POST(request: NextRequest) {
       finalSlug = `${baseSlug}-${counter}`
     }
 
-    // Calculate trial end date
     const trialEndsAt = new Date()
     trialEndsAt.setDate(trialEndsAt.getDate() + trial_days)
 
-    // Create organization
     const { data: organization, error: orgError } = await context.supabase
       .from("organizations")
       .insert({
@@ -129,9 +122,6 @@ export async function POST(request: NextRequest) {
       console.error("Create organization error:", orgError)
       return apiError("Failed to create organization")
     }
-
-    // TODO: Send invitation email to the organization owner
-    // This will be implemented in the next step
 
     return apiResponse(
       {

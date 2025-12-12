@@ -25,7 +25,6 @@ interface AgentFormProps {
   isSubmitting: boolean
 }
 
-// Local form schema (matches CreateAgentInput but with required is_active)
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional(),
@@ -79,7 +78,6 @@ export function AgentForm({ initialData, onSubmit, isSubmitting }: AgentFormProp
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
-      {/* Basic Info */}
       <Card>
         <CardHeader>
           <CardTitle>Basic Information</CardTitle>
@@ -145,7 +143,6 @@ export function AgentForm({ initialData, onSubmit, isSubmitting }: AgentFormProp
         </CardContent>
       </Card>
 
-      {/* Voice & Model Settings */}
       <Card>
         <CardHeader>
           <CardTitle>Voice & Model Settings</CardTitle>
@@ -219,7 +216,6 @@ export function AgentForm({ initialData, onSubmit, isSubmitting }: AgentFormProp
         </CardContent>
       </Card>
 
-      {/* Prompt Configuration */}
       <Card>
         <CardHeader>
           <CardTitle>Prompt Configuration</CardTitle>
@@ -255,7 +251,6 @@ export function AgentForm({ initialData, onSubmit, isSubmitting }: AgentFormProp
         </CardContent>
       </Card>
 
-      {/* Submit Buttons */}
       <div className="flex justify-end gap-4">
         <Button type="button" variant="outline" disabled={isSubmitting} asChild>
           <Link href="/agents">Cancel</Link>

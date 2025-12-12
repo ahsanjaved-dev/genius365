@@ -29,7 +29,7 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      const supabase = createClient() // ← Changed
+      const supabase = createClient()
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,

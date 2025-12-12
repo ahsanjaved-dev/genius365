@@ -1,4 +1,3 @@
-// app/api/agents/route.ts
 import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
@@ -24,7 +23,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (provider) {
-      query = query.eq("provider", provider as AgentProvider) // FIX: Cast to AgentProvider
+      query = query.eq("provider", provider as AgentProvider)
     }
     if (isActive !== null) {
       query = query.eq("is_active", isActive === "true")
@@ -69,20 +68,17 @@ export async function POST(request: NextRequest) {
       return apiError(validation.error.issues[0].message)
     }
 
-    // FIX: Get department_id from request body or use first available department
     const departmentId = body.department_id || auth.departments[0]?.department_id
 
     if (!departmentId) {
       return apiError("No department available. Please create a department first.")
     }
 
-    // Check agent limit for this department
     const { count } = await auth.supabase
       .from("ai_agents")
       .select("*", { count: "exact", head: true })
       .eq("department_id", departmentId)
 
-    // Get department limits
     const { data: department } = await auth.supabase
       .from("departments")
       .select("resource_limits")

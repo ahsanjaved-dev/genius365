@@ -51,7 +51,6 @@ export function DepartmentSelector({ value, onChange }: DepartmentSelectorProps)
     staleTime: 5 * 60 * 1000,
   })
 
-  // Set default value ONCE after data loads
   useEffect(() => {
     if (!hasInitialized.current && departments.length > 0 && !value) {
       hasInitialized.current = true
@@ -91,7 +90,6 @@ export function DepartmentSelector({ value, onChange }: DepartmentSelectorProps)
     )
   }
 
-  // ✅ COMPLETE Select component with all children
   return (
     <Select value={value || "all"} onValueChange={onChange}>
       <SelectTrigger className="w-[250px]">

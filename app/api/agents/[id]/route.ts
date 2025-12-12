@@ -45,7 +45,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return apiError(validation.error.issues[0].message)
     }
 
-    // Check agent exists and belongs to org
     const { data: existing } = await auth.supabase
       .from("ai_agents")
       .select("id")

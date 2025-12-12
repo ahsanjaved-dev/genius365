@@ -13,8 +13,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     } = await supabase.auth.getUser()
 
     if (authUser) {
-      // ✅ User has auth session but no DB row
-      // Instead of redirecting (which causes loop), check if user row actually exists
       const { data: userRow } = await supabase
         .from("users")
         .select("id")
@@ -22,19 +20,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
         .single()
 
       if (userRow) {
-        // User row exists but getAuthContext failed - might be a transient error
-        // Redirect to a neutral page that won't cause a loop
         console.error("[DashboardLayout] User row exists but getAuthContext failed. Refreshing...")
-        // Force a hard refresh by redirecting to same page with cache buster
+
         redirect(`/dashboard?_t=${Date.now()}`)
       }
 
-      // User truly doesn't have a row - this is a setup issue
-      // Redirect to a dedicated setup page (not /signup which causes loop)
       redirect("/setup-profile")
     }
 
-    // No auth session at all
     redirect("/login")
   }
 

@@ -1,4 +1,3 @@
-// components/super-admin/organization-card.tsx
 "use client"
 
 import { Organization } from "@/types/database.types"

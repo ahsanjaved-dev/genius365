@@ -1,4 +1,3 @@
-// app/(onboarding)/accept-invitation/page.tsx
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
@@ -65,7 +64,6 @@ function AcceptInvitationContent() {
     try {
       const supabase = createClient()
 
-      // Sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -79,7 +77,6 @@ function AcceptInvitationContent() {
 
       if (authError) throw authError
 
-      // Accept invitation
       const response = await fetch("/api/organizations/accept-invitation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

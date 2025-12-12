@@ -12,8 +12,6 @@ export async function GET(request: NextRequest) {
     const departmentId = searchParams.get("department_id")
     const orgId = auth.organization.id
 
-    // If department_id is provided, filter by department
-    // Otherwise, show organization-wide stats
     const agentQuery = auth.supabase
       .from("ai_agents")
       .select("*", { count: "exact", head: true })
@@ -35,7 +33,6 @@ export async function GET(request: NextRequest) {
         new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
       )
 
-    // Apply department filter if provided
     if (departmentId && departmentId !== "all") {
       agentQuery.eq("department_id", departmentId)
       conversationQuery.eq("department_id", departmentId)
@@ -60,7 +57,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get conversations this month
     const conversationsThisMonthQuery = auth.supabase
       .from("conversations")
       .select("*", { count: "exact", head: true })

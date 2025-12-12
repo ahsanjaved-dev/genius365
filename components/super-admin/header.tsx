@@ -1,4 +1,3 @@
-// components/super-admin/header.tsx
 "use client"
 
 import { SuperAdmin } from "@/types/database.types"
