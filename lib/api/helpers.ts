@@ -21,6 +21,6 @@ export function unauthorized(): NextResponse<ApiResponse<never>> {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 }
 
-export function forbidden(): NextResponse<ApiResponse<never>> {
-  return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+export function forbidden(message = "Forbidden"): NextResponse<ApiResponse<never>> {
+  return NextResponse.json({ error: message }, { status: 403 })
 }
