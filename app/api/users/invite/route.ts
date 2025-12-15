@@ -2,6 +2,8 @@ import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendInvitationEmail } from "@/lib/email/send"
+import { createAuditLog, getRequestMetadata } from "@/lib/audit"
 import { z } from "zod"
 
 const inviteSchema = z.object({
@@ -77,6 +79,37 @@ export async function POST(request: NextRequest) {
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const inviteLink = `${appUrl}/accept-invitation?token=${invitation.token}`
+
+    // Send invitation email
+    try {
+      await sendInvitationEmail({
+        to: email,
+        organizationName: auth.organization.name,
+        inviterName:
+          `${auth.user.first_name || ""} ${auth.user.last_name || ""}`.trim() || undefined,
+        inviteLink,
+        role: role === "org_admin" ? "Admin" : "Member",
+        message: message || undefined,
+        expiresAt: invitation.expires_at,
+      })
+    } catch (emailError) {
+      console.error("Failed to send invitation email:", emailError)
+      // Don't fail the request, invitation was created successfully
+    }
+
+    // Create audit log
+    const { ipAddress, userAgent } = getRequestMetadata(request)
+    await createAuditLog({
+      userId: auth.user.id,
+      organizationId: auth.organization.id,
+      action: "invitation.created",
+      entityType: "invitation",
+      entityId: invitation.id,
+      newValues: { email, role },
+      ipAddress,
+      userAgent,
+    })
 
     return apiResponse({
       invitation: {
@@ -85,7 +118,7 @@ export async function POST(request: NextRequest) {
         role: invitation.role,
         expires_at: invitation.expires_at,
       },
-      invitation_link: `${appUrl}/accept-invitation?token=${invitation.token}`,
+      invitation_link: inviteLink,
     })
   } catch (error) {
     console.error("POST /api/users/invite error:", error)

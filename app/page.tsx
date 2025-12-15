@@ -9,9 +9,6 @@ export default function Home() {
         <h1 className="text-6xl font-bold">{siteConfig.name}</h1>
         <p className="text-2xl text-gray-600">{siteConfig.description}</p>
         <div className="flex gap-4 justify-center mt-8">
-          <Link href="/signup">
-            <Button size="lg">Get Started</Button>
-          </Link>
           <Link href="/login">
             <Button size="lg" variant="outline">
               Sign In

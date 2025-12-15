@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { createAgentSchema } from "@/types/api.types"
+import { createAuditLog, getRequestMetadata } from "@/lib/audit"
 import type { AgentProvider } from "@/types/database.types"
 
 export async function GET(request: NextRequest) {
@@ -93,12 +94,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // FIX: Add department_id to insert
     const { data: agent, error } = await auth.supabase
       .from("ai_agents")
       .insert({
         organization_id: auth.organization.id,
-        department_id: departmentId, // FIX: Added this required field
+        department_id: departmentId,
         created_by: auth.user.id,
         name: validation.data.name,
         description: validation.data.description,
@@ -116,6 +116,23 @@ export async function POST(request: NextRequest) {
       console.error("Create agent error:", error)
       return apiError("Failed to create agent")
     }
+
+    // Create audit log
+    const { ipAddress, userAgent } = getRequestMetadata(request)
+    await createAuditLog({
+      userId: auth.user.id,
+      organizationId: auth.organization.id,
+      action: "agent.created",
+      entityType: "ai_agent",
+      entityId: agent.id,
+      newValues: {
+        name: agent.name,
+        provider: agent.provider,
+        department_id: agent.department_id,
+      },
+      ipAddress,
+      userAgent,
+    })
 
     return apiResponse(agent, 201)
   } catch (error) {

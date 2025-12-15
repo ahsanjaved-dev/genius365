@@ -6,10 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { Loader2, Palette, Building2, Shield, Bell } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Loader2, Palette, Building2, Shield, Bell, Lock, Monitor, Key } from "lucide-react"
 import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 
 export default function SettingsPage() {
   return (
@@ -216,42 +219,275 @@ function BrandingSettings() {
 }
 
 function OrganizationSettings() {
+  const { data: org, isLoading } = useQuery({
+    queryKey: ["organization-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/organization")
+      if (!res.ok) throw new Error("Failed to fetch organization")
+      return res.json().then((r) => r.data)
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Organization Details</CardTitle>
         <CardDescription>General information about your organization</CardDescription>
       </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground">Organization settings coming soon...</p>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label className="text-muted-foreground text-sm">Organization Name</Label>
+            <p className="font-medium">{org?.name || "—"}</p>
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-sm">Slug</Label>
+            <p className="font-medium font-mono">{org?.slug || "—"}</p>
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-sm">Plan</Label>
+            <Badge className="capitalize">{org?.plan_tier || "starter"}</Badge>
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-sm">Status</Label>
+            <Badge variant="outline" className="capitalize">
+              {org?.status || "active"}
+            </Badge>
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-sm">Created</Label>
+            <p className="font-medium">
+              {org?.created_at ? new Date(org.created_at).toLocaleDateString() : "—"}
+            </p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
 }
 
 function SecuritySettings() {
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match")
+      return
+    }
+
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters")
+      return
+    }
+
+    setChangingPassword(true)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      })
+
+      if (error) throw error
+
+      toast.success("Password updated successfully!")
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update password")
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Security</CardTitle>
-        <CardDescription>Manage security settings for your organization</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground">Security settings coming soon...</p>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      {/* Change Password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" />
+            Change Password
+          </CardTitle>
+          <CardDescription>Update your account password</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">New Password</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={8}
+                disabled={changingPassword}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm New Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={8}
+                disabled={changingPassword}
+              />
+              <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+            </div>
+            <Button type="submit" disabled={changingPassword}>
+              {changingPassword ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Password"
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Two-Factor Authentication */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            Two-Factor Authentication
+          </CardTitle>
+          <CardDescription>Add an extra layer of security to your account</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Authenticator App</p>
+              <p className="text-sm text-muted-foreground">
+                Use an authenticator app to generate one-time codes
+              </p>
+            </div>
+            <Badge variant="outline">Coming Soon</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Active Sessions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="h-5 w-5" />
+            Active Sessions
+          </CardTitle>
+          <CardDescription>Manage your active sessions across devices</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <div>
+                  <p className="font-medium text-sm">Current Session</p>
+                  <p className="text-xs text-muted-foreground">Active now</p>
+                </div>
+              </div>
+              <Badge variant="secondary">This device</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Session history and management coming soon.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
 function NotificationSettings() {
+  const [emailNotifications, setEmailNotifications] = useState({
+    usageAlerts: true,
+    weeklySummary: false,
+    paymentIssues: true,
+    teamActivity: true,
+    agentErrors: true,
+  })
+
+  const notifications = [
+    {
+      id: "usageAlerts",
+      label: "Usage Alerts",
+      description: "Get notified when approaching plan limits",
+    },
+    {
+      id: "weeklySummary",
+      label: "Weekly Summary",
+      description: "Receive a weekly digest of usage and performance",
+    },
+    {
+      id: "paymentIssues",
+      label: "Payment Issues",
+      description: "Get notified about failed payments and billing issues",
+    },
+    {
+      id: "teamActivity",
+      label: "Team Activity",
+      description: "When team members join or leave the organization",
+    },
+    {
+      id: "agentErrors",
+      label: "Agent Errors",
+      description: "Get notified when agents encounter errors",
+    },
+  ]
+
+  const handleToggle = (id: string) => {
+    setEmailNotifications((prev) => ({
+      ...prev,
+      [id]: !prev[id as keyof typeof prev],
+    }))
+    toast.success("Notification preference updated")
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Notifications</CardTitle>
-        <CardDescription>Configure notification preferences</CardDescription>
+        <CardTitle>Email Notifications</CardTitle>
+        <CardDescription>Choose what notifications you want to receive</CardDescription>
       </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground">Notification settings coming soon...</p>
+      <CardContent className="space-y-1">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className="flex items-center justify-between py-4 border-b last:border-0"
+          >
+            <div>
+              <p className="font-medium">{notification.label}</p>
+              <p className="text-sm text-muted-foreground">{notification.description}</p>
+            </div>
+            <Switch
+              checked={emailNotifications[notification.id as keyof typeof emailNotifications]}
+              onCheckedChange={() => handleToggle(notification.id)}
+            />
+          </div>
+        ))}
       </CardContent>
     </Card>
   )
