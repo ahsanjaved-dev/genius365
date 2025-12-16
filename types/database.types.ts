@@ -1,46 +1,145 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+import { z } from "zod"
 
-export type PlanTier = "starter" | "professional" | "enterprise" | "custom"
-export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "unpaid"
-export type OrganizationStatus =
-  | "pending_activation"
-  | "onboarding"
-  | "active"
-  | "suspended"
-  | "churned"
+// ============================================================================
+// ZOD SCHEMAS
+// ============================================================================
 
-export type UserRole = "org_owner" | "org_admin" | "org_member"
-export type UserStatus = "pending_invitation" | "active" | "inactive" | "suspended"
-export type DepartmentRole = "owner" | "admin" | "member" | "viewer"
+export const agentSecretApiKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255),
+  key: z.string().min(1),
+  provider: z.string().optional(),
+  is_active: z.boolean().default(true),
+})
 
-export type InvitationType = "org_owner" | "org_member" | "department_member"
-export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked"
+export const agentPublicApiKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255),
+  key: z.string().min(1),
+  provider: z.string().optional(),
+  is_active: z.boolean().default(true),
+})
+
+export type AgentSecretApiKey = z.infer<typeof agentSecretApiKeySchema>
+export type AgentPublicApiKey = z.infer<typeof agentPublicApiKeySchema>
 
 export type AgentProvider = "vapi" | "retell" | "synthflow"
-export type VoiceProvider = "elevenlabs" | "deepgram" | "azure" | "openai" | "cartesia"
-export type ModelProvider = "openai" | "anthropic" | "google" | "groq"
-export type TranscriberProvider = "deepgram" | "assemblyai" | "openai"
 
-export type CallDirection = "inbound" | "outbound"
-export type CallStatus =
-  | "initiated"
-  | "ringing"
-  | "in_progress"
-  | "completed"
-  | "failed"
-  | "no_answer"
-  | "busy"
-  | "canceled"
+export const createAgentSchema = z.object({
+  name: z.string().min(1, "Name is required").max(255),
+  description: z.string().optional(),
+  department_id: z.string().uuid(),
+  provider: z.enum(["vapi", "retell", "synthflow"] as const),
+  voice_provider: z
+    .enum(["elevenlabs", "deepgram", "azure", "openai", "cartesia"] as const)
+    .optional(),
+  model_provider: z.enum(["openai", "anthropic", "google", "groq"] as const).optional(),
+  transcriber_provider: z.enum(["deepgram", "assemblyai", "openai"] as const).optional(),
+  config: z
+    .object({
+      system_prompt: z.string().optional(),
+      first_message: z.string().optional(),
+      voice_id: z.string().optional(),
+      voice_settings: z
+        .object({
+          stability: z.number().min(0).max(1).optional(),
+          similarity_boost: z.number().min(0).max(1).optional(),
+          speed: z.number().min(0.5).max(2).optional(),
+        })
+        .optional(),
+      model_settings: z
+        .object({
+          model: z.string().optional(),
+          temperature: z.number().min(0).max(2).optional(),
+          max_tokens: z.number().min(1).max(4096).optional(),
+        })
+        .optional(),
+      max_duration_seconds: z.number().min(60).max(3600).optional(),
+    })
+    .optional(),
+  agent_secret_api_key: z.array(agentSecretApiKeySchema).optional().default([]),
+  agent_public_api_key: z.array(agentPublicApiKeySchema).optional().default([]),
+  is_active: z.boolean().optional().default(true),
+})
 
-export type ResourceType =
-  | "voice_minutes"
-  | "api_calls"
-  | "storage_gb"
-  | "tts_characters"
-  | "llm_tokens"
-  | "stt_minutes"
-  | "phone_number_rental"
-  | "sms_messages"
+export type CreateAgentInput = z.infer<typeof createAgentSchema>
+
+export const updateAgentSchema = createAgentSchema.partial()
+export type UpdateAgentInput = z.infer<typeof updateAgentSchema>
+
+export const updateOrganizationSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  branding_config: z
+    .object({
+      logo_url: z.string().url().optional(),
+      favicon_url: z.string().url().optional(),
+      primary_color: z.string().optional(),
+      secondary_color: z.string().optional(),
+      company_name: z.string().optional(),
+    })
+    .optional(),
+})
+
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
+
+export const createIntegrationSchema = z.object({
+  integration_type: z.enum([
+    "make",
+    "ghl",
+    "twilio",
+    "slack",
+    "zapier",
+    "calendar",
+    "crm",
+  ] as const),
+  name: z.string().min(1).max(255),
+  credentials: z.record(z.string(), z.string()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+})
+
+export type CreateIntegrationInput = z.infer<typeof createIntegrationSchema>
+
+export const createDepartmentSchema = z.object({
+  name: z.string().min(1, "Name is required").max(255),
+  description: z.string().max(1000).optional(),
+  slug: z
+    .string()
+    .min(1, "Slug is required")
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  resource_limits: z
+    .object({
+      max_agents: z.number().min(1).max(100).optional(),
+      max_users: z.number().min(1).max(100).optional(),
+      max_minutes_per_month: z.number().min(0).optional(),
+    })
+    .optional(),
+})
+
+export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>
+
+export const updateDepartmentSchema = createDepartmentSchema.partial()
+export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>
+
+// ============================================================================
+// CORE ENTITY TYPES
+// ============================================================================
+
+export type PlanTier = "free" | "starter" | "pro" | "enterprise"
+
+export interface User {
+  id: string
+  email: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  avatar_url: string | null
+  role: string
+  status: "active" | "invited" | "disabled"
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
 
 export interface OrganizationBranding {
   logo_url?: string
@@ -50,26 +149,75 @@ export interface OrganizationBranding {
   company_name?: string
 }
 
-export interface ResourceLimits {
-  max_departments?: number
-  max_users?: number
-  max_agents?: number
-  max_minutes_per_month?: number
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  plan_tier: PlanTier
+  status: "active" | "pending_activation" | "suspended" | "cancelled"
+  subscription_status: "trialing" | "active" | "past_due" | "cancelled" | null
+  branding_config: OrganizationBranding | null
+  branding: OrganizationBranding | null
+  resource_limits: {
+    max_departments?: number
+    max_agents?: number
+    max_users?: number
+    max_minutes_per_month?: number
+  } | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  // Computed fields
+  current_month_minutes?: number
+  current_month_cost?: number
 }
 
-export interface DepartmentResourceLimits {
-  max_agents?: number
-  max_users?: number
-  max_minutes_per_month?: number
+export interface OrganizationWithStats extends Organization {
+  total_users?: number
+  total_agents?: number
+  total_conversations?: number
+  total_minutes?: number
 }
 
-export interface OrganizationFeatures {
-  departments_enabled?: boolean
-  api_access?: boolean
-  white_label?: boolean
-  sso?: boolean
-  advanced_analytics?: boolean
+export interface Department {
+  id: string
+  organization_id: string
+  name: string
+  description: string | null
+  slug: string
+  resource_limits: {
+    max_agents?: number
+    max_users?: number
+    max_minutes_per_month?: number
+  } | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  // Computed fields
+  total_agents?: number
+  total_users?: number
+  current_month_minutes?: number
+  current_month_cost?: number
 }
+
+export interface DepartmentPermission {
+  department_id: string
+  user_id: string
+  role: "owner" | "admin" | "member" | "viewer"
+  created_at: string
+}
+
+export interface DepartmentMember {
+  id: string
+  user_id: string
+  user: User
+  role: "owner" | "admin" | "member" | "viewer"
+  created_at: string
+}
+
+// ============================================================================
+// AGENT TYPES
+// ============================================================================
 
 export interface AgentConfig {
   system_prompt?: string
@@ -86,219 +234,153 @@ export interface AgentConfig {
     max_tokens?: number
   }
   transcriber_settings?: {
-    language?: string
     model?: string
+    language?: string
   }
   end_call_phrases?: string[]
   max_duration_seconds?: number
-}
-
-export interface CostBreakdown {
-  voice_cost?: number
-  llm_cost?: number
-  transcription_cost?: number
-  telephony_cost?: number
-}
-
-export interface SuperAdmin {
-  id: string
-  email: string
-  first_name: string | null
-  last_name: string | null
-  avatar_url: string | null
-  last_login_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface Organization {
-  id: string
-  name: string
-  slug: string
-  status: OrganizationStatus
-  plan_tier: PlanTier
-  subscription_status: SubscriptionStatus
-  trial_ends_at: string | null
-  stripe_customer_id: string | null
-  stripe_subscription_id: string | null
-  branding: OrganizationBranding
-  custom_domain: string | null
-  resource_limits: ResourceLimits
-  features: OrganizationFeatures
-  settings: Json
-  onboarding_completed: boolean
-  onboarding_step: number
-  current_month_minutes: number
-  current_month_cost: number
-  last_usage_reset_at: string
-  activated_at: string | null
-  deleted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface Invitation {
-  id: string
-  token: string
-  type: InvitationType
-  email: string
-  organization_id: string | null
-  department_id: string | null
-  role: string
-  message: string | null
-  invited_by: string
-  status: InvitationStatus
-  expires_at: string
-  accepted_at: string | null
-  revoked_at: string | null
-  created_at: string
-}
-
-export interface User {
-  id: string
-  organization_id: string
-  email: string
-  first_name: string | null
-  last_name: string | null
-  avatar_url: string | null
-  phone_number: string | null
-  role: UserRole
-  status: UserStatus
-  settings: Json
-  invitation_id: string | null
-  invitation_accepted_at: string | null
-  last_login_at: string | null
-  last_activity_at: string | null
-  deleted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface Department {
-  id: string
-  organization_id: string
-  name: string
-  slug: string
-  description: string | null
-  settings: Json
-  resource_limits: DepartmentResourceLimits
-  total_agents: number
-  total_users: number
-  current_month_minutes: number
-  current_month_cost: number
-  created_by: string | null
-  deleted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface DepartmentPermission {
-  id: string
-  user_id: string
-  department_id: string
-  role: DepartmentRole
-  permissions: string[]
-  granted_by: string | null
-  granted_at: string
-  expires_at: string | null
-  revoked_at: string | null
-  revoked_by: string | null
-  created_at: string
+  retell_llm_id?: string
 }
 
 export interface AIAgent {
   id: string
-  organization_id: string
-  department_id: string
   name: string
   description: string | null
   provider: AgentProvider
-  voice_provider: VoiceProvider | null
-  model_provider: ModelProvider | null
-  transcriber_provider: TranscriberProvider | null
+  voice_provider: string | null
+  model_provider: string | null
+  transcriber_provider: string | null
   config: AgentConfig
   is_active: boolean
-  version: number
+  organization_id: string
+  department_id: string
+  created_by: string
   external_agent_id: string | null
-  external_phone_number: string | null
-  tags: string[]
-  total_conversations: number
-  total_minutes: number
-  total_cost: number
-  last_conversation_at: string | null
-  created_by: string | null
-  deleted_at: string | null
+  agent_secret_api_key: AgentSecretApiKey[]
+  agent_public_api_key: AgentPublicApiKey[]
   created_at: string
   updated_at: string
+  // Computed fields (optional, from joins/aggregations)
+  total_conversations?: number
+  total_minutes?: number
+  total_cost?: number
 }
+
+export interface VapiAgentConfig {
+  name: string
+  voice?: {
+    provider: string
+    voiceId: string
+    stability?: number
+    similarityBoost?: number
+  }
+  model?: {
+    provider: string
+    model: string
+    temperature?: number
+    maxTokens?: number
+    systemPrompt?: string
+  }
+  transcriber?: {
+    provider: string
+    model?: string
+    language?: string
+  }
+  firstMessage?: string
+  endCallPhrases?: string[]
+  maxDurationSeconds?: number
+}
+
+export interface RetellAgentConfig {
+  agent_name: string
+  voice_id: string
+  llm_websocket_url?: string
+  webhook_url?: string
+}
+
+export interface SynthflowAgentConfig {
+  name: string
+  voice_id: string
+  model_id: string
+  instructions: string
+}
+
+// ============================================================================
+// CONVERSATION TYPES
+// ============================================================================
 
 export interface Conversation {
   id: string
   organization_id: string
   department_id: string
-  agent_id: string | null
-  external_id: string | null
+  agent_id: string
+  external_call_id: string | null
+  direction: "inbound" | "outbound"
+  status: "queued" | "in_progress" | "completed" | "failed" | "no_answer"
   phone_number: string | null
   caller_name: string | null
-  direction: CallDirection
-  status: CallStatus
-  duration_seconds: number
   started_at: string | null
   ended_at: string | null
+  duration_seconds: number
   recording_url: string | null
   transcript: string | null
   summary: string | null
-  sentiment: string | null
+  sentiment: "positive" | "neutral" | "negative" | null
   quality_score: number | null
   customer_rating: number | null
+  total_cost: number | null
+  cost_breakdown: Record<string, number> | null
   requires_follow_up: boolean
   follow_up_notes: string | null
-  followed_up_at: string | null
-  followed_up_by: string | null
-  cost_breakdown: CostBreakdown
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationWithAgent extends Conversation {
+  agent?: AIAgent
+}
+
+export interface ConversationWithDetails extends Conversation {
+  agent?: AIAgent
+  department?: Department
+}
+
+// ============================================================================
+// DASHBOARD & ADMIN TYPES
+// ============================================================================
+
+export interface DashboardStats {
+  total_agents: number
+  total_conversations: number
+  total_minutes: number
   total_cost: number
-  error_message: string | null
-  error_code: string | null
-  metadata: Json
-  deleted_at: string | null
-  created_at: string
+  conversations_this_month: number
+  minutes_this_month: number
+  cost_this_month: number  // <-- ADD THIS LINE
+  active_agents?: number
+  conversations_today?: number
+  average_duration?: number
+  success_rate?: number
 }
 
-export interface UsageTracking {
+export interface SuperAdmin {
   id: string
-  organization_id: string
-  department_id: string | null
-  conversation_id: string | null
-  resource_type: ResourceType
-  resource_provider: string | null
-  quantity: number
-  unit: string | null
-  unit_cost: number | null
-  total_cost: number | null
-  billing_period: string | null
-  is_billable: boolean
-  invoice_id: string | null
-  metadata: Json
-  recorded_at: string
+  email: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  avatar_url: string | null
+  is_active: boolean
   created_at: string
+  updated_at: string
 }
 
-export interface AuditLog {
-  id: string
-  user_id: string | null
-  organization_id: string | null
-  action: string
-  entity_type: string
-  entity_id: string | null
-  old_values: Json | null
-  new_values: Json | null
-  metadata: Json | null
-  ip_address: string | null
-  user_agent: string | null
-  created_at: string
-}
+// ============================================================================
+// API TYPES
+// ============================================================================
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T = unknown> {
   data?: T
   error?: string
   message?: string
@@ -310,69 +392,4 @@ export interface PaginatedResponse<T> {
   page: number
   pageSize: number
   totalPages: number
-}
-
-export interface OrganizationWithStats extends Organization {
-  total_departments?: number
-  total_users?: number
-  total_agents?: number
-}
-
-export interface UserWithOrganization extends User {
-  organization: Organization
-}
-
-export interface UserWithDepartments extends User {
-  department_permissions: (DepartmentPermission & { department: Department })[]
-}
-
-export interface InvitationWithDetails extends Invitation {
-  organization?: Organization | null
-  department?: Department | null
-}
-
-export interface DashboardStats {
-  total_agents: number
-  total_conversations: number
-  total_minutes: number
-  total_cost: number
-  conversations_this_month: number
-  minutes_this_month: number
-  cost_this_month: number
-}
-
-export interface CreateOrganizationInput {
-  name: string
-  email: string
-  plan_tier?: PlanTier
-  trial_days?: number
-  message?: string
-}
-
-export interface CreateDepartmentInput {
-  name: string
-  slug: string
-  description?: string
-  resource_limits?: DepartmentResourceLimits
-}
-
-export interface CreateAgentInput {
-  name: string
-  description?: string
-  department_id: string
-  provider: AgentProvider
-  voice_provider?: VoiceProvider
-  model_provider?: ModelProvider
-  transcriber_provider?: TranscriberProvider
-  config?: AgentConfig
-  is_active?: boolean
-}
-
-export interface CreateInvitationInput {
-  email: string
-  type: InvitationType
-  organization_id?: string
-  department_id?: string
-  role: string
-  message?: string
 }

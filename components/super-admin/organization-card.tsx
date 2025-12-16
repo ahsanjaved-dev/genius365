@@ -85,7 +85,7 @@ export function OrganizationCard({ organization }: OrganizationCardProps) {
           </div>
           <div>
             <p className="text-slate-500">Monthly Cost</p>
-            <p className="text-white font-medium">${organization.current_month_cost.toFixed(2)}</p>
+            <p className="text-white font-medium">${organization.current_month_cost?.toFixed(2) ?? "0.00"}</p>
           </div>
         </div>
 

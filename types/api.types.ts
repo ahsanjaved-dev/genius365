@@ -1,4 +1,20 @@
 import { z } from "zod"
+export const agentSecretApiKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255),
+  key: z.string().min(1),
+  provider: z.string().optional(),
+  is_active: z.boolean().default(true),
+})
+
+export const agentPublicApiKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255),
+  key: z.string().min(1),
+  provider: z.string().optional(),
+  is_active: z.boolean().default(true),
+})
+
 
 export const createAgentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -32,6 +48,8 @@ export const createAgentSchema = z.object({
       max_duration_seconds: z.number().min(60).max(3600).optional(),
     })
     .optional(),
+    agent_secret_api_key: z.array(agentSecretApiKeySchema).optional().default([]),
+    agent_public_api_key: z.array(agentPublicApiKeySchema).optional().default([]),
   is_active: z.boolean().optional().default(true),
 })
 

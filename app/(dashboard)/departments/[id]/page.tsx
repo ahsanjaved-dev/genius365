@@ -39,6 +39,7 @@ interface PageProps {
 }
 
 interface DepartmentMember extends DepartmentPermission {
+  id: string
   user: User
 }
 
