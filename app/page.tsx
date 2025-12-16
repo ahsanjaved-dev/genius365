@@ -13,6 +13,14 @@ export default function Home() {
             <Button size="lg" variant="outline">
               Sign In Now
             </Button>
+            <div className="text-sm text-gray-600">
+              <p>
+                Don't have an account?{" "}
+                <Link href="/register" className="text-blue-600 hover:underline">
+                  Register
+                </Link>
+              </p>
+            </div>
           </Link>
         </div>
       </div>
