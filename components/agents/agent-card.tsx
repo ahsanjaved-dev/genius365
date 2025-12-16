@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import type { AIAgent } from "@/types/database.types"
 import Link from "next/link"
+import { TestCallButton } from "./test-call-button"
 
 interface AgentCardProps {
   agent: AIAgent
@@ -135,6 +136,7 @@ export function AgentCard({ agent, onDelete, onToggleActive }: AgentCardProps) {
         </div>
 
         <div className="flex gap-2 mt-4">
+          <TestCallButton agent={agent} className="flex-1" />
           <Button variant="outline" size="sm" className="flex-1" asChild>
             <Link href={`/agents/${agent.id}`}>
               <Pencil className="mr-2 h-3 w-3" />

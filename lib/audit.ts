@@ -36,7 +36,7 @@ export async function createAuditLog(params: CreateAuditLogParams) {
   try {
     const adminClient = createAdminClient()
 
-    const { error } = await adminClient.from("audit_logs").insert({
+    const { error } = await adminClient.from("audit_log").insert({
       user_id: params.userId,
       organization_id: params.organizationId,
       action: params.action,

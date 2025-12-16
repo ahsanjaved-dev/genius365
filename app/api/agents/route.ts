@@ -3,7 +3,9 @@ import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { createAgentSchema } from "@/types/api.types"
 import { createAuditLog, getRequestMetadata } from "@/lib/audit"
-import type { AgentProvider } from "@/types/database.types"
+import { safeVapiSync, shouldSyncToVapi } from "@/lib/integrations/vapi/agent/sync"
+import { safeRetellSync, shouldSyncToRetell } from "@/lib/integrations/retell/agent/sync"
+import type { AgentProvider, AIAgent } from "@/types/database.types"
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
       return apiError("No department available. Please create a department first.")
     }
 
+    // Check agent limits
     const { count } = await auth.supabase
       .from("ai_agents")
       .select("*", { count: "exact", head: true })
@@ -94,6 +97,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create agent in Supabase
     const { data: agent, error } = await auth.supabase
       .from("ai_agents")
       .insert({
@@ -107,6 +111,8 @@ export async function POST(request: NextRequest) {
         model_provider: validation.data.model_provider,
         transcriber_provider: validation.data.transcriber_provider,
         config: validation.data.config || {},
+        agent_secret_api_key: validation.data.agent_secret_api_key || [],
+        agent_public_api_key: validation.data.agent_public_api_key || [],
         is_active: validation.data.is_active ?? true,
       })
       .select()
@@ -115,6 +121,28 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("Create agent error:", error)
       return apiError("Failed to create agent")
+    }
+
+    // Sync agent to provider
+    let syncedAgent = agent as AIAgent
+    const typedAgent = agent as AIAgent
+
+    if (typedAgent.provider === "vapi" && shouldSyncToVapi(typedAgent)) {
+      const syncResult = await safeVapiSync(typedAgent, "create")
+      
+      if (syncResult.success && syncResult.agent) {
+        syncedAgent = syncResult.agent
+      } else if (!syncResult.success) {
+        console.error("VAPI sync failed:", syncResult.error)
+      }
+    } else if (typedAgent.provider === "retell" && shouldSyncToRetell(typedAgent)) {
+      const syncResult = await safeRetellSync(typedAgent, "create")
+      
+      if (syncResult.success && syncResult.agent) {
+        syncedAgent = syncResult.agent
+      } else if (!syncResult.success) {
+        console.error("Retell sync failed:", syncResult.error)
+      }
     }
 
     // Create audit log
@@ -129,12 +157,13 @@ export async function POST(request: NextRequest) {
         name: agent.name,
         provider: agent.provider,
         department_id: agent.department_id,
+        external_agent_id: syncedAgent.external_agent_id,
       },
       ipAddress,
       userAgent,
     })
 
-    return apiResponse(agent, 201)
+    return apiResponse(syncedAgent, 201)
   } catch (error) {
     console.error("POST /api/agents error:", error)
     return serverError()

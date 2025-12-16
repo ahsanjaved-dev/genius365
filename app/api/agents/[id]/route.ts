@@ -2,6 +2,8 @@ import { NextRequest } from "next/server"
 import { getAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, notFound, serverError } from "@/lib/api/helpers"
 import { updateAgentSchema } from "@/types/api.types"
+import { safeVapiSync, shouldSyncToVapi } from "@/lib/integrations/vapi/agent/sync"
+import type { AIAgent } from "@/types/database.types"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -47,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const { data: existing } = await auth.supabase
       .from("ai_agents")
-      .select("id")
+      .select("*")
       .eq("id", id)
       .eq("organization_id", auth.organization.id)
       .single()
@@ -68,7 +70,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return apiError("Failed to update agent")
     }
 
-    return apiResponse(agent)
+    // Sync agent with VAPI (only for VAPI provider)
+    let syncedAgent = agent as AIAgent
+    const typedAgent = agent as AIAgent
+
+    if (typedAgent.provider === "vapi" && shouldSyncToVapi(typedAgent)) {
+      const syncResult = await safeVapiSync(typedAgent, "update")
+      
+      if (syncResult.success && syncResult.agent) {
+        syncedAgent = syncResult.agent
+      } else if (!syncResult.success) {
+        console.error("VAPI sync failed:", syncResult.error)
+      }
+    }
+
+    return apiResponse(syncedAgent)
   } catch (error) {
     console.error("PATCH /api/agents/[id] error:", error)
     return serverError()
@@ -84,13 +100,23 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const { data: existing } = await auth.supabase
       .from("ai_agents")
-      .select("id")
+      .select("*")
       .eq("id", id)
       .eq("organization_id", auth.organization.id)
       .single()
 
     if (!existing) {
       return notFound("Agent")
+    }
+
+    // Delete from VAPI first if synced (only for VAPI provider)
+    const typedExisting = existing as AIAgent
+    if (
+      typedExisting.provider === "vapi" &&
+      typedExisting.external_agent_id &&
+      shouldSyncToVapi(typedExisting)
+    ) {
+      await safeVapiSync(typedExisting, "delete")
     }
 
     const { error } = await auth.supabase.from("ai_agents").delete().eq("id", id)
