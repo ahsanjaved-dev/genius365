@@ -2,85 +2,15 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getPartnerFromHost, type ResolvedPartner } from "./partner"
 import type {
-  User,
-  Organization,
   PartnerAuthUser,
   AccessibleWorkspace,
   WorkspaceMemberRole,
+  PartnerMemberRole,
+  PartnerMembership,
 } from "@/types/database.types"
 
 // ============================================================================
-// LEGACY AUTH CONTEXT (keeping for backward compatibility)
-// ============================================================================
-
-export interface AuthContext {
-  user: User
-  organization: Organization
-  supabase: Awaited<ReturnType<typeof createClient>>
-}
-
-export async function getAuthContext(): Promise<AuthContext | null> {
-  try {
-    const supabase = await createClient()
-
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !authUser) {
-      console.log("[getAuthContext] No auth user:", authError?.message)
-      return null
-    }
-
-    // Use admin client to bypass RLS issues
-    const adminClient = createAdminClient()
-
-    // Get user with organization using admin client
-    const { data: user, error: userError } = await adminClient
-      .from("users")
-      .select(`*, organization:organizations(*)`)
-      .eq("id", authUser.id)
-      .single()
-
-    if (userError) {
-      console.error(
-        "[getAuthContext] User query error:",
-        userError.message,
-        "for user:",
-        authUser.id
-      )
-    }
-
-    if (!user) {
-      console.error("[getAuthContext] No user row found for:", authUser.id)
-      return null
-    }
-
-    // Get user's department permissions using admin client
-    const { data: departmentPermissions, error: deptError } = await adminClient
-      .from("department_permissions")
-      .select(`*, department:departments(*)`)
-      .eq("user_id", authUser.id)
-      .is("revoked_at", null)
-
-    if (deptError) {
-      console.error("[getAuthContext] Department permissions error:", deptError)
-    }
-
-    return {
-      user: user as User,
-      organization: (user as any).organization as Organization,
-      supabase,
-    }
-  } catch (error) {
-    console.error("[getAuthContext] Unexpected error:", error)
-    return null
-  }
-}
-
-// ============================================================================
-// NEW PARTNER AUTH CONTEXT (Milestone 3)
+// PARTNER AUTH CONTEXT
 // ============================================================================
 
 export interface PartnerAuthContext {
@@ -88,6 +18,10 @@ export interface PartnerAuthContext {
   user: PartnerAuthUser
   /** The partner resolved from the current hostname */
   partner: ResolvedPartner
+  /** User's role within this partner (null if not a member) */
+  partnerRole: PartnerMemberRole | null
+  /** User's partner membership details */
+  partnerMembership: PartnerMembership | null
   /** List of workspaces the user can access within this partner */
   workspaces: AccessibleWorkspace[]
   /** The Supabase client for database operations */
@@ -101,7 +35,8 @@ export interface PartnerAuthContext {
  * This combines:
  * 1. Auth user from Supabase
  * 2. Partner resolved from hostname
- * 3. User's workspace memberships for that partner
+ * 3. User's partner membership for that partner
+ * 4. User's workspace memberships for that partner
  */
 export async function getPartnerAuthContext(): Promise<PartnerAuthContext | null> {
   try {
@@ -121,9 +56,45 @@ export async function getPartnerAuthContext(): Promise<PartnerAuthContext | null
     // Step 2: Resolve partner from hostname
     const partner = await getPartnerFromHost()
 
-    // Step 3: Get user's workspace memberships for this partner
     const adminClient = createAdminClient()
 
+    // Step 3: Get user's partner membership
+    const { data: partnerMemberData, error: partnerMemberError } = await adminClient
+      .from("partner_members")
+      .select(
+        `
+        id,
+        role,
+        partner:partners!inner(
+          id,
+          name,
+          slug,
+          is_platform_partner
+        )
+      `
+      )
+      .eq("user_id", authUser.id)
+      .eq("partner_id", partner.id)
+      .is("removed_at", null)
+      .single()
+
+    let partnerRole: PartnerMemberRole | null = null
+    let partnerMembership: PartnerMembership | null = null
+
+    if (partnerMemberData && !partnerMemberError) {
+      const pm = partnerMemberData as any
+      partnerRole = pm.role as PartnerMemberRole
+      partnerMembership = {
+        id: pm.id,
+        partner_id: pm.partner.id,
+        partner_name: pm.partner.name,
+        partner_slug: pm.partner.slug,
+        role: pm.role,
+        is_platform_partner: pm.partner.is_platform_partner,
+      }
+    }
+
+    // Step 4: Get user's workspace memberships for this partner
     const { data: memberships, error: membershipError } = await adminClient
       .from("workspace_members")
       .select(
@@ -174,13 +145,11 @@ export async function getPartnerAuthContext(): Promise<PartnerAuthContext | null
       avatar_url: authUser.user_metadata?.avatar_url || null,
     }
 
-    console.log(
-      `[getPartnerAuthContext] User ${user.email} has access to ${workspaces.length} workspaces in partner ${partner.slug}`
-    )
-
     return {
       user,
       partner,
+      partnerRole,
+      partnerMembership,
       workspaces,
       supabase,
       adminClient,
@@ -192,13 +161,38 @@ export async function getPartnerAuthContext(): Promise<PartnerAuthContext | null
 }
 
 // ============================================================================
-// WORKSPACE ACCESS VALIDATION
+// PARTNER ACCESS VALIDATION
 // ============================================================================
 
-/**
- * Check if user has access to a specific workspace by slug
- * @returns The workspace if accessible, null otherwise
- */
+export function isPartnerMember(context: PartnerAuthContext): boolean {
+  return context.partnerRole !== null
+}
+
+export function isPartnerAdmin(context: PartnerAuthContext): boolean {
+  return context.partnerRole === "owner" || context.partnerRole === "admin"
+}
+
+export function isPartnerOwner(context: PartnerAuthContext): boolean {
+  return context.partnerRole === "owner"
+}
+
+export function hasPartnerRole(
+  context: PartnerAuthContext,
+  requiredRoles: PartnerMemberRole[]
+): boolean {
+  if (!context.partnerRole) return false
+  return requiredRoles.includes(context.partnerRole)
+}
+
+export function canCreateWorkspace(context: PartnerAuthContext): boolean {
+  // Only partner owners and admins can create workspaces
+  return isPartnerAdmin(context)
+}
+
+// ============================================================================
+// WORKSPACE ACCESS VALIDATION (existing functions - unchanged)
+// ============================================================================
+
 export function getWorkspaceBySlug(
   context: PartnerAuthContext,
   workspaceSlug: string
@@ -206,10 +200,6 @@ export function getWorkspaceBySlug(
   return context.workspaces.find((w) => w.slug === workspaceSlug) || null
 }
 
-/**
- * Check if user has access to a specific workspace by ID
- * @returns The workspace if accessible, null otherwise
- */
 export function getWorkspaceById(
   context: PartnerAuthContext,
   workspaceId: string
@@ -217,9 +207,6 @@ export function getWorkspaceById(
   return context.workspaces.find((w) => w.id === workspaceId) || null
 }
 
-/**
- * Check if user has the required role in a workspace
- */
 export function hasWorkspaceRole(
   context: PartnerAuthContext,
   workspaceSlug: string,
@@ -230,24 +217,14 @@ export function hasWorkspaceRole(
   return requiredRoles.includes(workspace.role)
 }
 
-/**
- * Check if user is owner or admin of a workspace
- */
 export function isWorkspaceAdmin(context: PartnerAuthContext, workspaceSlug: string): boolean {
   return hasWorkspaceRole(context, workspaceSlug, ["owner", "admin"])
 }
 
-/**
- * Check if user is the owner of a workspace
- */
 export function isWorkspaceOwner(context: PartnerAuthContext, workspaceSlug: string): boolean {
   return hasWorkspaceRole(context, workspaceSlug, ["owner"])
 }
 
-/**
- * Require access to a workspace, throwing if not accessible
- * Useful for API routes that need a specific workspace
- */
 export function requireWorkspaceAccess(
   context: PartnerAuthContext,
   workspaceSlug: string,
@@ -266,20 +243,4 @@ export function requireWorkspaceAccess(
   }
 
   return workspace
-}
-
-// ============================================================================
-// LEGACY HELPER FUNCTIONS (keeping for backward compatibility)
-// ============================================================================
-
-export function hasRole(user: User, requiredRoles: string[]): boolean {
-  return requiredRoles.includes(user.role)
-}
-
-export function isOrgOwner(user: User): boolean {
-  return hasRole(user, ["org_owner"])
-}
-
-export function isOrgAdmin(user: User): boolean {
-  return hasRole(user, ["org_owner", "org_admin"])
 }

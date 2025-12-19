@@ -4,23 +4,24 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // Public paths that don't require authentication
-const publicPaths = ["/", "/login", "/forgot-password", "/reset-password", "/accept-invitation"]
+const publicPaths = [
+  "/",
+  "/login",
+  "/signup", // ADD THIS
+  "/forgot-password",
+  "/reset-password",
+  "/accept-invitation",
+  "/accept-workspace-invitation", // ADD THIS
+]
 
 // Super admin paths require super admin auth (handled in layouts)
 const superAdminPaths = ["/super-admin"]
 
 // All dashboard paths require authentication
 const protectedPaths = [
-  "/dashboard",
-  "/agents",
-  "/conversations",
-  "/integrations",
-  "/analytics",
-  "/billing",
-  "/settings",
-  "/departments",
-  "/users",
-  "/onboarding",
+  "/select-workspace",
+  "/workspace-onboarding",
+  "/w/", // All workspace routes
 ]
 
 export async function proxy(request: NextRequest) {
@@ -32,7 +33,7 @@ export async function proxy(request: NextRequest) {
     (path) => pathname === path || pathname.startsWith(path + "/")
   )
 
-  // Check if path is protected
+  // Check if path is protected (workspace routes)
   const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path))
 
   // Check if super admin path
@@ -41,17 +42,19 @@ export async function proxy(request: NextRequest) {
   // Redirect unauthenticated users from protected paths to login
   if (isProtectedPath && !user) {
     const redirectUrl = new URL("/login", request.url)
-    redirectUrl.searchParams.set("redirectedFrom", pathname)
+    redirectUrl.searchParams.set("redirect", pathname)
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Redirect authenticated users from auth pages to dashboard
-  const authPaths = ["/login"]
+  // Redirect authenticated users from auth pages to workspace selector
+  const authPaths = ["/login", "/signup"]
   const isAuthPath = authPaths.some((path) => pathname.startsWith(path))
-  const isSetupFlow = request.nextUrl.searchParams.get("setup") === "true"
 
-  if (isAuthPath && user && !isSetupFlow) {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+  // Check for redirect parameter - don't redirect if user came from invitation
+  const redirectParam = request.nextUrl.searchParams.get("redirect")
+
+  if (isAuthPath && user && !redirectParam) {
+    return NextResponse.redirect(new URL("/select-workspace", request.url))
   }
 
   // Add security headers

@@ -7,47 +7,53 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Building2, CheckCircle2, ArrowRight } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { Loader2, Building2, ArrowRight, ShieldAlert, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
+import Link from "next/link"
+
+interface AuthCheckResult {
+  authenticated: boolean
+  canCreateWorkspace: boolean
+  partnerName?: string
+}
 
 export default function WorkspaceOnboardingPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
-  const [partnerId, setPartnerId] = useState<string | null>(null)
+  const [authCheck, setAuthCheck] = useState<AuthCheckResult | null>(null)
 
   // Form state
   const [workspaceName, setWorkspaceName] = useState("")
   const [workspaceDescription, setWorkspaceDescription] = useState("")
 
   useEffect(() => {
-    checkAuthAndPartner()
+    checkAuthAndPermissions()
   }, [])
 
-  const checkAuthAndPartner = async () => {
+  const checkAuthAndPermissions = async () => {
     try {
-      const supabase = createClient()
+      // Use the workspaces API to check permissions
+      const res = await fetch("/api/workspaces")
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        router.push("/login")
+      if (res.status === 401) {
+        router.push("/login?redirect=/workspace-onboarding")
         return
       }
-      setUserId(user.id)
 
-      // Get partner from API
-      const res = await fetch("/api/partner")
-      if (res.ok) {
-        const data = await res.json()
-        setPartnerId(data.data?.id)
+      if (!res.ok) {
+        setAuthCheck({ authenticated: false, canCreateWorkspace: false })
+        return
       }
+
+      const data = await res.json()
+      setAuthCheck({
+        authenticated: true,
+        canCreateWorkspace: data.data?.canCreateWorkspace ?? false,
+      })
     } catch (error) {
       console.error("Auth check error:", error)
-      router.push("/login")
+      setAuthCheck({ authenticated: false, canCreateWorkspace: false })
     } finally {
       setLoading(false)
     }
@@ -67,45 +73,27 @@ export default function WorkspaceOnboardingPage() {
       return
     }
 
-    if (!partnerId || !userId) {
-      toast.error("Authentication error. Please refresh and try again.")
-      return
-    }
-
     setSubmitting(true)
     try {
-      const supabase = createClient()
-      const slug = generateSlug(workspaceName)
-
-      // Create workspace
-      const { data: workspace, error: wsError } = await supabase
-        .from("workspaces")
-        .insert({
-          partner_id: partnerId,
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: workspaceName,
-          slug,
-          description: workspaceDescription || null,
-          status: "active",
-          resource_limits: {},
-          settings: {},
-        })
-        .select()
-        .single()
-
-      if (wsError) throw wsError
-
-      // Add user as workspace owner
-      const { error: memberError } = await supabase.from("workspace_members").insert({
-        workspace_id: workspace.id,
-        user_id: userId,
-        role: "owner",
-        joined_at: new Date().toISOString(),
+          slug: generateSlug(workspaceName),
+          description: workspaceDescription || undefined,
+        }),
       })
 
-      if (memberError) throw memberError
+      const data = await res.json()
 
-      toast.success("Workspace created successfully!")
-      router.push(`/w/${slug}/dashboard`)
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create workspace")
+      }
+
+      toast.success(data.data?.message || "Workspace created successfully!")
+      router.push(data.data?.redirect || "/select-workspace")
+      router.refresh()
     } catch (error: any) {
       console.error("Create workspace error:", error)
       toast.error(error.message || "Failed to create workspace")
@@ -116,15 +104,54 @@ export default function WorkspaceOnboardingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
         <Loader2 className="h-8 w-8 animate-spin text-violet-600" />
       </div>
     )
   }
 
+  // Not allowed to create workspaces
+  if (!authCheck?.canCreateWorkspace) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+              <ShieldAlert className="h-8 w-8 text-amber-600" />
+            </div>
+            <CardTitle className="text-2xl">Permission Required</CardTitle>
+            <CardDescription>
+              Only partner administrators can create new workspaces.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-center text-muted-foreground">
+              Contact your partner administrator if you need a new workspace created.
+            </p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/select-workspace">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Workspaces
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 py-12 px-4">
       <div className="max-w-lg mx-auto">
+        {/* Back link */}
+        <Link
+          href="/select-workspace"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to workspaces
+        </Link>
+
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -132,8 +159,8 @@ export default function WorkspaceOnboardingPage() {
                 <Building2 className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <CardTitle>Create Your Workspace</CardTitle>
-                <CardDescription>Set up your first workspace to get started</CardDescription>
+                <CardTitle>Create New Workspace</CardTitle>
+                <CardDescription>Set up a workspace for your team</CardDescription>
               </div>
             </div>
           </CardHeader>

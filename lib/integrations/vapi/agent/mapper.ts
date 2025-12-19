@@ -139,8 +139,7 @@ export function mapToVapi(agent: AIAgent): VapiAssistantPayload {
     name: agent.name,
     metadata: {
       internal_agent_id: agent.id,
-      organization_id: agent.organization_id,
-      department_id: agent.department_id,
+      workspace_id: agent.workspace_id, // Changed from organization_id
     },
   }
 

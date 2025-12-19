@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Building2, ChevronRight, Users, Bot, LogOut } from "lucide-react"
+import { Building2, ChevronRight, Plus, LogOut } from "lucide-react"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { AccessibleWorkspace, PartnerAuthUser } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
@@ -13,9 +13,15 @@ interface Props {
   workspaces: AccessibleWorkspace[]
   partner: ResolvedPartner
   user: PartnerAuthUser
+  canCreateWorkspace?: boolean
 }
 
-export function WorkspaceSelector({ workspaces, partner, user }: Props) {
+export function WorkspaceSelector({
+  workspaces,
+  partner,
+  user,
+  canCreateWorkspace = false,
+}: Props) {
   const { logout } = useAuth()
   const branding = partner.branding
   const primaryColor = branding.primary_color || "#7c3aed"
@@ -77,6 +83,17 @@ export function WorkspaceSelector({ workspaces, partner, user }: Props) {
             <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
           </Link>
         ))}
+
+        {/* Create Workspace Button (for partner admins) */}
+        {canCreateWorkspace && (
+          <Link
+            href="/workspace-onboarding"
+            className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-all text-muted-foreground hover:text-primary"
+          >
+            <Plus className="h-5 w-5" />
+            <span className="font-medium">Create New Workspace</span>
+          </Link>
+        )}
 
         {/* User Info & Logout */}
         <div className="pt-4 mt-4 border-t">

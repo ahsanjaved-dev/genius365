@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -17,8 +17,11 @@ import {
 } from "@/components/ui/card"
 import { Loader2 } from "lucide-react"
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirect")
+
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -38,8 +41,12 @@ export default function LoginPage() {
 
       if (error) throw error
 
-      // Redirect to workspace selector (which auto-redirects if only 1 workspace)
-      router.push("/select-workspace")
+      // Redirect to original destination or workspace selector
+      if (redirectTo) {
+        router.push(redirectTo)
+      } else {
+        router.push("/select-workspace")
+      }
       router.refresh()
     } catch (error: any) {
       setError(error.message || "Failed to login")
@@ -102,8 +109,34 @@ export default function LoginPage() {
               "Sign in"
             )}
           </Button>
+
+          <p className="text-sm text-muted-foreground text-center">
+            Don't have an account?{" "}
+            <Link
+              href={redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : "/signup"}
+              className="text-primary hover:underline"
+            >
+              Create one
+            </Link>
+          </p>
         </CardFooter>
       </form>
     </Card>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card className="shadow-xl">
+          <CardContent className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </CardContent>
+        </Card>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }

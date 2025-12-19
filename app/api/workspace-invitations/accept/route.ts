@@ -72,7 +72,57 @@ export async function POST(request: NextRequest) {
       return apiError("This invitation was sent to a different email address")
     }
 
-    // Check if already a member
+    // =========================================================================
+    // STEP 1: Ensure user record exists in users table
+    // =========================================================================
+    const { data: existingUser } = await adminClient
+      .from("users")
+      .select("id")
+      .eq("id", authUser.id)
+      .maybeSingle()
+
+    if (!existingUser) {
+      await adminClient.from("users").insert({
+        id: authUser.id,
+        email: authUser.email,
+        first_name: authUser.user_metadata?.first_name || null,
+        last_name: authUser.user_metadata?.last_name || null,
+        role: "org_member",
+        status: "active",
+      })
+    }
+
+    // =========================================================================
+    // STEP 2: Ensure user is a partner member
+    // =========================================================================
+    const partnerId = invitation.workspace.partner_id
+
+    const { data: existingPartnerMember } = await adminClient
+      .from("partner_members")
+      .select("id")
+      .eq("partner_id", partnerId)
+      .eq("user_id", authUser.id)
+      .is("removed_at", null)
+      .maybeSingle()
+
+    if (!existingPartnerMember) {
+      const { error: partnerMemberError } = await adminClient.from("partner_members").insert({
+        partner_id: partnerId,
+        user_id: authUser.id,
+        role: "member", // Default role for invited users
+        invited_by: invitation.invited_by,
+        joined_at: new Date().toISOString(),
+      })
+
+      if (partnerMemberError) {
+        console.error("Add partner member error:", partnerMemberError)
+        // Continue - this shouldn't block workspace access
+      }
+    }
+
+    // =========================================================================
+    // STEP 3: Add to workspace (existing logic)
+    // =========================================================================
     const { data: existingMember } = await adminClient
       .from("workspace_members")
       .select("id")
@@ -132,7 +182,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET endpoint to validate token without accepting
+// GET endpoint to validate token without accepting (unchanged)
 export async function GET(request: NextRequest) {
   try {
     const adminClient = createAdminClient()

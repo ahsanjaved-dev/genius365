@@ -97,8 +97,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .from("ai_agents")
       .insert({
         workspace_id: ctx.workspace.id,
-        organization_id: null, // Legacy field, set to null for new workspace-scoped agents
-        department_id: null, // Legacy field
         created_by: ctx.user.id,
         name: validation.data.name,
         description: validation.data.description,

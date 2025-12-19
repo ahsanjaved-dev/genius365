@@ -1,18 +1,12 @@
 "use client"
 
 import { createContext, useContext, useEffect } from "react"
-import type { Organization, OrganizationBranding } from "@/types/database.types"
+import type { PartnerBranding } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
 
-// Support both Organization (legacy) and Partner (new)
-type BrandingSource = Organization | ResolvedPartner
-
 interface BrandingContextValue {
-  branding: OrganizationBranding
-  source: BrandingSource
-  // For backward compatibility
-  organization?: Organization
-  partner?: ResolvedPartner
+  branding: PartnerBranding
+  partner: ResolvedPartner
 }
 
 const BrandingContext = createContext<BrandingContextValue | null>(null)
@@ -23,32 +17,13 @@ export function useBranding() {
   return context
 }
 
-// Legacy props (for backward compatibility)
-interface LegacyBrandingProviderProps {
-  organization: Organization
-  children: React.ReactNode
-}
-
-// New props (for partner-based branding)
-interface PartnerBrandingProviderProps {
+interface BrandingProviderProps {
   partner: ResolvedPartner
   children: React.ReactNode
 }
 
-type BrandingProviderProps = LegacyBrandingProviderProps | PartnerBrandingProviderProps
-
-function isPartnerProps(props: BrandingProviderProps): props is PartnerBrandingProviderProps {
-  return "partner" in props
-}
-
-export function BrandingProvider(props: BrandingProviderProps) {
-  const { children } = props
-
-  // Determine branding source
-  const source: BrandingSource = isPartnerProps(props) ? props.partner : props.organization
-  const branding = isPartnerProps(props)
-    ? props.partner.branding
-    : props.organization.branding || {}
+export function BrandingProvider({ partner, children }: BrandingProviderProps) {
+  const branding = partner.branding
 
   // Apply CSS custom properties for branding colors
   useEffect(() => {
@@ -62,12 +37,10 @@ export function BrandingProvider(props: BrandingProviderProps) {
       root.style.setProperty("--brand-secondary", branding.secondary_color)
     }
 
-    // Update document title for partner branding
     if (branding.company_name) {
       document.title = `${branding.company_name} | AI Voice Platform`
     }
 
-    // Update favicon if provided
     if (branding.favicon_url) {
       const existingLink = document.querySelector("link[rel='icon']") as HTMLLinkElement
       if (existingLink) {
@@ -87,14 +60,9 @@ export function BrandingProvider(props: BrandingProviderProps) {
     }
   }, [branding])
 
-  const contextValue: BrandingContextValue = {
-    branding,
-    source,
-    organization: isPartnerProps(props) ? undefined : props.organization,
-    partner: isPartnerProps(props) ? props.partner : undefined,
-  }
-
-  return <BrandingContext.Provider value={contextValue}>{children}</BrandingContext.Provider>
+  return (
+    <BrandingContext.Provider value={{ branding, partner }}>{children}</BrandingContext.Provider>
+  )
 }
 
 function adjustColor(hex: string, percent: number): string {

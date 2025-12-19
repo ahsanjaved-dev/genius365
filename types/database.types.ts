@@ -66,21 +66,6 @@ export type CreateAgentInput = z.infer<typeof createAgentSchema>
 export const updateAgentSchema = createAgentSchema.partial()
 export type UpdateAgentInput = z.infer<typeof updateAgentSchema>
 
-export const updateOrganizationSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  branding_config: z
-    .object({
-      logo_url: z.string().url().optional(),
-      favicon_url: z.string().url().optional(),
-      primary_color: z.string().optional(),
-      secondary_color: z.string().optional(),
-      company_name: z.string().optional(),
-    })
-    .optional(),
-})
-
-export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
-
 export const createIntegrationSchema = z.object({
   integration_type: z.enum([
     "make",
@@ -112,44 +97,6 @@ export interface User {
   is_active: boolean
   created_at: string
   updated_at: string
-}
-
-export interface OrganizationBranding {
-  logo_url?: string
-  favicon_url?: string
-  primary_color?: string
-  secondary_color?: string
-  company_name?: string
-}
-
-export interface Organization {
-  id: string
-  name: string
-  slug: string
-  plan_tier: PlanTier
-  status: "active" | "pending_activation" | "suspended" | "cancelled"
-  subscription_status: "trialing" | "active" | "past_due" | "cancelled" | null
-  branding_config: OrganizationBranding | null
-  branding: OrganizationBranding | null
-  resource_limits: {
-    max_departments?: number
-    max_agents?: number
-    max_users?: number
-    max_minutes_per_month?: number
-  } | null
-  is_active: boolean
-  created_at: string
-  updated_at: string
-  // Computed fields
-  current_month_minutes?: number
-  current_month_cost?: number
-}
-
-export interface OrganizationWithStats extends Organization {
-  total_users?: number
-  total_agents?: number
-  total_conversations?: number
-  total_minutes?: number
 }
 
 // ============================================================================
@@ -189,7 +136,7 @@ export interface AIAgent {
   transcriber_provider: string | null
   config: AgentConfig
   is_active: boolean
-  organization_id: string
+  workspace_id: string | null
   created_by: string
   external_agent_id: string | null
   agent_secret_api_key: AgentSecretApiKey[]
@@ -247,7 +194,7 @@ export interface SynthflowAgentConfig {
 
 export interface Conversation {
   id: string
-  organization_id: string
+  workspace_id?: string | null
   agent_id: string
   external_call_id: string | null
   direction: "inbound" | "outbound"
@@ -514,3 +461,43 @@ export const createWorkspaceInvitationSchema = z.object({
 })
 
 export type CreateWorkspaceInvitationInput = z.infer<typeof createWorkspaceInvitationSchema>
+
+// Add after line 330 (after PartnerDomain interface)
+
+// ============================================================================
+// PARTNER MEMBER TYPES
+// ============================================================================
+
+export type PartnerMemberRole = "owner" | "admin" | "member"
+
+export interface PartnerMember {
+  id: string
+  partner_id: string
+  user_id: string
+  role: PartnerMemberRole
+  invited_by: string | null
+  joined_at: string | null
+  removed_at: string | null
+  removed_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PartnerMemberWithUser extends PartnerMember {
+  user?: {
+    id: string
+    email: string
+    first_name: string | null
+    last_name: string | null
+    avatar_url: string | null
+  }
+}
+
+export interface PartnerMembership {
+  id: string
+  partner_id: string
+  partner_name: string
+  partner_slug: string
+  role: PartnerMemberRole
+  is_platform_partner: boolean
+}

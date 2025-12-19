@@ -223,15 +223,26 @@ function AcceptWorkspaceInvitationContent() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <Button asChild style={{ backgroundColor: primaryColor }}>
-                <Link href={`/login?redirect=/accept-workspace-invitation?token=${token}`}>
+                <Link
+                  href={`/login?redirect=${encodeURIComponent(`/accept-workspace-invitation?token=${token}`)}`}
+                >
                   <LogIn className="mr-2 h-4 w-4" />
                   Sign In to Accept
                 </Link>
               </Button>
+
+              <Button variant="outline" asChild>
+                <Link
+                  href={`/signup?redirect=${encodeURIComponent(`/accept-workspace-invitation?token=${token}`)}`}
+                >
+                  Create an Account
+                </Link>
+              </Button>
+
               <p className="text-xs text-center text-muted-foreground">
-                Don't have an account? You can create one after clicking Sign In.
+                New here? Create an account to accept this invitation.
               </p>
             </div>
           </CardContent>

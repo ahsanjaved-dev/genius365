@@ -15,16 +15,15 @@ export type AuditAction =
   | "agent.created"
   | "agent.updated"
   | "agent.deleted"
-  | "department.created"
-  | "department.updated"
-  | "department.deleted"
-  | "organization.updated"
   | "workspace.created"
   | "workspace.updated"
   | "workspace.deleted"
   | "member.invited"
   | "member.joined"
   | "member.removed"
+  | "partner.created"
+  | "partner.updated"
+  | "partner.deleted"
   | "settings.updated"
   | "invitation.created"
   | "invitation.accepted"
@@ -36,7 +35,7 @@ export type AuditAction =
 
 export interface AuditLogEntry {
   userId: string
-  organizationId?: string
+  partnerId?: string // Changed from organizationId
   workspaceId?: string
   action: AuditAction | string
   entityType: string
@@ -58,7 +57,7 @@ export async function createAuditLog(entry: AuditLogEntry) {
 
     const { error } = await adminClient.from("audit_log").insert({
       user_id: entry.userId,
-      organization_id: entry.organizationId || null,
+      partner_id: entry.partnerId || null,
       workspace_id: entry.workspaceId || null,
       action: entry.action,
       entity_type: entry.entityType,
