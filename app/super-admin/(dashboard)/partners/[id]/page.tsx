@@ -8,14 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -46,6 +38,8 @@ import {
   Check,
   X,
   Save,
+  LayoutGrid,
+  Clock,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -132,7 +126,7 @@ export default function PartnerDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
@@ -140,7 +134,7 @@ export default function PartnerDetailPage() {
   if (error || !partner) {
     return (
       <div className="text-center py-20">
-        <p className="text-red-400">Partner not found</p>
+        <p className="text-destructive">Partner not found</p>
         <Button variant="outline" className="mt-4" asChild>
           <Link href="/super-admin/partners">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -155,78 +149,90 @@ export default function PartnerDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Page Header - Genius style */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="outline" size="icon" asChild>
             <Link href="/super-admin/partners">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: partner.branding?.primary_color || "#7c3aed" }}
-            >
-              <Building2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">{partner.name}</h1>
-              <p className="text-slate-400">/{partner.slug}</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">{partner.name}</h1>
+            <p className="text-muted-foreground mt-1">
+              {partner.slug} • {partner.plan_tier}
+              {partner.is_platform_partner && " • Platform Partner"}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {partner.is_platform_partner && (
-            <Badge className="bg-violet-500/20 text-violet-400">Platform Partner</Badge>
+            <Badge className="bg-primary/10 text-primary">Platform Partner</Badge>
           )}
-          <Badge variant="outline" className="text-slate-300">
+          <Badge variant="outline" className="text-foreground capitalize">
             {partner.plan_tier}
           </Badge>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="pt-6 flex items-center gap-4">
-            <Building2 className="h-8 w-8 text-blue-400" />
-            <div>
-              <div className="text-2xl font-bold text-white">{partner.workspace_count || 0}</div>
-              <p className="text-sm text-slate-400">Workspaces</p>
+      {/* Stats Grid - Genius 4-column layout */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Workspaces</p>
+                <p className="text-3xl font-bold tracking-tight text-foreground">{partner.workspace_count || 0}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <LayoutGrid className="w-6 h-6 text-primary" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="pt-6 flex items-center gap-4">
-            <Globe className="h-8 w-8 text-green-400" />
-            <div>
-              <div className="text-2xl font-bold text-white">
-                {partner.partner_domains?.length || 0}
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Domains</p>
+                <p className="text-3xl font-bold tracking-tight text-foreground">{partner.partner_domains?.length || 0}</p>
               </div>
-              <p className="text-sm text-slate-400">Domains</p>
+              <div className="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center">
+                <Globe className="w-6 h-6 text-secondary" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="pt-6 flex items-center gap-4">
-            <Users className="h-8 w-8 text-purple-400" />
-            <div>
-              <div className="text-2xl font-bold text-white">
-                {workspaces.reduce((sum, w) => sum + (w.member_count || 0), 0)}
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Users</p>
+                <p className="text-3xl font-bold tracking-tight text-foreground">
+                  {workspaces.reduce((sum, w) => sum + (w.member_count || 0), 0)}
+                </p>
               </div>
-              <p className="text-sm text-slate-400">Total Users</p>
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                <Users className="w-6 h-6 text-accent-foreground" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="pt-6 flex items-center gap-4">
-            <Bot className="h-8 w-8 text-orange-400" />
-            <div>
-              <div className="text-2xl font-bold text-white">
-                {workspaces.reduce((sum, w) => sum + (w.agent_count || 0), 0)}
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Agents</p>
+                <p className="text-3xl font-bold tracking-tight text-foreground">
+                  {workspaces.reduce((sum, w) => sum + (w.agent_count || 0), 0)}
+                </p>
               </div>
-              <p className="text-sm text-slate-400">Total Agents</p>
+              <div className="w-12 h-12 rounded-full bg-chart-1/10 flex items-center justify-center">
+                <Bot className="w-6 h-6 text-chart-1" />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -234,11 +240,11 @@ export default function PartnerDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Partner Settings */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader className="flex flex-row items-center justify-between">
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
-              <CardTitle className="text-white">Partner Settings</CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardTitle className="text-base font-semibold text-foreground">Partner Settings</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Manage partner branding and configuration
               </CardDescription>
             </div>
@@ -265,34 +271,34 @@ export default function PartnerDetailPage() {
             {editMode ? (
               <>
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Partner Name</Label>
+                  <Label className="text-foreground">Partner Name</Label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
+                    className="bg-background border-input text-foreground"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Display Name</Label>
+                  <Label className="text-foreground">Display Name</Label>
                   <Input
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    className="bg-slate-900 border-slate-600 text-white"
+                    className="bg-background border-input text-foreground"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Primary Color</Label>
+                  <Label className="text-foreground">Primary Color</Label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       value={primaryColor}
                       onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="h-10 w-14 rounded border border-slate-600"
+                      className="h-10 w-14 rounded border border-input"
                     />
                     <Input
                       value={primaryColor}
                       onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="flex-1 bg-slate-900 border-slate-600 text-white"
+                      className="flex-1 bg-background border-input text-foreground"
                     />
                   </div>
                 </div>
@@ -300,26 +306,26 @@ export default function PartnerDetailPage() {
             ) : (
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Display Name</span>
-                  <span className="text-white">
+                  <span className="text-muted-foreground">Display Name</span>
+                  <span className="text-foreground">
                     {partner.branding?.company_name || partner.name}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Primary Color</span>
+                  <span className="text-muted-foreground">Primary Color</span>
                   <div className="flex items-center gap-2">
                     <div
                       className="w-6 h-6 rounded"
                       style={{ backgroundColor: partner.branding?.primary_color || "#7c3aed" }}
                     />
-                    <span className="text-white">
+                    <span className="text-foreground">
                       {partner.branding?.primary_color || "#7c3aed"}
                     </span>
                   </div>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Created</span>
-                  <span className="text-white">
+                  <span className="text-muted-foreground">Created</span>
+                  <span className="text-foreground">
                     {formatDistanceToNow(new Date(partner.created_at), { addSuffix: true })}
                   </span>
                 </div>
@@ -327,7 +333,7 @@ export default function PartnerDetailPage() {
             )}
 
             {!partner.is_platform_partner && (
-              <div className="pt-4 border-t border-slate-700">
+              <div className="pt-4 border-t border-border">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm" className="w-full">
@@ -335,10 +341,10 @@ export default function PartnerDetailPage() {
                       Delete Partner
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-slate-800 border-slate-700">
+                  <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-white">Delete Partner?</AlertDialogTitle>
-                      <AlertDialogDescription className="text-slate-400">
+                      <AlertDialogTitle>Delete Partner?</AlertDialogTitle>
+                      <AlertDialogDescription>
                         This will permanently delete the partner and all associated data. This
                         action cannot be undone.
                       </AlertDialogDescription>
@@ -347,7 +353,7 @@ export default function PartnerDetailPage() {
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleDelete}
-                        className="bg-red-500 hover:bg-red-600"
+                        className="bg-destructive hover:bg-destructive/90"
                       >
                         Delete
                       </AlertDialogAction>
@@ -360,10 +366,10 @@ export default function PartnerDetailPage() {
         </Card>
 
         {/* Domains */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Domains</CardTitle>
-            <CardDescription className="text-slate-400">Manage partner hostnames</CardDescription>
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold text-foreground">Domains</CardTitle>
+            <CardDescription className="text-muted-foreground">Manage partner hostnames</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
@@ -371,7 +377,7 @@ export default function PartnerDetailPage() {
                 placeholder="app.example.com"
                 value={newDomain}
                 onChange={(e) => setNewDomain(e.target.value)}
-                className="bg-slate-900 border-slate-600 text-white"
+                className="bg-background border-input text-foreground"
               />
               <Button onClick={handleAddDomain} disabled={addDomain.isPending || !newDomain.trim()}>
                 {addDomain.isPending ? (
@@ -386,23 +392,23 @@ export default function PartnerDetailPage() {
               {partner.partner_domains?.map((domain) => (
                 <div
                   key={domain.id}
-                  className="flex items-center justify-between p-3 bg-slate-900 rounded-lg"
+                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
                 >
                   <div className="flex items-center gap-3">
-                    <Globe className="h-4 w-4 text-slate-400" />
-                    <span className="text-white">{domain.hostname}</span>
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground">{domain.hostname}</span>
                     {domain.is_primary && (
-                      <Badge variant="outline" className="text-green-400 border-green-500/30">
+                      <Badge variant="outline" className="text-secondary border-secondary/30">
                         Primary
                       </Badge>
                     )}
-                    {domain.verified_at && <Check className="h-4 w-4 text-green-400" />}
+                    {domain.verified_at && <Check className="h-4 w-4 text-secondary" />}
                   </div>
                   {!domain.is_primary && (
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-red-400 hover:text-red-300"
+                      className="text-destructive hover:text-destructive/80"
                       onClick={() => handleDeleteDomain(domain.id)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -415,54 +421,54 @@ export default function PartnerDetailPage() {
         </Card>
       </div>
 
-      {/* Workspaces */}
-      <Card className="bg-slate-800 border-slate-700">
-        <CardHeader>
-          <CardTitle className="text-white">Workspaces</CardTitle>
-          <CardDescription className="text-slate-400">
-            All workspaces under this partner
-          </CardDescription>
+      {/* Workspaces Table */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold text-foreground">Workspaces</CardTitle>
+            <span className="text-xs text-muted-foreground">All workspaces under this partner</span>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {workspaces.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
+            <div className="text-center py-8 text-muted-foreground">
               <Building2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p>No workspaces yet</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-slate-700">
-                  <TableHead className="text-slate-400">Workspace</TableHead>
-                  <TableHead className="text-slate-400">Members</TableHead>
-                  <TableHead className="text-slate-400">Agents</TableHead>
-                  <TableHead className="text-slate-400">Status</TableHead>
-                  <TableHead className="text-slate-400">Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspaces.map((ws) => (
-                  <TableRow key={ws.id} className="border-slate-700">
-                    <TableCell>
-                      <div>
-                        <p className="text-white font-medium">{ws.name}</p>
-                        <p className="text-sm text-slate-500">/{ws.slug}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-white">{ws.member_count}</TableCell>
-                    <TableCell className="text-white">{ws.agent_count}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-green-400 border-green-500/30">
-                        {ws.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-slate-400">
-                      {formatDistanceToNow(new Date(ws.created_at), { addSuffix: true })}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground bg-muted/50 border-b border-border">Workspace</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground bg-muted/50 border-b border-border">Members</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground bg-muted/50 border-b border-border">Agents</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground bg-muted/50 border-b border-border">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground bg-muted/50 border-b border-border">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workspaces.map((ws) => (
+                    <tr key={ws.id} className="border-b border-border hover:bg-muted/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <p className="text-foreground font-medium">{ws.name}</p>
+                        <p className="text-xs text-muted-foreground">/{ws.slug}</p>
+                      </td>
+                      <td className="py-3 px-4 text-foreground">{ws.member_count}</td>
+                      <td className="py-3 px-4 text-foreground">{ws.agent_count}</td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className="text-secondary border-secondary/30">
+                          {ws.status}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground">
+                        {formatDistanceToNow(new Date(ws.created_at), { addSuffix: true })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -16,10 +16,10 @@ interface PartnerCardProps {
 }
 
 const planColors: Record<string, string> = {
-  free: "bg-slate-500/20 text-slate-300 border-slate-500/30",
-  starter: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  pro: "bg-violet-500/20 text-violet-400 border-violet-500/30",
-  enterprise: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  free: "bg-muted text-muted-foreground",
+  starter: "bg-info/10 text-info",
+  pro: "bg-primary/10 text-primary",
+  enterprise: "bg-warning/10 text-warning",
 }
 
 export function PartnerCard({ partner }: PartnerCardProps) {
@@ -27,7 +27,7 @@ export function PartnerCard({ partner }: PartnerCardProps) {
   const domainCount = partner.partner_domains?.length || 0
 
   return (
-    <Card className="bg-slate-800 border-slate-700 hover:border-slate-600 transition-colors">
+    <Card className="bg-card border-border hover:border-primary/50 transition-colors">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -46,12 +46,12 @@ export function PartnerCard({ partner }: PartnerCardProps) {
               )}
             </div>
             <div>
-              <CardTitle className="text-white text-lg">{partner.name}</CardTitle>
-              <p className="text-sm text-slate-500">/{partner.slug}</p>
+              <CardTitle className="text-foreground text-lg">{partner.name}</CardTitle>
+              <p className="text-sm text-muted-foreground">/{partner.slug}</p>
             </div>
           </div>
           {partner.is_platform_partner && (
-            <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30">
+            <Badge className="bg-primary/10 text-primary">
               Platform
             </Badge>
           )}
@@ -63,7 +63,7 @@ export function PartnerCard({ partner }: PartnerCardProps) {
           <Badge variant="outline" className={planColors[partner.plan_tier] || planColors.starter}>
             {partner.plan_tier}
           </Badge>
-          <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
+          <Badge variant="outline" className="bg-secondary/10 text-secondary">
             {partner.subscription_status}
           </Badge>
         </div>
@@ -71,31 +71,31 @@ export function PartnerCard({ partner }: PartnerCardProps) {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-slate-500" />
-            <span className="text-slate-400">Workspaces:</span>
-            <span className="text-white font-medium">{partner.workspace_count || 0}</span>
+            <Building2 className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Workspaces:</span>
+            <span className="text-foreground font-medium">{partner.workspace_count || 0}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-slate-500" />
-            <span className="text-slate-400">Domains:</span>
-            <span className="text-white font-medium">{domainCount}</span>
+            <Globe className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Domains:</span>
+            <span className="text-foreground font-medium">{domainCount}</span>
           </div>
         </div>
 
         {/* Primary Domain */}
         {primaryDomain && (
-          <div className="flex items-center gap-2 text-sm text-slate-400">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Globe className="w-4 h-4" />
             <span className="truncate">{primaryDomain.hostname}</span>
           </div>
         )}
 
         {/* Actions */}
-        <div className="pt-2 border-t border-slate-700">
+        <div className="pt-2 border-t border-border">
           <Button
             variant="outline"
             size="sm"
-            className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
+            className="w-full border-border text-foreground hover:bg-muted"
             asChild
           >
             <Link href={`/super-admin/partners/${partner.id}`}>

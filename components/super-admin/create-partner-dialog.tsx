@@ -90,10 +90,10 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md bg-slate-800 border-slate-700 text-white">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{success ? "Partner Created!" : "Create Partner"}</DialogTitle>
-          <DialogDescription className="text-slate-400">
+          <DialogDescription>
             {success
               ? "The partner has been created and is ready to use."
               : "Create a new white-label partner with their own branding."}
@@ -102,15 +102,15 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
 
         {success ? (
           <div className="py-8 text-center">
-            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-400" />
+            <div className="w-16 h-16 bg-secondary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-secondary" />
             </div>
-            <p className="text-slate-300">Partner "{name}" has been created.</p>
+            <p className="text-muted-foreground">Partner "{name}" has been created.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-slate-300">
+              <Label htmlFor="name">
                 Partner Name
               </Label>
               <Input
@@ -120,12 +120,11 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
                 onChange={(e) => handleNameChange(e.target.value)}
                 required
                 disabled={createMutation.isPending}
-                className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="slug" className="text-slate-300">
+              <Label htmlFor="slug">
                 Slug
               </Label>
               <Input
@@ -135,13 +134,12 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
                 onChange={(e) => setSlug(e.target.value)}
                 required
                 disabled={createMutation.isPending}
-                className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
               />
-              <p className="text-xs text-slate-500">Used in URLs and for identification</p>
+              <p className="text-xs text-muted-foreground">Used in URLs and for identification</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="hostname" className="text-slate-300">
+              <Label htmlFor="hostname">
                 Primary Hostname
               </Label>
               <Input
@@ -151,14 +149,13 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
                 onChange={(e) => setHostname(e.target.value)}
                 required
                 disabled={createMutation.isPending}
-                className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
               />
-              <p className="text-xs text-slate-500">The domain users will access</p>
+              <p className="text-xs text-muted-foreground">The domain users will access</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="companyName" className="text-slate-300">
+                <Label htmlFor="companyName">
                   Display Name
                 </Label>
                 <Input
@@ -167,12 +164,11 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   disabled={createMutation.isPending}
-                  className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="primaryColor" className="text-slate-300">
+                <Label htmlFor="primaryColor">
                   Brand Color
                 </Label>
                 <div className="flex gap-2">
@@ -181,13 +177,13 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
                     id="primaryColor"
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="h-10 w-14 rounded border border-slate-600 cursor-pointer"
+                    className="h-10 w-14 rounded border border-input cursor-pointer"
                     disabled={createMutation.isPending}
                   />
                   <Input
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="flex-1 bg-slate-900 border-slate-600 text-white"
+                    className="flex-1"
                     disabled={createMutation.isPending}
                   />
                 </div>
@@ -195,13 +191,13 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-300">Plan Tier</Label>
+              <Label>Plan Tier</Label>
               <Select
                 value={planTier}
                 onValueChange={setPlanTier}
                 disabled={createMutation.isPending}
               >
-                <SelectTrigger className="bg-slate-900 border-slate-600 text-white">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -217,7 +213,7 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
               <Button
                 type="button"
                 variant="outline"
-                className="flex-1 border-slate-600 hover:bg-slate-700"
+                className="flex-1"
                 onClick={() => handleClose(false)}
                 disabled={createMutation.isPending}
               >
@@ -225,7 +221,7 @@ export function CreatePartnerDialog({ open, onOpenChange }: CreatePartnerDialogP
               </Button>
               <Button
                 type="submit"
-                className="flex-1 bg-violet-500 hover:bg-violet-600"
+                className="flex-1 bg-primary hover:bg-primary/90"
                 disabled={createMutation.isPending}
               >
                 {createMutation.isPending ? (
