@@ -32,16 +32,20 @@
 
 ### Core Technologies
 
-| Category | Technology |
-|----------|------------|
-| **Framework** | Next.js 16 (App Router) |
-| **Language** | TypeScript 5 |
-| **UI** | React 19, Tailwind CSS 4, Radix UI (shadcn/ui) |
-| **Backend** | Supabase (PostgreSQL + Auth + Storage) |
-| **State** | React Query (TanStack Query 5), Zustand |
-| **Payments** | Stripe |
-| **Email** | Resend |
-| **Voice Providers** | VAPI, Retell AI, Synthflow |
+| Category | Technology | Version |
+|----------|------------|---------|
+| **Framework** | Next.js (App Router) | 16.0.8 |
+| **Language** | TypeScript | 5.x |
+| **UI** | React, Tailwind CSS 4, Radix UI (shadcn/ui) | React 19.2.1 |
+| **Backend** | Supabase (PostgreSQL + Auth + Storage) | SSR 0.8.0 |
+| **State** | React Query (TanStack Query 5), Zustand | Query 5.90.12, Zustand 5.0.9 |
+| **Payments** | Stripe | 20.0.0 |
+| **Email** | Resend | 6.6.0 |
+| **Voice Providers** | VAPI, Retell AI, Synthflow | VAPI Web 2.5.2, Retell SDK 4.66.0 |
+| **Validation** | Zod | 4.1.13 |
+| **Forms** | React Hook Form | 7.68.0 |
+| **Charts** | Recharts | 3.5.1 |
+| **Date Utils** | date-fns | 4.1.0 |
 
 ### Key Capabilities
 
@@ -50,6 +54,7 @@
 - **AI Voice Agent Management**: Create, sync, and manage agents across VAPI, Retell, Synthflow
 - **Role-Based Access Control**: Comprehensive RBAC for partners and workspaces
 - **Super Admin Console**: Platform-wide management for partner requests and billing
+- **Organization Management**: Partner-level team and settings management
 
 ---
 
@@ -67,6 +72,7 @@
 │  - White-label branding        - Custom domains                     │
 │  - Subscription management     - Partner members                    │
 │  - Resource limits             - Plan tier                          │
+│  - Organization settings       - Team invitations                   │
 └─────────────────────────────────────────────────────────────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
@@ -113,7 +119,7 @@ interface Partner {
   name: string
   slug: string                    // e.g., "acme-agency"
   branding: PartnerBranding       // Logo, colors, company name
-  plan_tier: string               // "starter" | "professional" | "enterprise"
+  plan_tier: string               // "free" | "starter" | "pro" | "enterprise"
   features: PartnerFeatures       // Feature flags
   resource_limits: ResourceLimits // Max workspaces, users, agents
   is_platform_partner: boolean    // True for the main platform
@@ -127,6 +133,7 @@ interface Workspace {
   slug: string                    // e.g., "client-alpha"
   resource_limits: ResourceLimits // Inherited/overridden from partner
   current_month_minutes: number   // Usage tracking
+  current_month_cost: number      // Cost tracking
   status: string
 }
 
@@ -134,6 +141,9 @@ interface Workspace {
 interface User {
   id: string
   email: string
+  first_name: string | null
+  last_name: string | null
+  avatar_url: string | null
   // Access via memberships:
   // - PartnerMember (role in partner)
   // - WorkspaceMember (role in workspace)
@@ -186,17 +196,24 @@ inspralv/
 │   │   ├── reset-password/page.tsx
 │   │   └── layout.tsx
 │   ├── (marketing)/              # Public pages
+│   │   ├── layout.tsx
 │   │   ├── pricing/page.tsx
 │   │   └── request-partner/page.tsx
+│   ├── org/                      # Organization/Partner management
+│   │   ├── layout.tsx
+│   │   ├── settings/page.tsx     # Partner settings
+│   │   ├── team/page.tsx         # Partner team management
+│   │   └── invitations/page.tsx  # Partner invitations
 │   ├── w/[workspaceSlug]/        # Workspace-scoped pages
 │   │   ├── layout.tsx            # Workspace layout with auth
 │   │   ├── dashboard/page.tsx
 │   │   ├── agents/
 │   │   │   ├── page.tsx          # Agent list
-│   │   │   ├── new/page.tsx      # Create agent
+│   │   │   ├── new/page.tsx      # Create agent (wizard)
 │   │   │   └── [id]/page.tsx     # Agent detail
 │   │   ├── leads/page.tsx
 │   │   ├── calls/page.tsx
+│   │   ├── conversations/page.tsx
 │   │   ├── analytics/page.tsx
 │   │   ├── members/page.tsx
 │   │   ├── settings/page.tsx
@@ -210,53 +227,142 @@ inspralv/
 │   │       ├── layout.tsx
 │   │       ├── page.tsx          # Dashboard
 │   │       ├── partners/
+│   │       │   ├── page.tsx      # Partner list
+│   │       │   └── [id]/page.tsx # Partner detail
 │   │       ├── partner-requests/
-│   │       └── billing/
+│   │       │   ├── page.tsx      # Request list
+│   │       │   └── [id]/page.tsx # Request detail
+│   │       └── billing/page.tsx
 │   ├── api/                      # API routes
-│   │   ├── w/[workspaceSlug]/    # Workspace-scoped APIs
-│   │   │   ├── agents/route.ts
-│   │   │   ├── members/route.ts
-│   │   │   ├── invitations/route.ts
-│   │   │   ├── conversations/route.ts
-│   │   │   └── dashboard/stats/route.ts
 │   │   ├── auth/                 # Auth APIs
-│   │   ├── super-admin/          # Super admin APIs
+│   │   │   ├── context/route.ts
+│   │   │   ├── signup/route.ts
+│   │   │   └── signout/route.ts
+│   │   ├── w/[workspaceSlug]/    # Workspace-scoped APIs
+│   │   │   ├── agents/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/route.ts
+│   │   │   ├── members/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [memberId]/route.ts
+│   │   │   ├── invitations/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/route.ts
+│   │   │   ├── conversations/route.ts
+│   │   │   ├── analytics/route.ts
+│   │   │   ├── settings/route.ts
+│   │   │   └── dashboard/stats/route.ts
+│   │   ├── partner/              # Partner-level APIs
+│   │   │   ├── route.ts
+│   │   │   ├── dashboard/stats/route.ts
+│   │   │   ├── team/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [memberId]/route.ts
+│   │   │   └── invitations/
+│   │   │       ├── route.ts
+│   │   │       └── [invitationId]/route.ts
 │   │   ├── partner-requests/     # Partner request APIs
-│   │   └── workspaces/route.ts
-│   ├── select-workspace/page.tsx # Workspace selector
-│   ├── workspace-onboarding/page.tsx
+│   │   │   ├── route.ts
+│   │   │   ├── check-domain/route.ts
+│   │   │   └── [id]/
+│   │   │       ├── route.ts
+│   │   │       └── provision/route.ts
+│   │   ├── partner-invitations/
+│   │   │   └── accept/route.ts
+│   │   ├── workspace-invitations/
+│   │   │   └── accept/route.ts
+│   │   ├── super-admin/          # Super admin APIs
+│   │   │   ├── partners/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/
+│   │   │   │       ├── route.ts
+│   │   │   │       ├── domains/route.ts
+│   │   │   │       └── workspaces/route.ts
+│   │   │   └── partner-requests/
+│   │   │       ├── route.ts
+│   │   │       └── [id]/
+│   │   │           ├── route.ts
+│   │   │           └── provision/route.ts
+│   │   ├── upload/logo/route.ts  # Logo upload
+│   │   ├── workspaces/route.ts   # Workspace creation
+│   │   ├── dev/reset-password/route.ts  # Dev utilities
+│   │   └── health/route.ts       # Health check
 │   ├── accept-workspace-invitation/page.tsx
+│   ├── accept-partner-invitation/page.tsx
+│   ├── select-workspace/page.tsx
+│   ├── setup-profile/page.tsx
+│   ├── workspace-onboarding/page.tsx
+│   ├── page.tsx                  # Landing page
+│   ├── error.tsx                 # Error boundary
+│   ├── global-error.tsx          # Global error handler
 │   ├── layout.tsx                # Root layout
 │   └── globals.css
 │
 ├── components/                   # React components
 │   ├── ui/                       # shadcn/ui primitives
+│   │   ├── alert-dialog.tsx
+│   │   ├── alert.tsx
+│   │   ├── avatar.tsx
+│   │   ├── badge.tsx
 │   │   ├── button.tsx
 │   │   ├── card.tsx
 │   │   ├── dialog.tsx
 │   │   ├── dropdown-menu.tsx
 │   │   ├── input.tsx
+│   │   ├── label.tsx
+│   │   ├── progress.tsx
+│   │   ├── scroll-area.tsx
 │   │   ├── select.tsx
+│   │   ├── separator.tsx
+│   │   ├── sheet.tsx
+│   │   ├── skeleton.tsx
+│   │   ├── switch.tsx
 │   │   ├── table.tsx
-│   │   └── ...
+│   │   ├── tabs.tsx
+│   │   └── textarea.tsx
 │   ├── workspace/                # Workspace components
 │   │   ├── workspace-dashboard-layout.tsx
 │   │   ├── workspace-sidebar.tsx
 │   │   ├── workspace-header.tsx
 │   │   ├── workspace-selector.tsx
-│   │   └── agents/
-│   │       └── workspace-agent-card.tsx
+│   │   ├── agents/
+│   │   │   ├── workspace-agent-card.tsx
+│   │   │   ├── workspace-agent-form.tsx
+│   │   │   ├── agent-wizard.tsx
+│   │   │   └── agent-wizard-dynamic.tsx
+│   │   ├── conversations/
+│   │   │   ├── conversation-detail-modal.tsx
+│   │   │   └── conversation-detail-dynamic.tsx
+│   │   └── members/
+│   │       └── invite-member-dialog.tsx
 │   ├── agents/                   # Agent components
 │   │   ├── agent-card.tsx
 │   │   ├── delete-agent-dialog.tsx
 │   │   ├── test-call-button.tsx
 │   │   └── test-call-modal.tsx
+│   ├── org/                      # Organization components
+│   │   └── org-dashboard-layout.tsx
 │   ├── super-admin/              # Super admin components
 │   │   ├── sidebar.tsx
 │   │   ├── header.tsx
-│   │   └── super-admin-layout-client.tsx
-│   └── auth/
-│       └── auth-layout-client.tsx
+│   │   ├── super-admin-layout-client.tsx
+│   │   ├── partner-card.tsx
+│   │   ├── approve-partner-dialog.tsx
+│   │   ├── reject-partner-dialog.tsx
+│   │   ├── create-partner-dialog.tsx
+│   │   ├── edit-partner-request-dialog.tsx
+│   │   └── delete-partner-request-dialog.tsx
+│   ├── auth/
+│   │   ├── auth-layout-client.tsx
+│   │   └── password-strength.tsx
+│   ├── marketing/
+│   │   ├── partner-request-form.tsx
+│   │   └── pricing-card.tsx
+│   ├── shared/                   # Shared/common components
+│   │   ├── error-boundary.tsx
+│   │   ├── loading-spinner.tsx
+│   │   └── loading.tsx
+│   └── billing/                  # Billing components (placeholder)
 │
 ├── lib/                          # Core libraries
 │   ├── api/                      # API utilities
@@ -265,13 +371,22 @@ inspralv/
 │   │   ├── partner.ts            # getPartnerFromHost()
 │   │   ├── super-admin-auth.ts   # getSuperAdminContext()
 │   │   ├── helpers.ts            # apiResponse(), unauthorized(), etc.
-│   │   └── get-auth-cached.ts    # Cached auth context
+│   │   ├── get-auth-cached.ts    # Cached auth context
+│   │   ├── get-partner-server.ts # Server-side partner context
+│   │   ├── error-handler.ts      # Error handling utilities
+│   │   ├── fetcher.ts            # Fetch utilities
+│   │   ├── etag.ts               # ETag/caching headers
+│   │   └── pagination.ts         # Pagination helpers
+│   ├── auth/                     # Auth utilities
+│   │   ├── index.ts              # Auth exports
+│   │   └── password.ts           # Password utilities
 │   ├── supabase/                 # Supabase clients
 │   │   ├── client.ts             # Browser client
 │   │   ├── server.ts             # Server client
 │   │   ├── admin.ts              # Admin client (bypasses RLS)
 │   │   └── middleware.ts         # Session middleware
 │   ├── integrations/             # Voice provider integrations
+│   │   ├── index.ts              # Integration exports
 │   │   ├── vapi/
 │   │   │   ├── agent/
 │   │   │   │   ├── config.ts     # API calls
@@ -280,31 +395,62 @@ inspralv/
 │   │   │   │   └── response.ts   # Response processing
 │   │   │   └── web-call.ts       # Browser calling
 │   │   ├── retell/
-│   │   │   ├── agent/...
+│   │   │   ├── agent/
+│   │   │   │   ├── config.ts
+│   │   │   │   ├── mapper.ts
+│   │   │   │   ├── sync.ts
+│   │   │   │   └── response.ts
 │   │   │   └── web-call.ts
-│   │   ├── circuit-breaker.ts
-│   │   ├── retry.ts
-│   │   └── webhook.ts
+│   │   ├── circuit-breaker.ts    # Circuit breaker pattern
+│   │   ├── retry.ts              # Retry logic
+│   │   └── webhook.ts            # Webhook handling
 │   ├── hooks/                    # React Query hooks
-│   │   ├── use-workspace-agents.ts
-│   │   ├── use-workspace-members.ts
-│   │   ├── use-workspace-conversations.ts
+│   │   ├── use-auth.ts           # Auth actions (logout)
+│   │   ├── use-branding.ts       # Partner branding
+│   │   ├── use-keyboard-shortcuts.ts
+│   │   ├── use-optimistic.ts     # Optimistic updates
+│   │   ├── use-partner.ts        # Partner data
+│   │   ├── use-partner-auth.ts   # Partner auth context
 │   │   ├── use-partner-dashboard-stats.ts
-│   │   ├── use-super-admin-partners.ts
 │   │   ├── use-partner-requests.ts
-│   │   └── use-auth.ts
+│   │   ├── use-partner-team.ts   # Partner team management
+│   │   ├── use-prefetch.ts       # Data prefetching
+│   │   ├── use-super-admin-partners.ts
+│   │   ├── use-toast.ts          # Toast notifications
+│   │   ├── use-web-calls.ts      # Voice calling
+│   │   ├── use-workspace-agents.ts
+│   │   ├── use-workspace-conversations.ts
+│   │   ├── use-workspace-members.ts
+│   │   ├── use-workspace-settings.ts
+│   │   └── use-workspace-stats.ts
 │   ├── rbac/                     # Role-Based Access Control
+│   │   ├── index.ts              # RBAC exports
 │   │   ├── permissions.ts        # Permission matrix
-│   │   └── middleware.ts
+│   │   └── middleware.ts         # RBAC middleware
 │   ├── cache/                    # Caching layer
 │   │   └── index.ts
 │   ├── email/                    # Email service
-│   │   ├── send.ts
+│   │   ├── client.ts             # Email client config
+│   │   ├── send.ts               # Send functions
 │   │   └── templates/
+│   │       ├── workspace-invitation.tsx
+│   │       ├── partner-request-notification.tsx
+│   │       ├── partner-request-approved.tsx
+│   │       └── partner-request-rejected.tsx
+│   ├── errors/                   # Error handling
+│   │   └── index.ts
+│   ├── providers/                # React providers
+│   │   └── query-provider.tsx    # React Query provider
+│   ├── utils/                    # Utility functions
+│   │   └── format.ts             # Formatting utilities
+│   ├── stripe/                   # Stripe integration (placeholder)
 │   ├── audit.ts                  # Audit logging
+│   ├── constrants.ts             # App constants
 │   ├── env.ts                    # Environment validation
-│   ├── utils.ts                  # cn() utility
-│   └── logger.ts
+│   ├── logger.ts                 # Logging utilities
+│   ├── metadata.ts               # Page metadata helpers
+│   ├── rate-limit.ts             # Rate limiting
+│   └── utils.ts                  # cn() utility
 │
 ├── context/                      # React contexts
 │   ├── branding-context.tsx      # Partner branding
@@ -320,6 +466,8 @@ inspralv/
 │
 ├── proxy.ts                      # Next.js middleware
 ├── CLAUDE.md                     # AI assistant guide
+├── CODEBASE_REFERENCE.md         # This file
+├── OPTIMIZATION_PLAN.md          # Performance optimization plan
 └── package.json
 ```
 
@@ -369,7 +517,9 @@ CREATE TABLE partner_members (
   invited_by UUID,
   joined_at TIMESTAMPTZ,
   removed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  removed_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- WORKSPACES (Projects within a Partner)
@@ -401,7 +551,9 @@ CREATE TABLE workspace_members (
   invited_at TIMESTAMPTZ,
   joined_at TIMESTAMPTZ,
   removed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  removed_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- WORKSPACE INVITATIONS
@@ -409,14 +561,15 @@ CREATE TABLE workspace_invitations (
   id UUID PRIMARY KEY,
   workspace_id UUID REFERENCES workspaces(id),
   email VARCHAR(255) NOT NULL,
-  role VARCHAR(50) NOT NULL,
+  role VARCHAR(50) NOT NULL,          -- 'admin' | 'member' | 'viewer'
   token VARCHAR(255) UNIQUE NOT NULL,
   message TEXT,
   invited_by UUID,
   status VARCHAR(50) DEFAULT 'pending', -- 'pending' | 'accepted' | 'expired' | 'cancelled'
   expires_at TIMESTAMPTZ NOT NULL,
   accepted_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- AI AGENTS
@@ -426,9 +579,9 @@ CREATE TABLE ai_agents (
   name VARCHAR(255) NOT NULL,
   description TEXT,
   provider VARCHAR(50) NOT NULL,      -- 'vapi' | 'retell' | 'synthflow'
-  voice_provider VARCHAR(50),         -- 'elevenlabs' | 'deepgram' | 'azure'...
-  model_provider VARCHAR(50),         -- 'openai' | 'anthropic' | 'google'...
-  transcriber_provider VARCHAR(50),
+  voice_provider VARCHAR(50),         -- 'elevenlabs' | 'deepgram' | 'azure' | 'openai' | 'cartesia'
+  model_provider VARCHAR(50),         -- 'openai' | 'anthropic' | 'google' | 'groq'
+  transcriber_provider VARCHAR(50),   -- 'deepgram' | 'assemblyai' | 'openai'
   config JSONB DEFAULT '{}',          -- Agent configuration
   agent_secret_api_key JSONB DEFAULT '[]',
   agent_public_api_key JSONB DEFAULT '[]',
@@ -447,7 +600,7 @@ CREATE TABLE conversations (
   agent_id UUID REFERENCES ai_agents(id),
   external_call_id VARCHAR(255),
   direction VARCHAR(50),              -- 'inbound' | 'outbound'
-  status VARCHAR(50),                 -- 'queued' | 'in_progress' | 'completed'...
+  status VARCHAR(50),                 -- 'queued' | 'in_progress' | 'completed' | 'failed' | 'no_answer'
   phone_number VARCHAR(50),
   caller_name VARCHAR(255),
   started_at TIMESTAMPTZ,
@@ -456,13 +609,16 @@ CREATE TABLE conversations (
   recording_url TEXT,
   transcript TEXT,
   summary TEXT,
-  sentiment VARCHAR(50),
+  sentiment VARCHAR(50),              -- 'positive' | 'neutral' | 'negative'
   quality_score DECIMAL(3,2),
+  customer_rating INTEGER,
   total_cost DECIMAL(10,4),
   cost_breakdown JSONB,
   requires_follow_up BOOLEAN DEFAULT FALSE,
+  follow_up_notes TEXT,
   metadata JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- PARTNER REQUESTS (White-Label Onboarding)
@@ -487,7 +643,8 @@ CREATE TABLE partner_requests (
   rejection_reason TEXT,
   provisioned_partner_id UUID REFERENCES partners(id),
   metadata JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- SUPER ADMIN
@@ -500,7 +657,8 @@ CREATE TABLE super_admin (
   avatar_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   last_login_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- AUDIT LOG
@@ -642,6 +800,7 @@ serverError(message)              // 500 error
 unauthorized()                    // 401
 forbidden(message)                // 403
 notFound(resource)                // 404
+getValidationError(zodError)      // Get first Zod error message
 ```
 
 ### API Routes Overview
@@ -657,28 +816,57 @@ notFound(resource)                // 404
 │   ├── agents/
 │   │   ├── route.ts          # GET (list), POST (create)
 │   │   └── [id]/route.ts     # GET, PATCH, DELETE
-│   ├── members/route.ts      # GET, PATCH, DELETE
+│   ├── members/
+│   │   ├── route.ts          # GET (list), POST
+│   │   └── [memberId]/route.ts # PATCH, DELETE
 │   ├── invitations/
 │   │   ├── route.ts          # GET (list), POST (send)
 │   │   └── [id]/route.ts     # DELETE (revoke)
 │   ├── conversations/route.ts
 │   ├── analytics/route.ts
-│   ├── settings/route.ts
+│   ├── settings/route.ts     # GET, PATCH
 │   └── dashboard/stats/route.ts
 │
-├── workspaces/route.ts       # Create workspace
+├── partner/                  # Partner-level APIs
+│   ├── route.ts              # GET partner info
+│   ├── dashboard/stats/route.ts
+│   ├── team/
+│   │   ├── route.ts          # GET, POST
+│   │   └── [memberId]/route.ts
+│   └── invitations/
+│       ├── route.ts          # GET, POST
+│       └── [invitationId]/route.ts
 │
 ├── partner-requests/         # Partner onboarding
 │   ├── route.ts              # POST (submit request)
-│   ├── [id]/route.ts         # GET (detail)
-│   ├── [id]/approve/route.ts # POST (approve)
-│   └── [id]/reject/route.ts  # POST (reject)
+│   ├── check-domain/route.ts # Check domain availability
+│   └── [id]/
+│       ├── route.ts          # GET (detail)
+│       └── provision/route.ts # POST (provision partner)
+│
+├── partner-invitations/
+│   └── accept/route.ts       # Accept partner invitation
+│
+├── workspace-invitations/
+│   └── accept/route.ts       # Accept workspace invitation
+│
+├── workspaces/route.ts       # POST (create workspace)
 │
 ├── super-admin/              # Platform admin APIs
-│   ├── partners/route.ts
-│   ├── partner-requests/route.ts
-│   └── billing/route.ts
+│   ├── partners/
+│   │   ├── route.ts          # GET, POST
+│   │   └── [id]/
+│   │       ├── route.ts      # GET, PATCH, DELETE
+│   │       ├── domains/route.ts
+│   │       └── workspaces/route.ts
+│   └── partner-requests/
+│       ├── route.ts          # GET (list)
+│       └── [id]/
+│           ├── route.ts      # GET, PATCH
+│           └── provision/route.ts
 │
+├── upload/logo/route.ts      # Logo upload
+├── dev/reset-password/route.ts # Development utilities
 └── health/route.ts           # Health check
 ```
 
@@ -697,6 +885,13 @@ RootLayout (app/layout.tsx)
     ├── AuthLayout (app/(auth)/layout.tsx)
     │   └── BrandingProvider
     │       └── Auth Pages (login, signup, etc.)
+    │
+    ├── MarketingLayout (app/(marketing)/layout.tsx)
+    │   └── Marketing Pages (pricing, request-partner)
+    │
+    ├── OrgLayout (app/org/layout.tsx)
+    │   └── OrgDashboardLayout
+    │       └── Partner Management Pages
     │
     ├── WorkspaceLayout (app/w/[workspaceSlug]/layout.tsx)
     │   └── WorkspaceDashboardLayout
@@ -719,19 +914,51 @@ Primitives from shadcn/ui (Radix UI + Tailwind):
 - `button.tsx`, `card.tsx`, `dialog.tsx`, `dropdown-menu.tsx`
 - `input.tsx`, `select.tsx`, `table.tsx`, `tabs.tsx`
 - `avatar.tsx`, `badge.tsx`, `skeleton.tsx`
+- `alert.tsx`, `alert-dialog.tsx`, `progress.tsx`
+- `scroll-area.tsx`, `separator.tsx`, `sheet.tsx`
+- `switch.tsx`, `textarea.tsx`, `label.tsx`
 
 #### Workspace Components (`components/workspace/`)
 - `workspace-dashboard-layout.tsx` - Main dashboard layout
 - `workspace-sidebar.tsx` - Navigation sidebar with workspace selector
 - `workspace-header.tsx` - Top header with user menu
 - `workspace-selector.tsx` - Workspace picker component
-- `agents/workspace-agent-card.tsx` - Agent display card
+- `agents/` - Agent-related components
+  - `workspace-agent-card.tsx` - Agent display card
+  - `workspace-agent-form.tsx` - Agent form component
+  - `agent-wizard.tsx` - Multi-step agent creation wizard
+  - `agent-wizard-dynamic.tsx` - Dynamic import wrapper
+- `conversations/` - Conversation components
+  - `conversation-detail-modal.tsx` - Conversation detail view
+  - `conversation-detail-dynamic.tsx` - Dynamic import wrapper
+- `members/` - Member management
+  - `invite-member-dialog.tsx` - Member invitation dialog
 
 #### Agent Components (`components/agents/`)
 - `agent-card.tsx` - Generic agent card
 - `delete-agent-dialog.tsx` - Deletion confirmation
 - `test-call-button.tsx` - Initiate test call
 - `test-call-modal.tsx` - Test call interface
+
+#### Super Admin Components (`components/super-admin/`)
+- `sidebar.tsx` - Admin navigation
+- `header.tsx` - Admin header
+- `super-admin-layout-client.tsx` - Admin layout wrapper
+- `partner-card.tsx` - Partner display card
+- `approve-partner-dialog.tsx` - Approve partner request
+- `reject-partner-dialog.tsx` - Reject partner request
+- `create-partner-dialog.tsx` - Create new partner
+- `edit-partner-request-dialog.tsx` - Edit partner request
+- `delete-partner-request-dialog.tsx` - Delete partner request
+
+#### Shared Components (`components/shared/`)
+- `error-boundary.tsx` - Error boundary component
+- `loading-spinner.tsx` - Loading spinner
+- `loading.tsx` - Loading state component
+
+#### Marketing Components (`components/marketing/`)
+- `partner-request-form.tsx` - Partner request form
+- `pricing-card.tsx` - Pricing plan cards
 
 ### Path Aliases (configured in `components.json`)
 
@@ -810,6 +1037,16 @@ Retell requires creating an LLM first, then an Agent:
 // 2. deleteRetellLLM()
 ```
 
+### Resilience Patterns
+
+```typescript
+// lib/integrations/circuit-breaker.ts
+// Circuit breaker pattern for external API calls
+
+// lib/integrations/retry.ts
+// Retry logic with exponential backoff
+```
+
 ### Web Calling
 
 Both VAPI and Retell support browser-based test calls:
@@ -835,7 +1072,11 @@ Both VAPI and Retell support browser-based test calls:
 | `lib/api/workspace-auth.ts` | `withWorkspace()` HOF, `getWorkspaceContext()` |
 | `lib/api/partner.ts` | `getPartnerFromHost()` - Partner resolution |
 | `lib/api/super-admin-auth.ts` | `getSuperAdminContext()` |
+| `lib/api/get-auth-cached.ts` | Cached auth context for server components |
+| `lib/api/get-partner-server.ts` | Server-side partner context |
 | `lib/rbac/permissions.ts` | RBAC permission matrix |
+| `lib/rbac/middleware.ts` | RBAC middleware |
+| `lib/auth/password.ts` | Password utilities |
 | `proxy.ts` | Middleware - session, redirects, CSP |
 
 ### Supabase
@@ -854,7 +1095,10 @@ Both VAPI and Retell support browser-based test calls:
 | `lib/api/helpers.ts` | Response utilities |
 | `lib/api/pagination.ts` | Pagination helpers |
 | `lib/api/etag.ts` | ETag/caching headers |
+| `lib/api/error-handler.ts` | Error handling |
+| `lib/api/fetcher.ts` | Fetch utilities |
 | `lib/audit.ts` | Audit logging |
+| `lib/rate-limit.ts` | Rate limiting |
 
 ### State Management
 
@@ -862,8 +1106,22 @@ Both VAPI and Retell support browser-based test calls:
 |------|---------|
 | `lib/hooks/use-workspace-agents.ts` | Agent CRUD with React Query |
 | `lib/hooks/use-workspace-members.ts` | Member management |
+| `lib/hooks/use-workspace-conversations.ts` | Conversation data |
+| `lib/hooks/use-workspace-settings.ts` | Workspace settings |
+| `lib/hooks/use-workspace-stats.ts` | Dashboard statistics |
 | `lib/hooks/use-auth.ts` | Auth actions (logout) |
-| `lib/hooks/use-partner-dashboard-stats.ts` | Dashboard data |
+| `lib/hooks/use-partner.ts` | Partner data |
+| `lib/hooks/use-partner-auth.ts` | Partner auth context |
+| `lib/hooks/use-partner-team.ts` | Partner team management |
+| `lib/hooks/use-partner-dashboard-stats.ts` | Partner dashboard data |
+| `lib/hooks/use-partner-requests.ts` | Partner request management |
+| `lib/hooks/use-super-admin-partners.ts` | Super admin partner data |
+| `lib/hooks/use-branding.ts` | Partner branding |
+| `lib/hooks/use-web-calls.ts` | Voice calling |
+| `lib/hooks/use-optimistic.ts` | Optimistic updates |
+| `lib/hooks/use-prefetch.ts` | Data prefetching |
+| `lib/hooks/use-toast.ts` | Toast notifications |
+| `lib/providers/query-provider.tsx` | React Query provider |
 
 ### Types
 
@@ -879,6 +1137,8 @@ Both VAPI and Retell support browser-based test calls:
 | `config/plans.ts` | Plan tiers & features |
 | `config/site.ts` | Site metadata |
 | `lib/env.ts` | Environment validation |
+| `lib/constrants.ts` | App constants |
+| `lib/metadata.ts` | Page metadata helpers |
 
 ---
 
@@ -984,6 +1244,25 @@ export function useCreateWorkspaceAgent() {
     },
   })
 }
+
+// Optimistic updates for delete
+export function useDeleteWorkspaceAgent() {
+  return useMutation({
+    onMutate: async (agentId) => {
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData(queryKey)
+      // Optimistically remove
+      queryClient.setQueryData(queryKey, updatedData)
+      return { previous }
+    },
+    onError: (_, __, context) => {
+      queryClient.setQueryData(queryKey, context.previous)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey })
+    },
+  })
+}
 ```
 
 ### Context Providers
@@ -994,6 +1273,9 @@ export function useCreateWorkspaceAgent() {
 
 // context/theme-context.tsx
 // Provides dark/light theme toggle
+
+// lib/providers/query-provider.tsx
+// React Query provider with devtools
 ```
 
 ---
@@ -1010,9 +1292,13 @@ response.headers.set("X-Content-Type-Options", "nosniff")
 response.headers.set("X-Frame-Options", "DENY")
 response.headers.set("X-XSS-Protection", "1; mode=block")
 response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+response.headers.set("X-DNS-Prefetch-Control", "on")
 
 // Production only:
-response.headers.set("Strict-Transport-Security", "max-age=31536000")
+response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+
+// Permissions Policy:
+response.headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=()")
 
 // Content Security Policy:
 response.headers.set("Content-Security-Policy", buildCSP())
@@ -1023,7 +1309,7 @@ response.headers.set("Content-Security-Policy", buildCSP())
 ```typescript
 // proxy.ts
 
-const publicPaths = ["/", "/login", "/signup", "/pricing", ...]
+const publicPaths = ["/", "/login", "/signup", "/pricing", "/request-partner", ...]
 const protectedPaths = ["/select-workspace", "/workspace-onboarding", "/w/"]
 const superAdminPaths = ["/super-admin"]
 
@@ -1041,6 +1327,9 @@ hasWorkspacePermission("admin", "workspace.agents.delete") → true
 
 // Check role hierarchy
 isAtLeastWorkspaceRole("member", "viewer") → true
+
+// Check partner permission
+hasPartnerPermission("admin", "partner.workspaces.create") → true
 
 // API route enforcement
 withWorkspace(handler, { requiredRoles: ["owner", "admin"] })
@@ -1078,6 +1367,7 @@ await sendWorkspaceInvitation(
 
 await sendPartnerRequestNotification({ id, company_name, ... })
 await sendPartnerApprovalEmail(email, { company_name, login_url, ... })
+await sendPartnerRejectionEmail(email, { company_name, reason, ... })
 ```
 
 ---
@@ -1094,9 +1384,13 @@ await cacheGet<T>(key)
 await cacheSet(key, value, ttlSeconds)
 await cacheDelete(key)
 await cacheDeletePattern(pattern)
+await cacheClear()
 
 // Cache-aside pattern
 await cacheGetOrFetch(key, fetchFn, ttl)
+
+// Cache warming
+await warmCache(key, fetchFn, ttl)
 ```
 
 ### Cache Keys
@@ -1106,6 +1400,7 @@ CacheKeys.partner(hostname)           // Partner by hostname
 CacheKeys.partnerBranding(partnerId)  // Partner branding
 CacheKeys.userWorkspaces(userId, partnerId)
 CacheKeys.workspace(workspaceId)
+CacheKeys.workspaceAgents(workspaceId)
 CacheKeys.authContext(userId, partnerId)
 ```
 
@@ -1114,8 +1409,21 @@ CacheKeys.authContext(userId, partnerId)
 ```typescript
 CacheTTL.PARTNER = 10 * 60          // 10 minutes
 CacheTTL.PARTNER_BRANDING = 60 * 60 // 1 hour
+CacheTTL.USER_WORKSPACES = 5 * 60   // 5 minutes
 CacheTTL.AUTH_CONTEXT = 2 * 60      // 2 minutes
 CacheTTL.WORKSPACE = 5 * 60         // 5 minutes
+CacheTTL.STATIC = 60 * 60           // 1 hour
+CacheTTL.SHORT = 60                 // 1 minute
+```
+
+### Cache Invalidation
+
+```typescript
+CacheInvalidation.invalidatePartner(partnerId)
+CacheInvalidation.invalidateWorkspace(workspaceId)
+CacheInvalidation.invalidateUserAuth(userId, partnerId)
+CacheInvalidation.invalidateUserWorkspaces(userId)
+CacheInvalidation.invalidateWorkspaceAgents(workspaceId)
 ```
 
 ---
@@ -1158,6 +1466,12 @@ export const env = {
   supabaseAnonKey: getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",
+  stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY", false),
+  stripePublishableKey: getEnvVar("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", false),
+  resendApiKey: getEnvVar("RESEND_API_KEY", false),
+  fromEmail: getEnvVar("FROM_EMAIL", false),
+  superAdminEmail: getEnvVar("SUPER_ADMIN_EMAIL", false),
+  supabaseStorageBucket: getEnvVar("NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET", false),
   isDev: process.env.NODE_ENV === "development",
   isProd: process.env.NODE_ENV === "production",
 }
@@ -1209,10 +1523,17 @@ npm run type-check
 ### Create Partner Request Flow
 
 1. User submits via `/request-partner` → `POST /api/partner-requests`
-2. Email sent to super admin
+2. Email sent to super admin via `sendPartnerRequestNotification()`
 3. Super admin reviews at `/super-admin/partner-requests`
 4. Approve → Provision partner, create domain, send credentials
-5. Reject → Send rejection email
+5. Reject → Send rejection email via `sendPartnerRejectionEmail()`
+
+### Add Organization-Level Feature
+
+1. Create page in `app/org/new-feature/page.tsx`
+2. Add API route: `app/api/partner/new-feature/route.ts`
+3. Use `getPartnerAuthContext()` for auth
+4. Check partner role with `isPartnerAdmin()` or `hasPartnerRole()`
 
 ---
 
@@ -1224,9 +1545,10 @@ npm run type-check
 - **Styling**: Tailwind CSS with `cn()` utility for conditional classes
 - **Forms**: React Hook Form + Zod validation
 - **State**: React Query for server state, minimal client state
+- **Optimistic Updates**: Implement for delete/update operations
+- **Dynamic Imports**: Use for heavy components (wizards, modals)
 - **Never commit**: `.env*` files
 
 ---
 
 *This reference file is maintained for AI assistant understanding and developer onboarding.*
-

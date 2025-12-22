@@ -4,8 +4,7 @@ import { getPartnerAuthCached } from "@/lib/api/get-auth-cached"
 import { getPartnerFromHost } from "@/lib/api/partner"
 import { WorkspaceSelector } from "@/components/workspace/workspace-selector"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2, Plus, Mail, LogOut } from "lucide-react"
+import { Building2, Plus, Mail, LogOut, Sparkles } from "lucide-react"
 import Link from "next/link"
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -46,113 +45,158 @@ export default async function SelectWorkspacePage() {
   // No workspaces - show appropriate message based on role
   if (auth.workspaces.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            {branding.logo_url ? (
-              <img src={branding.logo_url} alt={companyName} className="h-12 mx-auto mb-4" />
-            ) : (
-              <div
-                className="h-16 w-16 mx-auto mb-4 rounded-2xl flex items-center justify-center text-white font-bold text-2xl"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {companyName[0]}
-              </div>
-            )}
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+        {/* Subtle grid pattern background */}
+        <div 
+          className="fixed inset-0 opacity-[0.02] dark:opacity-[0.03]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}
+        />
+        
+        {/* Gradient orbs */}
+        <div 
+          className="fixed top-0 left-1/4 w-96 h-96 rounded-full blur-3xl opacity-10"
+          style={{ backgroundColor: primaryColor }}
+        />
+        <div 
+          className="fixed bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl opacity-10"
+          style={{ backgroundColor: primaryColor }}
+        />
 
-            {canCreateWorkspace ? (
-              <>
-                <CardTitle className="text-2xl">Create Your First Workspace</CardTitle>
-                <CardDescription>Get started by creating a workspace for your team</CardDescription>
-              </>
-            ) : isPartnerMember ? (
-              <>
-                <CardTitle className="text-2xl">No Workspaces Yet</CardTitle>
-                <CardDescription>
-                  You're a member of {companyName}, but you haven't been added to any workspaces
-                  yet.
-                </CardDescription>
-              </>
-            ) : (
-              <>
-                <CardTitle className="text-2xl">Access Required</CardTitle>
-                <CardDescription>You need to be invited to access {companyName}.</CardDescription>
-              </>
-            )}
-          </CardHeader>
+        <div className="relative w-full max-w-md">
+          <div className="bg-card rounded-3xl border border-border/50 shadow-2xl shadow-black/5 p-8">
+            {/* Header */}
+            <div className="text-center mb-8">
+              {branding.logo_url ? (
+                <img src={branding.logo_url} alt={companyName} className="h-10 mx-auto mb-6" />
+              ) : (
+                <div
+                  className="h-16 w-16 mx-auto mb-6 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {companyName[0]}
+                </div>
+              )}
 
-          <CardContent className="space-y-4">
-            {canCreateWorkspace ? (
-              <div className="space-y-4">
-                <Button asChild className="w-full" style={{ backgroundColor: primaryColor }}>
-                  <Link href="/workspace-onboarding">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Workspace
-                  </Link>
-                </Button>
+              {canCreateWorkspace ? (
+                <>
+                  <h1 className="text-2xl font-bold tracking-tight mb-2">Create Your First Workspace</h1>
+                  <p className="text-muted-foreground">Get started by creating a workspace for your team</p>
+                </>
+              ) : isPartnerMember ? (
+                <>
+                  <h1 className="text-2xl font-bold tracking-tight mb-2">No Workspaces Yet</h1>
+                  <p className="text-muted-foreground">
+                    You're a member of {companyName}, but you haven't been added to any workspaces yet.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold tracking-tight mb-2">Access Required</h1>
+                  <p className="text-muted-foreground">You need to be invited to access {companyName}.</p>
+                </>
+              )}
+            </div>
 
-                <p className="text-xs text-center text-muted-foreground">
-                  As a {auth.partnerRole}, you can create and manage workspaces.
-                </p>
-              </div>
-            ) : isPartnerMember ? (
-              <div className="space-y-4">
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                        Waiting for invitation
-                      </p>
-                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                        Ask your workspace administrator to invite you. You'll receive an email when
-                        added.
-                      </p>
+            {/* Content */}
+            <div className="space-y-4">
+              {canCreateWorkspace ? (
+                <div className="space-y-4">
+                  <Button 
+                    asChild 
+                    className="w-full h-12 text-base rounded-xl shadow-lg shadow-primary/25" 
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Link href="/workspace-onboarding">
+                      <Sparkles className="mr-2 h-5 w-5" />
+                      Create Workspace
+                    </Link>
+                  </Button>
+
+                  <p className="text-xs text-center text-muted-foreground">
+                    As a {auth.partnerRole}, you can create and manage workspaces.
+                  </p>
+                </div>
+              ) : isPartnerMember ? (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-900/50 rounded-2xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+                        <Mail className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-blue-900 dark:text-blue-100">
+                          Waiting for invitation
+                        </p>
+                        <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                          Ask your workspace administrator to invite you. You'll receive an email when added.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  Logged in as: <span className="font-medium">{auth.user.email}</span>
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
+              ) : (
                 <p className="text-sm text-center text-muted-foreground">
                   Contact your administrator to request access.
                 </p>
-                <p className="text-xs text-center text-muted-foreground">
-                  Logged in as: <span className="font-medium">{auth.user.email}</span>
-                </p>
-              </div>
-            )}
+              )}
 
-            <form action="/api/auth/signout" method="POST" className="pt-2">
-              <Button variant="ghost" type="submit" className="w-full text-muted-foreground">
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign out
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+              {/* User Info & Logout */}
+              <div className="pt-6 border-t border-border/50">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Signed in as <span className="font-medium text-foreground">{auth.user.email}</span>
+                  </div>
+                  <form action="/api/auth/signout" method="POST">
+                    <Button 
+                      type="submit" 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <LogOut className="h-4 w-4 mr-1.5" />
+                      Sign out
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
   // Multiple workspaces - show selector
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{
-        background: `linear-gradient(135deg, ${primaryColor}10 0%, transparent 50%)`,
-      }}
-    >
-      <WorkspaceSelector
-        workspaces={auth.workspaces}
-        partner={auth.partner}
-        user={auth.user}
-        canCreateWorkspace={canCreateWorkspace}
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      {/* Subtle grid pattern background */}
+      <div 
+        className="fixed inset-0 opacity-[0.02] dark:opacity-[0.03]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}
       />
+      
+      {/* Gradient orbs */}
+      <div 
+        className="fixed top-0 left-1/4 w-96 h-96 rounded-full blur-3xl opacity-10"
+        style={{ backgroundColor: primaryColor }}
+      />
+      <div 
+        className="fixed bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl opacity-10"
+        style={{ backgroundColor: primaryColor }}
+      />
+
+      <div className="relative z-10">
+        <WorkspaceSelector
+          workspaces={auth.workspaces}
+          partner={auth.partner}
+          user={auth.user}
+          canCreateWorkspace={canCreateWorkspace}
+        />
+      </div>
     </div>
   )
 }

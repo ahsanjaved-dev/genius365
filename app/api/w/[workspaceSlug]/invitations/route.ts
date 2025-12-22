@@ -166,7 +166,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       // Don't fail the request if email fails - invitation is still created
     }
 
-    return apiResponse(invitation, 201)
+    // Return invitation with the invite link for manual sharing
+    return apiResponse({
+      ...invitation,
+      invite_link: inviteLink,
+    }, 201)
   } catch (error) {
     console.error("POST /api/w/[slug]/invitations error:", error)
     return serverError()

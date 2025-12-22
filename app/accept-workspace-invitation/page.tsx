@@ -235,7 +235,7 @@ function AcceptWorkspaceInvitationContent() {
 
               <Button variant="outline" asChild>
                 <Link
-                  href={`/signup?redirect=${encodeURIComponent(`/accept-workspace-invitation?token=${token}`)}`}
+                  href={`/signup?redirect=${encodeURIComponent(`/accept-workspace-invitation?token=${token}`)}&email=${encodeURIComponent(invitation?.email || "")}`}
                 >
                   Create an Account
                 </Link>

@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return unauthorized()
     }
 
+    // Fetch workspace members with user details from users table
     const { data: members, error } = await ctx.adminClient
       .from("workspace_members")
       .select(
@@ -28,7 +29,14 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         id,
         role,
         joined_at,
-        user_id
+        user_id,
+        user:users!workspace_members_user_id_fkey(
+          id,
+          email,
+          first_name,
+          last_name,
+          avatar_url
+        )
       `
       )
       .eq("workspace_id", ctx.workspace.id)
@@ -37,19 +45,47 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     if (error) {
       console.error("List members error:", error)
-      return serverError()
+      
+      // Fallback: Try without the join if the foreign key relationship isn't set up
+      const { data: basicMembers, error: basicError } = await ctx.adminClient
+        .from("workspace_members")
+        .select("id, role, joined_at, user_id")
+        .eq("workspace_id", ctx.workspace.id)
+        .is("removed_at", null)
+        .order("joined_at", { ascending: true })
+
+      if (basicError) {
+        console.error("List basic members error:", basicError)
+        return serverError()
+      }
+
+      // Fetch user details separately from users table
+      const userIds = basicMembers.map((m) => m.user_id)
+      const { data: users } = await ctx.adminClient
+        .from("users")
+        .select("id, email, first_name, last_name, avatar_url")
+        .in("id", userIds)
+
+      const usersMap = new Map(users?.map((u) => [u.id, u]) || [])
+
+      const membersWithDetails = basicMembers.map((m) => ({
+        id: m.id,
+        user_id: m.user_id,
+        role: m.role,
+        joined_at: m.joined_at,
+        user: usersMap.get(m.user_id) || null,
+      }))
+
+      return apiResponse(membersWithDetails)
     }
 
-    // Fetch user details from auth.users
-    const userIds = members.map((m) => m.user_id)
-
-    // Note: In production, you'd want to join with a users table or use a different approach
-    // For now, return member data without full user details
-    const membersWithDetails = members.map((m) => ({
+    // Transform the response to flatten user data
+    const membersWithDetails = members.map((m: any) => ({
       id: m.id,
       user_id: m.user_id,
       role: m.role,
       joined_at: m.joined_at,
+      user: m.user || null,
     }))
 
     return apiResponse(membersWithDetails)

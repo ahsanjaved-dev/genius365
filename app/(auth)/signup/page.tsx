@@ -104,6 +104,7 @@ function SignupForm() {
       // If no email confirmation, complete user setup
       if (authData.user && authData.session) {
         // Call our API to create user record and add to platform partner
+        // IMPORTANT: Pass isInvitation flag to skip default workspace creation for invited users
         const setupRes = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -114,6 +115,7 @@ function SignupForm() {
             lastName,
             selectedPlan: selectedPlan || "starter",
             signupSource: redirectTo ? "invitation" : selectedPlan ? "pricing_page" : "direct",
+            isInvitation: isInvitation, // Don't create default workspace for invited users
           }),
         })
 

@@ -12,10 +12,38 @@ function generateSlug(name: string): string {
     .replace(/-+/g, "-")
 }
 
+/**
+ * POST /api/auth/signup
+ * 
+ * This endpoint is called after Supabase auth signup to set up the user's account.
+ * 
+ * Two distinct flows:
+ * 
+ * 1. SELF-SIGNUP (Business Owners):
+ *    - User signs up directly on the platform
+ *    - Gets added as partner member (member role)
+ *    - Gets a DEFAULT WORKSPACE created (they become owner)
+ *    - Can then invite their team to their workspace
+ * 
+ * 2. INVITATION-BASED (Team Members):
+ *    - User signs up via an invitation link
+ *    - Gets added as partner member (member role)
+ *    - NO default workspace is created
+ *    - After signup, they complete the invitation acceptance flow
+ *    - They get added to the inviter's workspace with the invited role
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId, email, firstName, lastName, selectedPlan, signupSource } = body
+    const { 
+      userId, 
+      email, 
+      firstName, 
+      lastName, 
+      selectedPlan, 
+      signupSource,
+      isInvitation = false  // NEW: Flag to indicate if signup is from an invitation
+    } = body
 
     if (!userId || !email) {
       return apiError("User ID and email are required")
@@ -84,13 +112,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 5: Create a default workspace for the user (for platform partner)
-    // For white-label partners, they may want to invite users to existing workspaces
+    // Step 5: Create a default workspace ONLY for self-signup users (NOT for invitations)
     let defaultWorkspace = null
     let workspaceRedirect: string | null = null
 
-    if (partner.is_platform_partner) {
-      // For platform partner: create a personal workspace for the user
+    // Only create default workspace if:
+    // 1. This is the platform partner
+    // 2. This is NOT an invitation-based signup
+    if (partner.is_platform_partner && !isInvitation) {
+      // For platform partner self-signup: create a personal workspace for the user
       const workspaceName = `${firstName || email.split("@")[0]}'s Workspace`
       const workspaceSlug = generateSlug(workspaceName) + "-" + Date.now().toString(36)
 
@@ -134,9 +164,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // For invitation signups, don't set a redirect - let the invitation flow handle it
+    if (isInvitation) {
+      workspaceRedirect = null
+    }
+
     return apiResponse({
       success: true,
-      message: "User setup complete",
+      message: isInvitation 
+        ? "Account created. Complete the invitation to join the workspace."
+        : "User setup complete",
+      isInvitation,
       partner: {
         id: partner.id,
         name: partner.name,

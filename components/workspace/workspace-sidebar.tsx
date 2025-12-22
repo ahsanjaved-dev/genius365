@@ -1,12 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
 import {
   LayoutDashboard,
   LayoutGrid,
@@ -20,12 +21,17 @@ import {
   Phone,
   Settings,
   LogOut,
-  ChevronRight,
+  ChevronDown,
+  Check,
   MoreVertical,
   HelpCircle,
   ShieldCheck,
   Building2,
   UserPlus,
+  Plus,
+  Crown,
+  Shield,
+  User,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -35,7 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useAuth } from "@/lib/hooks/use-auth"
+import { createClient } from "@/lib/supabase/client"
 import type { AccessibleWorkspace, PartnerAuthUser } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
 
@@ -48,24 +54,23 @@ interface Props {
   user?: PartnerAuthUser
 }
 
-// Generate a consistent color based on string
-function getAvatarColor(str: string): string {
-  const colors = [
-    "bg-blue-500",
-    "bg-purple-500",
-    "bg-green-500",
-    "bg-orange-500",
-    "bg-pink-500",
-    "bg-cyan-500",
-    "bg-indigo-500",
-    "bg-teal-500",
+// Generate a consistent gradient based on string
+function getWorkspaceGradient(str: string): string {
+  const gradients = [
+    "from-violet-500 to-purple-600",
+    "from-blue-500 to-cyan-500",
+    "from-emerald-500 to-teal-500",
+    "from-orange-500 to-amber-500",
+    "from-pink-500 to-rose-500",
+    "from-indigo-500 to-blue-500",
+    "from-cyan-500 to-teal-500",
+    "from-fuchsia-500 to-pink-500",
   ]
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
-  const colorIndex = Math.abs(hash) % colors.length
-  return colors[colorIndex] ?? "bg-purple-500"
+  return gradients[Math.abs(hash) % gradients.length] ?? gradients[0]
 }
 
 // Get initials from workspace name
@@ -78,11 +83,19 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
+const roleConfig = {
+  owner: { icon: Crown, label: "Owner" },
+  admin: { icon: Shield, label: "Admin" },
+  member: { icon: User, label: "Member" },
+  viewer: { icon: User, label: "Viewer" },
+}
+
 export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isCollapsed, partnerRole, user }: Props) {
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const router = useRouter()
 
   const branding = partner.branding
+  const primaryColor = branding.primary_color || "#7c3aed"
   
   // User display data
   const userName = user?.first_name 
@@ -120,6 +133,13 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
     { title: "Invite Members", href: `/org/invitations`, icon: UserPlus },
   ] : []
 
+  const handleLogout = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/login")
+    router.refresh()
+  }
+
   return (
     <div
       className={cn(
@@ -127,16 +147,19 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
         isCollapsed ? "w-[4.5rem]" : "w-64"
       )}
     >
-      {/* Partner Logo */}
-      <div className={cn("p-4 border-b border-border", isCollapsed && "px-2")}>
+      {/* Partner Logo - Fixed at top */}
+      <div className={cn("p-4 border-b border-border shrink-0", isCollapsed && "px-2")}>
         <Link
           href={`${baseUrl}/dashboard`}
           className={cn("flex items-center gap-3", isCollapsed && "justify-center")}
         >
           {branding.logo_url ? (
             isCollapsed ? (
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <span className="text-primary font-bold">{companyName[0]}</span>
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-sm"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {companyName[0]}
               </div>
             ) : (
               <img
@@ -147,8 +170,11 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
             )
           ) : (
             <>
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <span className="text-primary font-bold">{companyName[0]}</span>
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-sm flex-shrink-0"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {companyName[0]}
               </div>
               {!isCollapsed && (
                 <span className="text-xl font-bold text-foreground">{companyName}</span>
@@ -158,22 +184,23 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
         </Link>
       </div>
 
-      {/* Workspace Selector - Zapworks Inspired */}
-      <div className={cn("p-3", isCollapsed && "px-2")}>
+      {/* Workspace Selector - Redesigned */}
+      <div className={cn("p-3 shrink-0", isCollapsed && "px-2")}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "w-full flex items-center gap-3 rounded-xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 transition-all group outline-none focus:ring-2 focus:ring-primary/20",
-                isCollapsed ? "p-2 justify-center" : "p-3"
+                "w-full flex items-center gap-3 rounded-xl transition-all group outline-none",
+                "bg-muted/50 hover:bg-muted border border-border/50 hover:border-border",
+                isCollapsed ? "p-2 justify-center" : "p-2.5"
               )}
               title={isCollapsed ? currentWorkspace.name : undefined}
             >
               <div
                 className={cn(
-                  "rounded-lg flex items-center justify-center text-white font-semibold text-sm shrink-0",
-                  isCollapsed ? "h-8 w-8" : "h-10 w-10",
-                  getAvatarColor(currentWorkspace.name)
+                  "rounded-lg flex items-center justify-center text-white font-semibold text-xs shrink-0 bg-gradient-to-br shadow-sm",
+                  isCollapsed ? "h-8 w-8" : "h-9 w-9",
+                  getWorkspaceGradient(currentWorkspace.name)
                 )}
               >
                 {getInitials(currentWorkspace.name)}
@@ -181,63 +208,105 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
               {!isCollapsed && (
                 <>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="font-semibold text-foreground truncate">{currentWorkspace.name}</p>
+                    <p className="font-medium text-sm text-foreground truncate">{currentWorkspace.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{currentWorkspace.role}</p>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
                 </>
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-72" sideOffset={8}>
-            <DropdownMenuLabel className="text-base font-semibold">My workspaces</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <div className="max-h-64 overflow-y-auto">
-              {workspaces.map((ws) => (
-                <DropdownMenuItem key={ws.id} asChild className="p-0">
-                  <Link
-                    href={`/w/${ws.slug}/dashboard`}
-                    className={cn(
-                      "flex items-center gap-3 p-3 cursor-pointer w-full",
-                      ws.id === currentWorkspace.id && "bg-primary/5"
-                    )}
-                  >
-                    <div
+          <DropdownMenuContent 
+            align="start" 
+            className="w-80 p-2" 
+            sideOffset={8}
+          >
+            {/* Current Workspace Header */}
+            <div className="px-2 py-1.5 mb-1">
+              <p className="text-xs font-medium text-muted-foreground">Switch workspace</p>
+            </div>
+
+            {/* Workspace List */}
+            <div className="max-h-72 overflow-y-auto space-y-0.5">
+              {workspaces.map((ws) => {
+                const isCurrent = ws.id === currentWorkspace.id
+                const roleInfo = roleConfig[ws.role as keyof typeof roleConfig] || roleConfig.member
+
+                return (
+                  <DropdownMenuItem key={ws.id} asChild className="p-0 focus:bg-transparent">
+                    <Link
+                      href={`/w/${ws.slug}/dashboard`}
                       className={cn(
-                        "h-10 w-10 rounded-lg flex items-center justify-center text-white font-semibold text-sm shrink-0",
-                        getAvatarColor(ws.name)
+                        "flex items-center gap-3 p-2.5 rounded-lg cursor-pointer w-full transition-colors",
+                        isCurrent 
+                          ? "bg-primary/10 border border-primary/20" 
+                          : "hover:bg-muted border border-transparent"
                       )}
                     >
-                      {getInitials(ws.name)}
+                      <div
+                        className={cn(
+                          "h-10 w-10 rounded-lg flex items-center justify-center text-white font-semibold text-sm shrink-0 bg-gradient-to-br shadow-sm",
+                          getWorkspaceGradient(ws.name)
+                        )}
+                      >
+                        {getInitials(ws.name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-foreground truncate">{ws.name}</p>
+                          {isCurrent && (
+                            <Check className="h-4 w-4 text-primary shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <roleInfo.icon className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">{roleInfo.label}</span>
+                        </div>
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )
+              })}
+            </div>
+
+            <DropdownMenuSeparator className="my-2" />
+
+            {/* Actions */}
+            <div className="space-y-0.5">
+              {isPartnerAdmin && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/workspace-onboarding"
+                    className="flex items-center gap-2.5 px-2.5 py-2 cursor-pointer rounded-lg"
+                  >
+                    <div className="h-8 w-8 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
+                      <Plus className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{ws.name}</p>
-                      {ws.id === currentWorkspace.id && (
-                        <p className="text-xs text-primary">Current workspace</p>
-                      )}
-                    </div>
+                    <span className="font-medium">Create workspace</span>
                   </Link>
                 </DropdownMenuItem>
-              ))}
+              )}
+              <DropdownMenuItem asChild>
+                <Link
+                  href="/select-workspace"
+                  className="flex items-center gap-2.5 px-2.5 py-2 cursor-pointer rounded-lg"
+                >
+                  <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
+                    <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <span className="font-medium">View all workspaces</span>
+                </Link>
+              </DropdownMenuItem>
             </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link
-                href="/select-workspace"
-                className="flex items-center gap-3 p-3 cursor-pointer"
-              >
-                <LayoutGrid className="h-5 w-5" />
-                <span className="font-medium">View all workspaces</span>
-              </Link>
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      <Separator className="mx-3" />
+      <Separator className="mx-3 shrink-0" />
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 py-4">
-        <nav className={cn("space-y-1", isCollapsed ? "px-2" : "px-3")}>
+      {/* Navigation - Scrollable area that takes remaining space */}
+      <ScrollArea className="flex-1 min-h-0">
+        <nav className={cn("space-y-1 py-4", isCollapsed ? "px-2" : "px-3")}>
           {/* Workspace Navigation */}
           {!isCollapsed && (
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
@@ -303,14 +372,45 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
         </nav>
       </ScrollArea>
 
-      {/* User Footer */}
-      <div className={cn("p-3 border-t border-border", isCollapsed && "px-2")}>
+      {/* User Footer - Fixed at bottom */}
+      <div className={cn("p-3 border-t border-border shrink-0", isCollapsed && "px-2")}>
         {isCollapsed ? (
-          <div className="flex justify-center">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">{userInitials}</AvatarFallback>
-            </Avatar>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full flex justify-center outline-none">
+                <Avatar className="h-9 w-9 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">{userInitials}</AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="right" className="w-48">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium">{userName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href={`${baseUrl}/settings`} className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                <HelpCircle className="h-4 w-4" />
+                Help Center
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <div className="flex items-center gap-3 px-2">
             <Avatar className="h-9 w-9 shrink-0">
@@ -347,7 +447,7 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
                 >
                   <LogOut className="h-4 w-4" />
