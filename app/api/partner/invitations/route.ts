@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getPartnerAuthContext, isPartnerAdmin } from "@/lib/api/auth"
-import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { headers } from "next/headers"
 import { z } from "zod"
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const validation = createInvitationSchema.safeParse(body)
 
     if (!validation.success) {
-      const errors = validation.error.errors.map(e => e.message).join(", ")
+      const errors = getValidationError(validation.error)
       return apiError(errors)
     }
 

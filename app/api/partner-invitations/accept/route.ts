@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return unauthorized("You must be logged in to accept an invitation")
+      return unauthorized()
     }
 
     const adminClient = createAdminClient()

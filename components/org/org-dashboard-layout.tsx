@@ -139,7 +139,7 @@ export function OrgDashboardLayout({
             <div className="flex items-center gap-3 px-2">
               <Avatar className="h-9 w-9 shrink-0">
                 <AvatarFallback className="text-xs bg-muted text-muted-foreground">
-                  {user.first_name?.[0] || user.email[0].toUpperCase()}
+                  {user.first_name?.[0] || user.email?.[0]?.toUpperCase() || "?"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">

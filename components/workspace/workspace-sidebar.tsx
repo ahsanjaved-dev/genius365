@@ -70,7 +70,7 @@ function getWorkspaceGradient(str: string): string {
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return gradients[Math.abs(hash) % gradients.length] ?? gradients[0]
+  return gradients[Math.abs(hash) % gradients.length] ?? "from-violet-500 to-purple-600"
 }
 
 // Get initials from workspace name

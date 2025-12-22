@@ -41,7 +41,7 @@ function getWorkspaceColor(str: string): string {
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return colors[Math.abs(hash) % colors.length] ?? colors[0]
+  return colors[Math.abs(hash) % colors.length] ?? "from-violet-500 to-purple-600"
 }
 
 // Get initials from workspace name

@@ -222,7 +222,7 @@ export default function OrgTeamPage() {
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9">
                             <AvatarFallback className="bg-primary/10 text-primary">
-                              {member.first_name?.[0] || member.email[0].toUpperCase()}
+                              {member.first_name?.[0] || member.email?.[0]?.toUpperCase() || "?"}
                             </AvatarFallback>
                           </Avatar>
                           <div>
