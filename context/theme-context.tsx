@@ -51,7 +51,7 @@ export function ThemeProvider({
 
   // Apply theme to document
   useEffect(() => {
-    if (!mounted) return
+    if (!mounted) return undefined
 
     const root = document.documentElement
 
@@ -76,6 +76,7 @@ export function ThemeProvider({
       return () => mediaQuery.removeEventListener("change", handleChange)
     } else {
       applyTheme(theme)
+      return undefined
     }
   }, [theme, mounted])
 

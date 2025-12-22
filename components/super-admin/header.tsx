@@ -30,7 +30,7 @@ export function SuperAdminHeader({ superAdmin }: SuperAdminHeaderProps) {
   const initials =
     superAdmin.first_name && superAdmin.last_name
       ? `${superAdmin.first_name[0]}${superAdmin.last_name[0]}`
-      : superAdmin.email[0].toUpperCase()
+      : (superAdmin.email[0] ?? "A").toUpperCase()
 
   return (
     <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 flex items-center justify-between">

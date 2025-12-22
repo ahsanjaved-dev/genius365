@@ -116,8 +116,10 @@ export function WorkspaceHeader({
     // Find the page segment (after /w/[slug]/)
     if (segments.length >= 3) {
       const pageSegment = segments[2]
-      const pageName = pageNames[pageSegment] || pageSegment
-      crumbs.push({ label: pageName })
+      if (pageSegment) {
+        const pageName = pageNames[pageSegment] || pageSegment
+        crumbs.push({ label: pageName })
+      }
     }
 
     return crumbs

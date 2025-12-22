@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { apiResponse, apiError, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, serverError, getValidationError } from "@/lib/api/helpers"
 import { z } from "zod"
 
 const acceptInvitationSchema = z.object({
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const validation = acceptInvitationSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     const { token } = validation.data

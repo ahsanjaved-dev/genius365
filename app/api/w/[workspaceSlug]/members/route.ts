@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
-import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { z } from "zod"
 
 interface RouteContext {
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const validation = inviteMemberSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     // Check member limits

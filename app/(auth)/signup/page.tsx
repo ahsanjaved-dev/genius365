@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useState, Suspense, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/card"
 import { Loader2, CheckCircle2, Check, Sparkles } from "lucide-react"
 import { plans } from "@/config/plans"
+import { PasswordStrengthIndicator } from "@/components/auth/password-strength"
+import { validatePassword } from "@/lib/auth/password"
 
 type PlanKey = keyof typeof plans
 
@@ -46,6 +48,12 @@ function SignupForm() {
   const planInfo = selectedPlan && plans[selectedPlan] ? plans[selectedPlan] : null
   const planFeatures = selectedPlan ? planBenefits[selectedPlan] || [] : []
 
+  // Password validation
+  const passwordValidation = useMemo(
+    () => validatePassword(password, { email, firstName, lastName }),
+    [password, email, firstName, lastName]
+  )
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -58,8 +66,9 @@ function SignupForm() {
       return
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
+    // Use new password validation
+    if (!passwordValidation.valid) {
+      setError(passwordValidation.errors[0]?.message || "Password does not meet requirements")
       setLoading(false)
       return
     }
@@ -264,8 +273,15 @@ function SignupForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                minLength={8}
+                minLength={12}
               />
+              {password && (
+                <PasswordStrengthIndicator
+                  password={password}
+                  showRequirements={true}
+                  className="mt-3"
+                />
+              )}
             </div>
 
             <div className="space-y-2">
@@ -278,7 +294,15 @@ function SignupForm() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 disabled={loading}
+                className={
+                  confirmPassword && confirmPassword !== password
+                    ? "border-red-500 focus-visible:ring-red-500"
+                    : ""
+                }
               />
+              {confirmPassword && confirmPassword !== password && (
+                <p className="text-sm text-red-500">Passwords do not match</p>
+              )}
             </div>
           </CardContent>
 

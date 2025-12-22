@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { apiResponse, apiError, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, serverError, getValidationError } from "@/lib/api/helpers"
 import { createPartnerRequestSchema } from "@/types/database.types"
 import { sendPartnerRequestNotification } from "@/lib/email/send"
 
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const validation = createPartnerRequestSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message, 400)
+      return apiError(getValidationError(validation.error), 400)
     }
 
     const data = validation.data

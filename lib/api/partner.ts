@@ -1,5 +1,13 @@
 import { headers } from "next/headers"
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  cacheGet,
+  cacheSet,
+  cacheDelete,
+  cacheDeletePattern,
+  CacheKeys,
+  CacheTTL,
+} from "@/lib/cache"
 import type { Partner, PartnerBranding } from "@/types/database.types"
 
 // ============================================================================
@@ -18,36 +26,18 @@ export interface ResolvedPartner {
 }
 
 // ============================================================================
-// CACHE (Simple in-memory cache for development)
-// In production, consider using Redis or Vercel KV
+// CACHE MANAGEMENT
+// Uses the centralized cache layer from lib/cache
 // ============================================================================
 
-interface CacheEntry {
-  partner: ResolvedPartner
-  timestamp: number
-}
-
-const partnerCache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 60 * 1000 // 1 minute
-
-function getCachedPartner(hostname: string): ResolvedPartner | null {
-  const cached = partnerCache.get(hostname)
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.partner
-  }
-  return null
-}
-
-function setCachedPartner(hostname: string, partner: ResolvedPartner): void {
-  partnerCache.set(hostname, { partner, timestamp: Date.now() })
-}
-
-// Clear cache for a specific hostname (useful for updates)
-export function clearPartnerCache(hostname?: string): void {
+/**
+ * Clear partner cache for a specific hostname or all partners
+ */
+export async function clearPartnerCache(hostname?: string): Promise<void> {
   if (hostname) {
-    partnerCache.delete(hostname)
+    await cacheDelete(CacheKeys.partner(hostname))
   } else {
-    partnerCache.clear()
+    await cacheDeletePattern("partner:")
   }
 }
 
@@ -69,7 +59,8 @@ export async function getHostname(): Promise<string> {
     "localhost" // Fallback
 
   // Strip port number for local development (localhost:3000 → localhost)
-  return host.split(":")[0].toLowerCase()
+  const hostname = host.split(":")[0]
+  return (hostname ?? host).toLowerCase()
 }
 
 // ============================================================================
@@ -88,9 +79,10 @@ export async function getHostname(): Promise<string> {
  */
 export async function getPartnerFromHost(): Promise<ResolvedPartner> {
   const hostname = await getHostname()
+  const cacheKey = CacheKeys.partner(hostname)
 
   // Check cache first
-  const cached = getCachedPartner(hostname)
+  const cached = await cacheGet<ResolvedPartner>(cacheKey)
   if (cached) {
     console.log(`[Partner] Cache hit for hostname: ${hostname}`)
     return cached
@@ -135,7 +127,8 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
       is_platform_partner: partner.is_platform_partner,
     }
 
-    setCachedPartner(hostname, resolved)
+    // Cache with 10-minute TTL (partner data is semi-static)
+    await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
     console.log(`[Partner] Resolved to: ${resolved.name} (${resolved.slug})`)
     return resolved
   }
@@ -165,8 +158,8 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
     is_platform_partner: platformPartner.is_platform_partner,
   }
 
-  // Cache the fallback too (with the original hostname as key)
-  setCachedPartner(hostname, resolved)
+  // Cache the fallback too with 10-minute TTL
+  await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
   console.log(`[Partner] Resolved to platform partner: ${resolved.name}`)
   return resolved
 }

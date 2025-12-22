@@ -7,13 +7,14 @@ import type { NextRequest } from "next/server"
 const publicPaths = [
   "/",
   "/login",
-  "/signup", // ADD THIS
+  "/signup",
   "/forgot-password",
   "/reset-password",
   "/accept-invitation",
-  "/accept-workspace-invitation", // ADD THIS
-  "/pricing", // NEW
+  "/accept-workspace-invitation",
+  "/pricing",
   "/request-partner",
+  "/api/health", // Health check endpoint
 ]
 
 // Super admin paths require super admin auth (handled in layouts)
@@ -25,6 +26,36 @@ const protectedPaths = [
   "/workspace-onboarding",
   "/w/", // All workspace routes
 ]
+
+/**
+ * Build Content Security Policy header
+ * Phase 2.4.1: Implement CSP for security
+ */
+function buildCSP(): string {
+  const policies = [
+    "default-src 'self'",
+    // Scripts: self, inline (for Next.js), eval (for dev)
+    process.env.NODE_ENV === "development"
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      : "script-src 'self' 'unsafe-inline'",
+    // Styles: self, inline (for Tailwind)
+    "style-src 'self' 'unsafe-inline'",
+    // Images: self, data URIs, Supabase storage, Google avatars
+    "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://avatars.githubusercontent.com",
+    // Fonts: self, Google Fonts
+    "font-src 'self' https://fonts.gstatic.com",
+    // Connect: self, Supabase, voice providers
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.vapi.ai https://api.retellai.com",
+    // Frame ancestors: none (prevent clickjacking)
+    "frame-ancestors 'none'",
+    // Form actions: self only
+    "form-action 'self'",
+    // Base URI: self only
+    "base-uri 'self'",
+  ]
+
+  return policies.join("; ")
+}
 
 export async function proxy(request: NextRequest) {
   const { supabaseResponse, user } = await updateSession(request)
@@ -59,12 +90,34 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/select-workspace", request.url))
   }
 
-  // Add security headers
+  // Add comprehensive security headers
   const response = supabaseResponse
+
+  // Basic security headers
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("X-XSS-Protection", "1; mode=block")
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+  // HSTS (Strict Transport Security) - only in production
+  if (process.env.NODE_ENV === "production") {
+    response.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains; preload"
+    )
+  }
+
+  // Content Security Policy
+  response.headers.set("Content-Security-Policy", buildCSP())
+
+  // Permissions Policy (formerly Feature-Policy)
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(self), geolocation=(), payment=()"
+  )
+
+  // DNS Prefetch Control
+  response.headers.set("X-DNS-Prefetch-Control", "on")
 
   return response
 }

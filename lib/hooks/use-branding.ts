@@ -31,7 +31,7 @@ export function usePartnerBranding() {
     // Helpers
     getInitial: () => {
       const name = branding.company_name || partner?.name || "A"
-      return name[0].toUpperCase()
+      return (name[0] ?? "A").toUpperCase()
     },
   }
 }

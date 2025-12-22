@@ -60,14 +60,15 @@ function getAvatarColor(str: string): string {
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash)
   }
-  return colors[Math.abs(hash) % colors.length]
+  const colorIndex = Math.abs(hash) % colors.length
+  return colors[colorIndex] ?? "bg-purple-500"
 }
 
 // Get initials from workspace name
 function getInitials(name: string): string {
   return name
     .split(" ")
-    .map((word) => word[0])
+    .map((word) => word[0] ?? "")
     .join("")
     .toUpperCase()
     .slice(0, 2)

@@ -46,7 +46,8 @@ export function getUserDisplayName(user: PartnerAuthUser | undefined): string {
     return `${user.first_name} ${user.last_name}`
   }
   if (user.first_name) return user.first_name
-  return user.email.split("@")[0]
+  const emailUsername = user.email.split("@")[0]
+  return emailUsername ?? user.email
 }
 
 /**
@@ -57,8 +58,8 @@ export function getUserInitials(user: PartnerAuthUser | undefined): string {
   if (user.first_name && user.last_name) {
     return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
   }
-  if (user.first_name) return user.first_name[0].toUpperCase()
-  return user.email[0].toUpperCase()
+  if (user.first_name) return (user.first_name[0] ?? "U").toUpperCase()
+  return (user.email[0] ?? "U").toUpperCase()
 }
 
 /**

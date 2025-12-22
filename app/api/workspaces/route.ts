@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getPartnerAuthContext, isPartnerAdmin } from "@/lib/api/auth"
-import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { createWorkspaceSchema } from "@/types/database.types"
 
 export async function POST(request: NextRequest) {
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     const { name, slug, description, resource_limits } = validation.data

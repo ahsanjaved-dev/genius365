@@ -44,21 +44,25 @@ async function sendEmail({ to, subject, react }: SendEmailOptions) {
 
 // Existing function
 export async function sendWorkspaceInvitation(
+  recipientEmail: string,
   workspaceName: string,
   inviterName: string,
-  inviteLink: string, // Changed from invitationUrl
+  inviteLink: string,
   role: string,
   expiresAt: string,
   partnerName: string,
   message?: string
 ) {
+  // Use test email in development, real email in production
+  const to = env.isDev ? "drewcarter112233@gmail.com" : recipientEmail
+
   return sendEmail({
-    to: "drewcarter112233@gmail.com",
+    to,
     subject: `You've been invited to join ${workspaceName}`,
     react: WorkspaceInvitationEmail({
       workspaceName,
       inviterName,
-      inviteLink, // Changed from invitationUrl
+      inviteLink,
       role,
       message,
       expiresAt,

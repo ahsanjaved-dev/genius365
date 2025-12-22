@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
-import { apiResponse, apiError, unauthorized, notFound, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, notFound, serverError, getValidationError } from "@/lib/api/helpers"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
 
@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const validation = updatePartnerSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     const adminClient = createAdminClient()

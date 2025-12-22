@@ -121,7 +121,43 @@ export function useDeleteWorkspaceAgent() {
       }
       return res.json()
     },
-    onSuccess: () => {
+    // Optimistic update: remove agent immediately from UI
+    onMutate: async (agentId: string) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["workspace-agents", workspaceSlug] })
+
+      // Snapshot previous value
+      const previousAgents = queryClient.getQueryData<PaginatedResponse<AIAgent>>([
+        "workspace-agents",
+        workspaceSlug,
+        {},
+      ])
+
+      // Optimistically remove the agent
+      if (previousAgents) {
+        queryClient.setQueryData<PaginatedResponse<AIAgent>>(
+          ["workspace-agents", workspaceSlug, {}],
+          {
+            ...previousAgents,
+            data: previousAgents.data.filter((agent) => agent.id !== agentId),
+            total: previousAgents.total - 1,
+          }
+        )
+      }
+
+      return { previousAgents }
+    },
+    // Rollback on error
+    onError: (_error, _agentId, context) => {
+      if (context?.previousAgents) {
+        queryClient.setQueryData(
+          ["workspace-agents", workspaceSlug, {}],
+          context.previousAgents
+        )
+      }
+    },
+    // Always refetch after success or error
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace-agents", workspaceSlug] })
     },
   })

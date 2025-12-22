@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
-import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { createWorkspaceAgentSchema } from "@/types/api.types"
 import { createAuditLog, getRequestMetadata } from "@/lib/audit"
 import { safeVapiSync, shouldSyncToVapi } from "@/lib/integrations/vapi/agent/sync"
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const validation = createWorkspaceAgentSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     // Check agent limits for workspace

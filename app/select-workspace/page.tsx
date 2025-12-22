@@ -30,8 +30,9 @@ export default async function SelectWorkspacePage() {
   }
 
   // Auto-redirect if only one workspace
-  if (auth.workspaces.length === 1) {
-    redirect(`/w/${auth.workspaces[0].slug}/dashboard`)
+  const firstWorkspace = auth.workspaces[0]
+  if (auth.workspaces.length === 1 && firstWorkspace) {
+    redirect(`/w/${firstWorkspace.slug}/dashboard`)
   }
 
   const branding = auth.partner.branding

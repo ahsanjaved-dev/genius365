@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
-import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
+import { apiResponse, apiError, unauthorized, serverError, getValidationError } from "@/lib/api/helpers"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
 
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     const validation = createPartnerSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(getValidationError(validation.error))
     }
 
     const adminClient = createAdminClient()

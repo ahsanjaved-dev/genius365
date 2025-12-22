@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server"
+import type { ZodError } from "zod"
 import type { ApiResponse } from "@/types/database.types"
 
 export function apiResponse<T>(data: T, status = 200): NextResponse<ApiResponse<T>> {
   return NextResponse.json({ data }, { status })
+}
+
+/**
+ * Safely get the first validation error message from a Zod error
+ */
+export function getValidationError(error: ZodError): string {
+  const firstIssue = error.issues[0]
+  return firstIssue?.message ?? "Validation failed"
 }
 
 export function apiError(error: string, status = 400): NextResponse<ApiResponse<never>> {
