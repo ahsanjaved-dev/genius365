@@ -258,3 +258,130 @@
   --sidebar-width-collapsed: 4.5rem;
   --topbar-height: 4rem;
 }
+
+/* ============================================================================
+   WORKSPACE THEME - Genius agency tokens (scoped)
+   Applied to workspace dashboard pages at /w/[workspaceSlug]/*
+   ============================================================================ */
+
+.workspace-theme {
+  /* Light Mode - Genius tokens */
+  --radius: 0.5rem;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222 47% 11%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 47% 11%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 47% 11%);
+  --primary: hsl(262 83% 58%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(142 76% 36%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215 16% 47%);
+  --accent: hsl(47 96% 53%);
+  --accent-foreground: hsl(222 47% 11%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(214 32% 91%);
+  --input: hsl(214 32% 91%);
+  --ring: hsl(213 94% 60%);
+  
+  /* Additional Genius tokens */
+  --success: hsl(142 76% 36%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(213 94% 60%);
+  --info-foreground: hsl(0 0% 100%);
+  
+  /* Sidebar tokens for Workspace */
+  --sidebar: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(222 47% 11%);
+  --sidebar-primary: hsl(262 83% 58%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(210 40% 96%);
+  --sidebar-accent-foreground: hsl(222 47% 11%);
+  --sidebar-border: hsl(214 32% 91%);
+  --sidebar-ring: hsl(213 94% 60%);
+  
+  /* Layout dimensions */
+  --sidebar-width: 16rem;
+  --sidebar-width-collapsed: 4.5rem;
+  --topbar-height: 4rem;
+}
+
+.dark .workspace-theme,
+.workspace-theme.dark {
+  /* Dark Mode - Genius tokens */
+  --background: hsl(222 47% 7%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222 47% 9%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222 47% 9%);
+  --popover-foreground: hsl(210 40% 98%);
+  --primary: hsl(262 83% 58%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(142 76% 36%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(217 33% 14%);
+  --muted-foreground: hsl(215 20% 70%);
+  --accent: hsl(47 96% 53%);
+  --accent-foreground: hsl(222 47% 11%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(217 33% 18%);
+  --input: hsl(217 33% 18%);
+  --ring: hsl(213 98% 64%);
+  
+  /* Additional Genius tokens (dark) */
+  --success: hsl(142 76% 36%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(213 98% 64%);
+  --info-foreground: hsl(0 0% 100%);
+  
+  /* Sidebar tokens for Workspace (dark) */
+  --sidebar: hsl(222 47% 9%);
+  --sidebar-foreground: hsl(210 40% 98%);
+  --sidebar-primary: hsl(262 83% 58%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(217 33% 14%);
+  --sidebar-accent-foreground: hsl(210 40% 98%);
+  --sidebar-border: hsl(217 33% 18%);
+  --sidebar-ring: hsl(213 98% 64%);
+}
+
+/* Workspace theme utility classes */
+.workspace-theme .stat-card {
+  @apply p-5;
+}
+
+.workspace-theme .stat-label {
+  @apply text-sm text-muted-foreground mb-0.5;
+}
+
+.workspace-theme .stat-value {
+  @apply text-3xl font-bold tracking-tight;
+}
+
+.workspace-theme .stat-trend {
+  @apply flex items-center gap-1 text-xs mt-1;
+}
+
+.workspace-theme .stat-trend.positive {
+  color: var(--success);
+}
+
+.workspace-theme .stat-trend.negative {
+  color: var(--destructive);
+}
+
+.workspace-theme .page-header {
+  @apply flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6;
+}
+
+.workspace-theme .page-title {
+  @apply text-3xl font-bold tracking-tight;
+}

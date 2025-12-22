@@ -1,0 +1,966 @@
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Save,
+  Play,
+  Volume2,
+  BookOpen,
+  Phone,
+  Briefcase,
+  Smile,
+  Coffee,
+  PhoneForwarded,
+  CalendarPlus,
+  Search,
+  Wrench,
+  Code,
+  Plus,
+  X,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import type { CreateWorkspaceAgentInput } from "@/types/api.types"
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface AgentWizardProps {
+  onSubmit: (data: CreateWorkspaceAgentInput) => Promise<void>
+  isSubmitting: boolean
+  onCancel: () => void
+}
+
+interface WizardFormData {
+  // Step 1: Basic Info
+  name: string
+  description: string
+  provider: "vapi" | "retell" | "synthflow"
+  language: string
+  enableKnowledgeBase: boolean
+  knowledgeFiles: string[]
+  enablePhoneNumber: boolean
+  phoneNumber: string
+  // Step 2: Voice
+  voice: string
+  voiceSpeed: number
+  voicePitch: number
+  // Step 3: Prompts & Tools
+  systemPrompt: string
+  greeting: string
+  style: "formal" | "friendly" | "casual"
+  tools: Tool[]
+}
+
+interface Tool {
+  id: string
+  name: string
+  description: string
+  type: "preset" | "custom"
+  parameters?: Record<string, unknown>
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const PROVIDERS = [
+  {
+    id: "vapi",
+    name: "Vapi",
+    description: "Advanced voice AI with low latency",
+    badge: "Recommended",
+    color: "bg-purple-100 dark:bg-purple-900/30",
+    textColor: "text-purple-600",
+  },
+  {
+    id: "retell",
+    name: "Retell",
+    description: "Human-like voice synthesis",
+    badge: "Natural voices",
+    color: "bg-blue-100 dark:bg-blue-900/30",
+    textColor: "text-blue-600",
+  },
+  {
+    id: "synthflow",
+    name: "Synthflow",
+    description: "High-quality voice synthesis",
+    badge: "Premium quality",
+    color: "bg-green-100 dark:bg-green-900/30",
+    textColor: "text-green-600",
+  },
+]
+
+const LANGUAGES = [
+  { value: "en-US", label: "English (US)" },
+  { value: "en-GB", label: "English (UK)" },
+  { value: "es-ES", label: "Spanish (Spain)" },
+  { value: "es-MX", label: "Spanish (Mexico)" },
+  { value: "fr-FR", label: "French" },
+  { value: "de-DE", label: "German" },
+  { value: "it-IT", label: "Italian" },
+  { value: "pt-BR", label: "Portuguese (Brazil)" },
+  { value: "ja-JP", label: "Japanese" },
+  { value: "zh-CN", label: "Chinese (Simplified)" },
+]
+
+const VOICES = [
+  { id: "aria", name: "Aria", gender: "Female", style: "Warm", color: "bg-pink-100", textColor: "text-pink-600" },
+  { id: "jason", name: "Jason", gender: "Male", style: "Professional", color: "bg-blue-100", textColor: "text-blue-600" },
+  { id: "luna", name: "Luna", gender: "Female", style: "Friendly", color: "bg-purple-100", textColor: "text-purple-600" },
+  { id: "marcus", name: "Marcus", gender: "Male", style: "Deep", color: "bg-green-100", textColor: "text-green-600" },
+  { id: "sophia", name: "Sophia", gender: "Female", style: "Calm", color: "bg-amber-100", textColor: "text-amber-600" },
+  { id: "ethan", name: "Ethan", gender: "Male", style: "Energetic", color: "bg-cyan-100", textColor: "text-cyan-600" },
+]
+
+const PRESET_TOOLS = [
+  {
+    id: "transfer-call",
+    name: "Transfer Call",
+    description: "Transfer to human agent",
+    icon: PhoneForwarded,
+    color: "bg-blue-100",
+    textColor: "text-blue-600",
+  },
+  {
+    id: "book-meeting",
+    name: "Book Meeting",
+    description: "Schedule appointments",
+    icon: CalendarPlus,
+    color: "bg-green-100",
+    textColor: "text-green-600",
+  },
+  {
+    id: "lookup-customer",
+    name: "Lookup Customer",
+    description: "Search CRM data",
+    icon: Search,
+    color: "bg-purple-100",
+    textColor: "text-purple-600",
+  },
+]
+
+const PROMPT_TEMPLATES = {
+  support: `You are a helpful customer support agent for [Company Name]. Your goal is to assist customers with their inquiries in a friendly and professional manner.
+
+Guidelines:
+- Always greet the customer warmly
+- Listen carefully to their concerns
+- Provide accurate and helpful information
+- Escalate complex issues when necessary
+- End calls with a summary and next steps
+
+Key information:
+- Company hours: Monday-Friday, 9 AM - 6 PM
+- Support email: support@company.com`,
+
+  sales: `You are a sales representative for [Company Name]. Your goal is to qualify leads and schedule appointments with the sales team.
+
+Objectives:
+- Understand the prospect's needs
+- Qualify based on budget, authority, need, and timeline
+- Highlight key product benefits
+- Schedule demos or callbacks for qualified leads
+- Collect contact information for follow-up
+
+Remember to be enthusiastic but not pushy.`,
+
+  booking: `You are an appointment scheduling assistant for [Company Name]. Help customers book, reschedule, or cancel appointments.
+
+Capabilities:
+- Check calendar availability
+- Book new appointments
+- Reschedule existing appointments
+- Cancel appointments
+- Send confirmation details
+
+Always verify the customer's identity and confirm appointment details before finalizing.`,
+}
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
+export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardProps) {
+  const [currentStep, setCurrentStep] = useState(1)
+  const totalSteps = 3
+
+  const [formData, setFormData] = useState<WizardFormData>({
+    name: "",
+    description: "",
+    provider: "vapi",
+    language: "en-US",
+    enableKnowledgeBase: false,
+    knowledgeFiles: [],
+    enablePhoneNumber: false,
+    phoneNumber: "",
+    voice: "aria",
+    voiceSpeed: 1,
+    voicePitch: 1,
+    systemPrompt: "",
+    greeting: "Hello! Thank you for calling. How can I help you today?",
+    style: "friendly",
+    tools: [],
+  })
+
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [showCustomToolForm, setShowCustomToolForm] = useState(false)
+  const [customToolName, setCustomToolName] = useState("")
+  const [customToolDesc, setCustomToolDesc] = useState("")
+
+  // ============================================================================
+  // VALIDATION
+  // ============================================================================
+
+  const validateStep = (step: number): boolean => {
+    const newErrors: Record<string, string> = {}
+
+    if (step === 1) {
+      if (!formData.name.trim()) {
+        newErrors.name = "Agent name is required"
+      }
+    }
+
+    if (step === 3) {
+      if (!formData.systemPrompt.trim()) {
+        newErrors.systemPrompt = "System prompt is required"
+      }
+      if (!formData.greeting.trim()) {
+        newErrors.greeting = "Initial greeting is required"
+      }
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  // ============================================================================
+  // NAVIGATION
+  // ============================================================================
+
+  const nextStep = () => {
+    if (!validateStep(currentStep)) return
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
+  // ============================================================================
+  // FORM HANDLERS
+  // ============================================================================
+
+  const updateFormData = <K extends keyof WizardFormData>(key: K, value: WizardFormData[K]) => {
+    setFormData((prev) => ({ ...prev, [key]: value }))
+    if (errors[key]) {
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
+  }
+
+  const addPresetTool = (toolId: string) => {
+    const preset = PRESET_TOOLS.find((t) => t.id === toolId)
+    if (!preset) return
+    if (formData.tools.find((t) => t.id === toolId)) return
+
+    setFormData((prev) => ({
+      ...prev,
+      tools: [
+        ...prev.tools,
+        { id: toolId, name: preset.name, description: preset.description, type: "preset" },
+      ],
+    }))
+  }
+
+  const removeTool = (toolId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      tools: prev.tools.filter((t) => t.id !== toolId),
+    }))
+  }
+
+  const addCustomTool = () => {
+    if (!customToolName.trim()) return
+
+    const newTool: Tool = {
+      id: `custom-${Date.now()}`,
+      name: customToolName,
+      description: customToolDesc || "Custom tool",
+      type: "custom",
+    }
+
+    setFormData((prev) => ({ ...prev, tools: [...prev.tools, newTool] }))
+    setCustomToolName("")
+    setCustomToolDesc("")
+    setShowCustomToolForm(false)
+  }
+
+  const applyTemplate = (templateKey: keyof typeof PROMPT_TEMPLATES) => {
+    updateFormData("systemPrompt", PROMPT_TEMPLATES[templateKey])
+  }
+
+  // ============================================================================
+  // SUBMIT
+  // ============================================================================
+
+  const handleSubmit = async () => {
+    if (!validateStep(currentStep)) return
+
+    // Map wizard data to API schema
+    const apiData: CreateWorkspaceAgentInput = {
+      name: formData.name,
+      description: formData.description || undefined,
+      provider: formData.provider,
+      voice_provider: "elevenlabs", // Default
+      model_provider: "openai", // Default
+      transcriber_provider: "deepgram", // Default
+      config: {
+        system_prompt: formData.systemPrompt,
+        first_message: formData.greeting,
+        voice_id: formData.voice,
+        voice_settings: {
+          speed: formData.voiceSpeed,
+        },
+      },
+      agent_secret_api_key: [],
+      agent_public_api_key: [],
+      is_active: true,
+    }
+
+    await onSubmit(apiData)
+  }
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
+  const isToolAdded = (toolId: string) => formData.tools.some((t) => t.id === toolId)
+
+  return (
+    <div className="space-y-6">
+      {/* Progress Steps */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            {/* Step 1 */}
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+                  currentStep > 1
+                    ? "bg-green-500 text-white"
+                    : currentStep === 1
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                )}
+              >
+                {currentStep > 1 ? <Check className="w-3 h-3" /> : "1"}
+              </div>
+              <span className={cn("text-sm font-medium", currentStep === 1 ? "text-foreground" : "text-muted-foreground")}>
+                Basic Info
+              </span>
+            </div>
+
+            <div className={cn("flex-1 h-0.5 mx-4", currentStep > 1 ? "bg-green-500" : "bg-border")} />
+
+            {/* Step 2 */}
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+                  currentStep > 2
+                    ? "bg-green-500 text-white"
+                    : currentStep === 2
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                )}
+              >
+                {currentStep > 2 ? <Check className="w-3 h-3" /> : "2"}
+              </div>
+              <span className={cn("text-sm font-medium", currentStep === 2 ? "text-foreground" : "text-muted-foreground")}>
+                Voice
+              </span>
+            </div>
+
+            <div className={cn("flex-1 h-0.5 mx-4", currentStep > 2 ? "bg-green-500" : "bg-border")} />
+
+            {/* Step 3 */}
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+                  currentStep === 3
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                3
+              </div>
+              <span className={cn("text-sm font-medium", currentStep === 3 ? "text-foreground" : "text-muted-foreground")}>
+                Prompts
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Step Content */}
+      {currentStep === 1 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-xs">Step 1 of 3</Badge>
+            </div>
+            <CardTitle>Basic Information</CardTitle>
+            <CardDescription>Set up your agent's identity and configuration</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Agent Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Agent Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => updateFormData("name", e.target.value)}
+                placeholder="e.g., Customer Support Bot"
+                className={errors.name ? "border-destructive" : ""}
+              />
+              {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => updateFormData("description", e.target.value)}
+                placeholder="Describe what this agent does..."
+                className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background resize-y"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Brief description of the agent's purpose and capabilities</p>
+            </div>
+
+            {/* Provider Selection */}
+            <div className="space-y-3">
+              <Label>
+                Voice Provider <span className="text-destructive">*</span>
+              </Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {PROVIDERS.map((provider) => (
+                  <div
+                    key={provider.id}
+                    onClick={() => updateFormData("provider", provider.id as WizardFormData["provider"])}
+                    className={cn(
+                      "relative p-4 rounded-lg border-2 cursor-pointer transition-all",
+                      formData.provider === provider.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <Badge className="absolute top-2 right-2 text-[10px]" variant="secondary">
+                      {provider.badge}
+                    </Badge>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", provider.color)}>
+                        <span className={cn("font-bold", provider.textColor)}>{provider.name[0]}</span>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold">{provider.name}</h4>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{provider.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Language */}
+            <div className="space-y-2">
+              <Label>
+                Language <span className="text-destructive">*</span>
+              </Label>
+              <Select value={formData.language} onValueChange={(v) => updateFormData("language", v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGES.map((lang) => (
+                    <SelectItem key={lang.value} value={lang.value}>
+                      {lang.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
+            {/* Knowledge Base Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <BookOpen className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <Label className="mb-0">Knowledge Base</Label>
+                  <p className="text-xs text-muted-foreground">Connect files to give your agent context</p>
+                </div>
+              </div>
+              <Switch
+                checked={formData.enableKnowledgeBase}
+                onCheckedChange={(checked) => updateFormData("enableKnowledgeBase", checked)}
+              />
+            </div>
+
+            {/* Phone Number Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <Phone className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <Label className="mb-0">Phone Number</Label>
+                  <p className="text-xs text-muted-foreground">Assign a phone number for inbound calls</p>
+                </div>
+              </div>
+              <Switch
+                checked={formData.enablePhoneNumber}
+                onCheckedChange={(checked) => updateFormData("enablePhoneNumber", checked)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {currentStep === 2 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-xs">Step 2 of 3</Badge>
+            </div>
+            <CardTitle>Voice Configuration</CardTitle>
+            <CardDescription>Choose and customize the voice for your agent</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Voice Selection */}
+            <div className="space-y-3">
+              <Label>
+                Voice <span className="text-destructive">*</span>
+              </Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {VOICES.map((voice) => (
+                  <div
+                    key={voice.id}
+                    onClick={() => updateFormData("voice", voice.id)}
+                    className={cn(
+                      "p-3 rounded-lg border-2 cursor-pointer transition-all",
+                      formData.voice === voice.id
+                        ? "border-primary bg-primary/5"
+                        : "border-transparent hover:border-primary/50 bg-card"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", voice.color)}>
+                        <span className={cn("font-semibold", voice.textColor)}>{voice.name[0]}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{voice.name}</p>
+                        <p className="text-xs text-muted-foreground">{voice.gender} • {voice.style}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Voice Speed */}
+            <div className="space-y-2">
+              <Label>Voice Speed</Label>
+              <Select
+                value={String(formData.voiceSpeed)}
+                onValueChange={(v) => updateFormData("voiceSpeed", parseFloat(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0.8">Slow</SelectItem>
+                  <SelectItem value="1">Balanced</SelectItem>
+                  <SelectItem value="1.2">Fast</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Controls how fast the agent speaks</p>
+            </div>
+
+            {/* Voice Pitch */}
+            <div className="space-y-2">
+              <Label>Voice Pitch</Label>
+              <Select
+                value={String(formData.voicePitch)}
+                onValueChange={(v) => updateFormData("voicePitch", parseFloat(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0.8">Low</SelectItem>
+                  <SelectItem value="1">Normal</SelectItem>
+                  <SelectItem value="1.2">High</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Adjusts the tone of the voice</p>
+            </div>
+
+            {/* Voice Preview */}
+            <div className="p-4 rounded-lg bg-muted/50 border border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Volume2 className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">Voice Preview</p>
+                  <p className="text-sm text-muted-foreground">Click to hear a sample of the selected voice</p>
+                </div>
+                <Button type="button" variant="default">
+                  <Play className="w-4 h-4 mr-2" />
+                  Test Voice
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {currentStep === 3 && (
+        <>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="secondary" className="text-xs">Step 3 of 3</Badge>
+              </div>
+              <CardTitle>System Prompt</CardTitle>
+              <CardDescription>Define how your agent should behave and respond</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* System Prompt */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>
+                    System Prompt <span className="text-destructive">*</span>
+                  </Label>
+                  <span className="text-xs text-muted-foreground">{formData.systemPrompt.length} characters</span>
+                </div>
+                <textarea
+                  value={formData.systemPrompt}
+                  onChange={(e) => updateFormData("systemPrompt", e.target.value)}
+                  placeholder="You are a helpful customer support agent for [Company Name]..."
+                  className={cn(
+                    "w-full min-h-[320px] px-3 py-2 text-sm rounded-md border bg-background resize-y font-mono",
+                    errors.systemPrompt ? "border-destructive" : "border-input"
+                  )}
+                />
+                {errors.systemPrompt && <p className="text-sm text-destructive">{errors.systemPrompt}</p>}
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("support")}>
+                    Support Template
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("sales")}>
+                    Sales Template
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("booking")}>
+                    Booking Template
+                  </Button>
+                </div>
+              </div>
+
+              {/* Initial Greeting */}
+              <div className="space-y-2">
+                <Label>
+                  Initial Greeting <span className="text-destructive">*</span>
+                </Label>
+                <textarea
+                  value={formData.greeting}
+                  onChange={(e) => updateFormData("greeting", e.target.value)}
+                  placeholder="Hello! Thank you for calling. How can I help you today?"
+                  className={cn(
+                    "w-full min-h-[60px] px-3 py-2 text-sm rounded-md border bg-background resize-y",
+                    errors.greeting ? "border-destructive" : "border-input"
+                  )}
+                  rows={2}
+                />
+                {errors.greeting && <p className="text-sm text-destructive">{errors.greeting}</p>}
+              </div>
+
+              {/* Conversation Style */}
+              <div className="space-y-3">
+                <Label>Conversation Style</Label>
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { value: "formal", label: "Formal", icon: Briefcase },
+                    { value: "friendly", label: "Friendly", icon: Smile },
+                    { value: "casual", label: "Casual", icon: Coffee },
+                  ].map((style) => {
+                    const Icon = style.icon
+                    return (
+                      <div
+                        key={style.value}
+                        onClick={() => updateFormData("style", style.value as WizardFormData["style"])}
+                        className={cn(
+                          "p-3 rounded-lg border cursor-pointer transition-all text-center",
+                          formData.style === style.value
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        <Icon className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
+                        <span className="text-sm font-medium">{style.label}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tools Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wrench className="w-5 h-5" />
+                Tools
+              </CardTitle>
+              <CardDescription>Add capabilities to your agent with preset or custom tools</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Preset Tools */}
+              <div>
+                <Label className="mb-3 block">Preset Tools</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {PRESET_TOOLS.map((tool) => {
+                    const Icon = tool.icon
+                    const added = isToolAdded(tool.id)
+                    return (
+                      <div
+                        key={tool.id}
+                        className={cn(
+                          "p-3 rounded-lg border-2 transition-all",
+                          added ? "opacity-50 border-border" : "border-transparent hover:border-primary/50"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", tool.color)}>
+                            <Icon className={cn("w-5 h-5", tool.textColor)} />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{tool.name}</p>
+                            <p className="text-xs text-muted-foreground">{tool.description}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addPresetTool(tool.id)}
+                            disabled={added}
+                          >
+                            {added ? "Added" : "Add"}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Added Tools */}
+              {formData.tools.length > 0 && (
+                <div>
+                  <Label className="mb-3 block">Added Tools ({formData.tools.length})</Label>
+                  <div className="space-y-2">
+                    {formData.tools.map((tool) => (
+                      <div key={tool.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border">
+                        <div className="flex items-center gap-3">
+                          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", tool.type === "custom" ? "bg-amber-100" : "bg-muted")}>
+                            {tool.type === "custom" ? (
+                              <Code className="w-4 h-4 text-amber-600" />
+                            ) : (
+                              <Wrench className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{tool.name}</p>
+                            <p className="text-xs text-muted-foreground">{tool.description}</p>
+                          </div>
+                          {tool.type === "custom" && (
+                            <Badge variant="secondary" className="text-xs">Custom</Badge>
+                          )}
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeTool(tool.id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Tool Builder */}
+              <div className="border-t border-border pt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="mb-0">Custom Tool</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCustomToolForm(!showCustomToolForm)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Custom Tool
+                  </Button>
+                </div>
+                {showCustomToolForm && (
+                  <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Tool Name</Label>
+                        <Input
+                          value={customToolName}
+                          onChange={(e) => setCustomToolName(e.target.value)}
+                          placeholder="e.g., checkInventory"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Description</Label>
+                        <Input
+                          value={customToolDesc}
+                          onChange={(e) => setCustomToolDesc(e.target.value)}
+                          placeholder="What does this tool do?"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" onClick={addCustomTool}>
+                        <Check className="w-4 h-4 mr-2" />
+                        Save Tool
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setShowCustomToolForm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Review Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Review & Create</CardTitle>
+              <CardDescription>Review your agent configuration before creating</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Agent Name</p>
+                  <p className="font-medium">{formData.name || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Provider</p>
+                  <p className="font-medium capitalize">{formData.provider}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Language</p>
+                  <p className="font-medium">{LANGUAGES.find((l) => l.value === formData.language)?.label || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Voice</p>
+                  <p className="font-medium">{VOICES.find((v) => v.id === formData.voice)?.name || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Knowledge Base</p>
+                  <p className="font-medium">{formData.enableKnowledgeBase ? "Enabled" : "Not configured"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Phone Number</p>
+                  <p className="font-medium">{formData.enablePhoneNumber ? formData.phoneNumber || "To be assigned" : "Not assigned"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tools</p>
+                  <p className="font-medium">{formData.tools.length === 0 ? "No tools" : `${formData.tools.length} tool${formData.tools.length > 1 ? "s" : ""}`}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* Navigation Buttons */}
+      <div className="flex items-center justify-between">
+        {currentStep > 1 ? (
+          <Button type="button" variant="outline" onClick={prevStep}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+
+        <div className="flex gap-2">
+          {currentStep < totalSteps ? (
+            <Button type="button" onClick={nextStep}>
+              Continue
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Create Agent
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+

@@ -3,7 +3,7 @@
 import { useRouter, useParams } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { WorkspaceAgentForm } from "@/components/workspace/agents/workspace-agent-form"
+import { AgentWizard } from "@/components/workspace/agents/agent-wizard"
 import { useCreateWorkspaceAgent } from "@/lib/hooks/use-workspace-agents"
 import type { CreateWorkspaceAgentInput } from "@/types/api.types"
 import Link from "next/link"
@@ -21,13 +21,18 @@ export default function NewWorkspaceAgentPage() {
       await createMutation.mutateAsync(data)
       toast.success("Agent created successfully!")
       router.push(`/w/${workspaceSlug}/agents`)
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create agent")
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create agent"
+      toast.error(errorMessage)
     }
   }
 
+  const handleCancel = () => {
+    router.push(`/w/${workspaceSlug}/agents`)
+  }
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href={`/w/${workspaceSlug}/agents`}>
@@ -35,7 +40,7 @@ export default function NewWorkspaceAgentPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Create Agent</h1>
+          <h1 className="text-2xl font-bold">Create Agent</h1>
           <p className="text-muted-foreground mt-1">
             Configure a new AI voice agent for your workspace
           </p>
@@ -49,7 +54,11 @@ export default function NewWorkspaceAgentPage() {
         </div>
       )}
 
-      <WorkspaceAgentForm onSubmit={handleSubmit} isSubmitting={createMutation.isPending} />
+      <AgentWizard
+        onSubmit={handleSubmit}
+        isSubmitting={createMutation.isPending}
+        onCancel={handleCancel}
+      />
     </div>
   )
 }
