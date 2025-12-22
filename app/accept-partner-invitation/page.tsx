@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,7 +32,7 @@ const roleLabels: Record<string, string> = {
   member: "Team Member",
 }
 
-export default function AcceptPartnerInvitationPage() {
+function AcceptPartnerInvitationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get("token")
@@ -270,6 +270,25 @@ export default function AcceptPartnerInvitationPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AcceptPartnerInvitationPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+          <Card className="w-full max-w-md">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+              <p className="text-muted-foreground">Loading invitation...</p>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <AcceptPartnerInvitationContent />
+    </Suspense>
   )
 }
 
