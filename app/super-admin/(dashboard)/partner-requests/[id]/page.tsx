@@ -11,6 +11,7 @@ import { ApprovePartnerDialog } from "@/components/super-admin/approve-partner-d
 import { RejectPartnerDialog } from "@/components/super-admin/reject-partner-dialog"
 import { EditPartnerRequestDialog } from "@/components/super-admin/edit-partner-request-dialog"
 import { DeletePartnerRequestDialog } from "@/components/super-admin/delete-partner-request-dialog"
+import type { PartnerBranding } from "@/types/database.types"
 import {
   ArrowLeft,
   Loader2,
@@ -89,7 +90,7 @@ export default function PartnerRequestDetailPage() {
 
   const status = statusConfig[request.status as keyof typeof statusConfig] || statusConfig.pending
   const StatusIcon = status.icon
-  const branding = request.branding_data || {}
+  const branding = (request.branding_data || {}) as PartnerBranding
   const isPending = request.status === "pending"
 
   return (

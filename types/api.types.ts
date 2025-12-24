@@ -4,10 +4,18 @@ import {
   agentPublicApiKeySchema,
   agentApiKeyConfigSchema,
   additionalApiKeySchema,
+  type AgentApiKeyConfig,
+  type AdditionalApiKey,
 } from "./database.types"
 
 // Re-export for convenience
-export { agentSecretApiKeySchema, agentPublicApiKeySchema }
+export { 
+  agentSecretApiKeySchema, 
+  agentPublicApiKeySchema, 
+  agentApiKeyConfigSchema,
+  additionalApiKeySchema,
+}
+export type { AgentApiKeyConfig, AdditionalApiKey }
 
 export const createAgentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),

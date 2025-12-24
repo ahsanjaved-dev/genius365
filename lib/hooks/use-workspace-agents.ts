@@ -139,8 +139,7 @@ export function useDeleteWorkspaceAgent() {
           ["workspace-agents", workspaceSlug, {}],
           {
             ...previousAgents,
-            data: previousAgents.data.filter((agent) => agent.id !== agentId),
-            total: previousAgents.total - 1,
+            data: previousAgents.data.filter((agent: AIAgent) => agent.id !== agentId),
           }
         )
       }

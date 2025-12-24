@@ -1,0 +1,540 @@
+// =============================================================================
+// INSPRALV PRISMA SCHEMA
+// =============================================================================
+// This schema maps to the existing Supabase PostgreSQL database.
+// Use Prisma for type-safe database queries alongside Supabase Auth.
+//
+// Commands:
+//   npx prisma db pull     - Introspect database and update schema
+//   npx prisma generate    - Generate Prisma Client
+//   npx prisma migrate dev - Create and apply migrations (dev only)
+//   npx prisma studio      - Open database GUI
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  // DATABASE_URL - Pooled connection (port 6543) for runtime
+  // DIRECT_URL   - Direct connection (port 5432) for migrations
+  // Find these in Supabase Dashboard > Project Settings > Database > Connection string
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum AgentProvider {
+  vapi
+  retell
+  synthflow
+}
+
+enum VoiceProvider {
+  elevenlabs
+  deepgram
+  azure
+  openai
+  cartesia
+}
+
+enum ModelProvider {
+  openai
+  anthropic
+  google
+  groq
+}
+
+enum TranscriberProvider {
+  deepgram
+  assemblyai
+  openai
+}
+
+enum CallDirection {
+  inbound
+  outbound
+}
+
+enum CallStatus {
+  initiated
+  ringing
+  in_progress
+  completed
+  failed
+  no_answer
+  busy
+  canceled
+}
+
+enum UserRole {
+  org_owner
+  org_admin
+  org_member
+}
+
+enum UserStatus {
+  pending_invitation
+  active
+  inactive
+  suspended
+}
+
+enum PartnerRequestStatus {
+  pending
+  approved
+  rejected
+  provisioning
+}
+
+enum ResourceType {
+  voice_minutes
+  api_calls
+  storage_gb
+  tts_characters
+  llm_tokens
+  stt_minutes
+  phone_number_rental
+  sms_messages
+}
+
+enum SyncStatus {
+  not_synced
+  pending
+  synced
+  error
+}
+
+// =============================================================================
+// PARTNER (Agency/Organization) - Top Level
+// =============================================================================
+
+model Partner {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String
+  slug                   String    @unique
+  branding               Json      @default("{}")
+  planTier               String    @default("starter") @map("plan_tier")
+  features               Json      @default("{\"api_access\": true, \"white_label\": true, \"custom_domain\": true}")
+  resourceLimits         Json      @default("{\"max_workspaces\": 10, \"max_users_per_workspace\": 50, \"max_agents_per_workspace\": 20}") @map("resource_limits")
+  stripeCustomerId       String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId   String?   @unique @map("stripe_subscription_id")
+  subscriptionStatus     String    @default("active") @map("subscription_status")
+  settings               Json      @default("{}")
+  isPlatformPartner      Boolean   @default(false) @map("is_platform_partner")
+  onboardingStatus       String?   @default("active") @map("onboarding_status")
+  requestId              String?   @unique @map("request_id") @db.Uuid
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  domains           PartnerDomain[]
+  members           PartnerMember[]
+  workspaces        Workspace[]
+  invitations       PartnerInvitation[]
+  partnerRequest    PartnerRequest?     @relation("ProvisionedPartner")
+  originatingRequest PartnerRequest?    @relation("OriginatingRequest", fields: [requestId], references: [id])
+
+  @@map("partners")
+}
+
+// =============================================================================
+// PARTNER DOMAINS (White-Label Hostname Mapping)
+// =============================================================================
+
+model PartnerDomain {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerId         String    @map("partner_id") @db.Uuid
+  hostname          String    @unique
+  isPrimary         Boolean   @default(false) @map("is_primary")
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz
+  verificationToken String?   @map("verification_token")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@map("partner_domains")
+}
+
+// =============================================================================
+// PARTNER MEMBERS (Users belonging to a Partner)
+// =============================================================================
+
+model PartnerMember {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerId String    @map("partner_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  role      String    @default("member") // 'owner' | 'admin' | 'member'
+  invitedBy String?   @map("invited_by") @db.Uuid
+  joinedAt  DateTime? @default(now()) @map("joined_at") @db.Timestamptz
+  removedAt DateTime? @map("removed_at") @db.Timestamptz
+  removedBy String?   @map("removed_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, userId])
+  @@map("partner_members")
+}
+
+// =============================================================================
+// PARTNER INVITATIONS
+// =============================================================================
+
+model PartnerInvitation {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerId  String    @map("partner_id") @db.Uuid
+  email      String
+  role       String    @default("member") // 'owner' | 'admin' | 'member'
+  token      String    @unique @default(dbgenerated("encode(gen_random_bytes(32), 'hex'::text)"))
+  message    String?
+  invitedBy  String    @map("invited_by") @db.Uuid
+  status     String    @default("pending") // 'pending' | 'accepted' | 'cancelled' | 'expired'
+  expiresAt  DateTime  @default(dbgenerated("(now() + '7 days'::interval)")) @map("expires_at") @db.Timestamptz
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  inviter User    @relation(fields: [invitedBy], references: [id])
+
+  @@map("partner_invitations")
+}
+
+// =============================================================================
+// PARTNER REQUESTS (White-Label Onboarding)
+// =============================================================================
+
+model PartnerRequest {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  status                PartnerRequestStatus @default(pending)
+  companyName           String               @map("company_name")
+  contactEmail          String               @map("contact_email")
+  contactName           String               @map("contact_name")
+  phone                 String?
+  desiredSubdomain      String               @map("desired_subdomain")
+  customDomain          String               @map("custom_domain")
+  businessDescription   String               @map("business_description")
+  expectedUsers         Int?                 @map("expected_users")
+  useCase               String               @map("use_case")
+  brandingData          Json                 @default("{}") @map("branding_data")
+  selectedPlan          String               @default("enterprise") @map("selected_plan")
+  billingInfo           Json?                @map("billing_info")
+  requestedAt           DateTime             @default(now()) @map("requested_at") @db.Timestamptz
+  reviewedAt            DateTime?            @map("reviewed_at") @db.Timestamptz
+  reviewedBy            String?              @map("reviewed_by") @db.Uuid
+  rejectionReason       String?              @map("rejection_reason")
+  provisionedPartnerId  String?              @unique @map("provisioned_partner_id") @db.Uuid
+  metadata              Json                 @default("{}")
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  provisionedPartner Partner? @relation("ProvisionedPartner", fields: [provisionedPartnerId], references: [id])
+  originatingPartner Partner? @relation("OriginatingRequest")
+
+  @@map("partner_requests")
+}
+
+// =============================================================================
+// WORKSPACES (Projects within a Partner)
+// =============================================================================
+
+model Workspace {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partnerId           String    @map("partner_id") @db.Uuid
+  name                String
+  slug                String
+  description         String?
+  resourceLimits      Json      @default("{\"max_users\": 20, \"max_agents\": 10, \"max_minutes_per_month\": 1000}") @map("resource_limits")
+  settings            Json      @default("{}")
+  currentMonthMinutes Decimal   @default(0) @map("current_month_minutes") @db.Decimal
+  currentMonthCost    Decimal   @default(0) @map("current_month_cost") @db.Decimal
+  lastUsageResetAt    DateTime  @default(now()) @map("last_usage_reset_at") @db.Timestamptz
+  status              String    @default("active")
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  partner        Partner                @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  members        WorkspaceMember[]
+  invitations    WorkspaceInvitation[]
+  agents         AiAgent[]
+  conversations  Conversation[]
+  usageTracking  UsageTracking[]
+  integrations   WorkspaceIntegration[]
+
+  @@unique([partnerId, slug])
+  @@map("workspaces")
+}
+
+// =============================================================================
+// WORKSPACE MEMBERS
+// =============================================================================
+
+model WorkspaceMember {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  role        String    @default("member") // 'owner' | 'admin' | 'member' | 'viewer'
+  invitedBy   String?   @map("invited_by") @db.Uuid
+  invitedAt   DateTime? @map("invited_at") @db.Timestamptz
+  joinedAt    DateTime? @default(now()) @map("joined_at") @db.Timestamptz
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz
+  removedBy   String?   @map("removed_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// =============================================================================
+// WORKSPACE INVITATIONS
+// =============================================================================
+
+model WorkspaceInvitation {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  email       String
+  role        String    // 'admin' | 'member' | 'viewer'
+  token       String    @unique @default(dbgenerated("encode(gen_random_bytes(32), 'hex'::text)"))
+  message     String?
+  invitedBy   String    @map("invited_by") @db.Uuid
+  status      String    @default("pending") // 'pending' | 'accepted' | 'expired' | 'cancelled'
+  expiresAt   DateTime  @default(dbgenerated("(now() + '7 days'::interval)")) @map("expires_at") @db.Timestamptz
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_invitations")
+}
+
+// =============================================================================
+// WORKSPACE INTEGRATIONS (API Keys for Providers)
+// =============================================================================
+
+model WorkspaceIntegration {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  provider    String    @db.VarChar
+  name        String    @db.VarChar
+  apiKeys     Json      @default("{}") @map("api_keys")
+  isActive    Boolean?  @default(true) @map("is_active")
+  config      Json?     @default("{}")
+  createdBy   String?   @map("created_by") @db.Uuid
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+  @@map("workspace_integrations")
+}
+
+// =============================================================================
+// AI AGENTS
+// =============================================================================
+
+model AiAgent {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId         String?             @map("workspace_id") @db.Uuid
+  name                String
+  description         String?
+  provider            AgentProvider
+  voiceProvider       VoiceProvider?      @map("voice_provider")
+  modelProvider       ModelProvider?      @map("model_provider")
+  transcriberProvider TranscriberProvider? @map("transcriber_provider")
+  config              Json                @default("{}")
+  agentSecretApiKey   Json[]              @default([]) @map("agent_secret_api_key")
+  agentPublicApiKey   Json[]              @default([]) @map("agent_public_api_key")
+  externalAgentId     String?             @map("external_agent_id")
+  externalPhoneNumber String?             @map("external_phone_number")
+  retellLlmId         String?             @map("retell_llm_id")
+  isActive            Boolean             @default(true) @map("is_active")
+  version             Int                 @default(1)
+  tags                String[]            @default([])
+  totalConversations  Int                 @default(0) @map("total_conversations")
+  totalMinutes        Decimal             @default(0) @map("total_minutes") @db.Decimal
+  totalCost           Decimal             @default(0) @map("total_cost") @db.Decimal
+  lastConversationAt  DateTime?           @map("last_conversation_at") @db.Timestamptz
+  // New sync columns
+  needsResync         Boolean             @default(false) @map("needs_resync")
+  syncStatus          String              @default("not_synced") @map("sync_status") @db.VarChar(20)
+  lastSyncedAt        DateTime?           @map("last_synced_at") @db.Timestamptz
+  lastSyncError       String?             @map("last_sync_error")
+  createdBy           String?             @map("created_by") @db.Uuid
+  deletedAt           DateTime?           @map("deleted_at") @db.Timestamptz
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  creator       User?          @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  conversations Conversation[]
+
+  @@map("ai_agents")
+}
+
+// =============================================================================
+// CONVERSATIONS (Call Records)
+// =============================================================================
+
+model Conversation {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String?       @map("workspace_id") @db.Uuid
+  agentId          String?       @map("agent_id") @db.Uuid
+  externalId       String?       @map("external_id")
+  direction        CallDirection
+  status           CallStatus    @default(initiated)
+  phoneNumber      String?       @map("phone_number")
+  callerName       String?       @map("caller_name")
+  startedAt        DateTime?     @map("started_at") @db.Timestamptz
+  endedAt          DateTime?     @map("ended_at") @db.Timestamptz
+  durationSeconds  Int           @default(0) @map("duration_seconds")
+  recordingUrl     String?       @map("recording_url")
+  transcript       String?
+  transcriptSearch Unsupported("tsvector")? @map("transcript_search")
+  summary          String?
+  sentiment        String?
+  qualityScore     Decimal?      @map("quality_score") @db.Decimal
+  customerRating   Int?          @map("customer_rating")
+  totalCost        Decimal       @default(0) @map("total_cost") @db.Decimal
+  costBreakdown    Json          @default("{}") @map("cost_breakdown")
+  requiresFollowUp Boolean       @default(false) @map("requires_follow_up")
+  followUpNotes    String?       @map("follow_up_notes")
+  followedUpAt     DateTime?     @map("followed_up_at") @db.Timestamptz
+  followedUpBy     String?       @map("followed_up_by") @db.Uuid
+  errorMessage     String?       @map("error_message")
+  errorCode        String?       @map("error_code")
+  metadata         Json          @default("{}")
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  workspace     Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  agent         AiAgent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  followUpUser  User?           @relation(fields: [followedUpBy], references: [id], onDelete: SetNull)
+  usageTracking UsageTracking[]
+
+  @@map("conversations")
+}
+
+// =============================================================================
+// USAGE TRACKING
+// =============================================================================
+
+model UsageTracking {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String?      @map("workspace_id") @db.Uuid
+  conversationId   String?      @map("conversation_id") @db.Uuid
+  resourceType     ResourceType @map("resource_type")
+  resourceProvider String?      @map("resource_provider")
+  quantity         Decimal      @db.Decimal
+  unit             String?
+  unitCost         Decimal?     @map("unit_cost") @db.Decimal
+  totalCost        Decimal?     @map("total_cost") @db.Decimal
+  billingPeriod    String?      @map("billing_period")
+  isBillable       Boolean      @default(true) @map("is_billable")
+  invoiceId        String?      @map("invoice_id")
+  metadata         Json         @default("{}")
+  recordedAt       DateTime     @default(now()) @map("recorded_at") @db.Timestamptz
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@map("usage_tracking")
+}
+
+// =============================================================================
+// USERS (Public Profile - Linked to Supabase Auth)
+// =============================================================================
+
+model User {
+  id             String     @id @db.Uuid // References auth.users(id)
+  email          String
+  firstName      String?    @map("first_name")
+  lastName       String?    @map("last_name")
+  avatarUrl      String?    @map("avatar_url")
+  phoneNumber    String?    @map("phone_number")
+  role           UserRole   @default(org_member)
+  status         UserStatus @default(active)
+  settings       Json       @default("{}")
+  lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz
+  lastActivityAt DateTime?  @map("last_activity_at") @db.Timestamptz
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  partnerMembers      PartnerMember[]
+  partnerInvitations  PartnerInvitation[]
+  createdAgents       AiAgent[]
+  followedUpConversations Conversation[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// SUPER ADMIN
+// =============================================================================
+
+model SuperAdmin {
+  id          String    @id @db.Uuid // References auth.users(id)
+  email       String    @unique
+  firstName   String?   @map("first_name")
+  lastName    String?   @map("last_name")
+  avatarUrl   String?   @map("avatar_url")
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("super_admin")
+}
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
+
+model AuditLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  workspaceId String?   @map("workspace_id") @db.Uuid
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String?   @map("entity_id") @db.Uuid
+  oldValues   Json?     @map("old_values")
+  newValues   Json?     @map("new_values")
+  metadata    Json?
+  ipAddress   String?   @map("ip_address") @db.Inet
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_log")
+}

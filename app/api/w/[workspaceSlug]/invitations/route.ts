@@ -114,7 +114,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .eq("workspace_id", ctx.workspace.id)
       .eq("status", "pending")
 
-    const maxUsers = ctx.workspace.resource_limits.max_users || 20
+    const resourceLimits = ctx.workspace.resource_limits as { max_users?: number } | null
+    const maxUsers = resourceLimits?.max_users || 20
     const totalPending = (memberCount || 0) + (inviteCount || 0)
 
     if (totalPending >= maxUsers) {

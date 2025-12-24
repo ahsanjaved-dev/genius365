@@ -107,6 +107,7 @@ async function getVapiApiKeyForAgent(
     const apiKeys = integration.api_keys as IntegrationApiKeys
 
     if (apiKeyConfig.secret_key.type === "default") {
+      if (!apiKeys.default_secret_key) return null
       return {
         secretKey: apiKeys.default_secret_key,
         publicKey: apiKeys.default_public_key,
@@ -119,7 +120,7 @@ async function getVapiApiKeyForAgent(
         (k) => k.id === additionalKeyId
       )
 
-      if (!additionalKey) {
+      if (!additionalKey || !additionalKey.secret_key) {
         console.error("Additional key not found:", additionalKeyId)
         return null
       }

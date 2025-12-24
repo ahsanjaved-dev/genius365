@@ -24,7 +24,7 @@ import { useEditPartnerRequest, type EditPartnerRequestData } from "@/lib/hooks/
 import { Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { HexColorPicker } from "react-colorful"
-import type { PartnerRequest } from "@/types/database.types"
+import type { PartnerRequest, PartnerBranding } from "@/types/database.types"
 
 interface EditPartnerRequestDialogProps {
   open: boolean
@@ -43,12 +43,15 @@ export function EditPartnerRequestDialog({
   const [uploadingLogo, setUploadingLogo] = useState(false)
 
   // Helper to get branding data safely
-  const getBrandingData = () => ({
-    logo_url: request.branding_data?.logo_url || "",
-    primary_color: request.branding_data?.primary_color || "#7c3aed",
-    secondary_color: request.branding_data?.secondary_color || "#64748b",
-    company_name: request.branding_data?.company_name || request.company_name,
-  })
+  const getBrandingData = () => {
+    const brandingData = (request.branding_data || {}) as PartnerBranding
+    return {
+      logo_url: brandingData.logo_url || "",
+      primary_color: brandingData.primary_color || "#7c3aed",
+      secondary_color: brandingData.secondary_color || "#64748b",
+      company_name: brandingData.company_name || request.company_name,
+    }
+  }
 
   // Initialize form data from request
   const [formData, setFormData] = useState<EditPartnerRequestData>({
@@ -78,13 +81,9 @@ export function EditPartnerRequestDialog({
       expected_users: request.expected_users || null,
       use_case: request.use_case || "",
       selected_plan: (request.selected_plan as "starter" | "professional" | "enterprise") || "enterprise",
-      branding_data: {
-        logo_url: request.branding_data?.logo_url || "",
-        primary_color: request.branding_data?.primary_color || "#7c3aed",
-        secondary_color: request.branding_data?.secondary_color || "#64748b",
-        company_name: request.branding_data?.company_name || request.company_name,
-      },
+      branding_data: getBrandingData(),
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request])
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

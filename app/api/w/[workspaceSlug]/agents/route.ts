@@ -87,7 +87,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .eq("workspace_id", ctx.workspace.id)
       .is("deleted_at", null)
 
-    const maxAgents = ctx.workspace.resource_limits.max_agents || 10
+    const resourceLimits = ctx.workspace.resource_limits as { max_agents?: number } | null
+    const maxAgents = resourceLimits?.max_agents || 10
     if (count && count >= maxAgents) {
       return apiError(`Agent limit reached for this workspace. Maximum: ${maxAgents} agents.`, 403)
     }

@@ -188,6 +188,10 @@ interface User {
 
 ```
 inspralv/
+├── prisma/                       # Prisma ORM
+│   ├── schema.prisma             # Database schema definition
+│   └── migrations/               # Database migrations
+├── prisma.config.ts              # Prisma configuration
 ├── app/                          # Next.js App Router
 │   ├── (auth)/                   # Auth pages (login, signup, etc.)
 │   │   ├── login/page.tsx
@@ -385,6 +389,11 @@ inspralv/
 │   │   ├── server.ts             # Server client
 │   │   ├── admin.ts              # Admin client (bypasses RLS)
 │   │   └── middleware.ts         # Session middleware
+│   ├── prisma/                   # Prisma ORM client
+│   │   ├── client.ts             # Prisma singleton with connection pooling
+│   │   └── index.ts              # Prisma exports
+│   ├── generated/                # Auto-generated code
+│   │   └── prisma/               # Generated Prisma client
 │   ├── integrations/             # Voice provider integrations
 │   │   ├── index.ts              # Integration exports
 │   │   ├── vapi/
@@ -1088,6 +1097,16 @@ Both VAPI and Retell support browser-based test calls:
 | `lib/supabase/admin.ts` | Admin client (bypasses RLS) |
 | `lib/supabase/middleware.ts` | Session refresh |
 
+### Prisma
+
+| File | Purpose |
+|------|---------|
+| `prisma/schema.prisma` | Database schema definition |
+| `prisma.config.ts` | Prisma configuration |
+| `lib/prisma/client.ts` | Prisma client singleton with connection pooling |
+| `lib/prisma/index.ts` | Prisma module exports |
+| `lib/generated/prisma/` | Generated Prisma client (auto-generated) |
+
 ### API Helpers
 
 | File | Purpose |
@@ -1428,6 +1447,132 @@ CacheInvalidation.invalidateWorkspaceAgents(workspaceId)
 
 ---
 
+## Prisma ORM
+
+The codebase uses Prisma ORM alongside Supabase for type-safe database operations. Supabase Auth handles authentication while Prisma provides an enhanced developer experience for database queries.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    DATABASE ACCESS LAYER                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────┐         ┌─────────────────┐                   │
+│  │  SUPABASE AUTH  │         │    PRISMA ORM   │                   │
+│  │                 │         │                 │                   │
+│  │ • User Auth     │         │ • Type-safe     │                   │
+│  │ • Session Mgmt  │         │   Queries       │                   │
+│  │ • RLS Policies  │         │ • Transactions  │                   │
+│  │ • Realtime      │         │ • Migrations    │                   │
+│  └────────┬────────┘         └────────┬────────┘                   │
+│           │                           │                             │
+│           └───────────┬───────────────┘                             │
+│                       │                                             │
+│                       ▼                                             │
+│            ┌─────────────────────┐                                  │
+│            │   PostgreSQL DB     │                                  │
+│            │   (Supabase)        │                                  │
+│            └─────────────────────┘                                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Prisma Files
+
+| File | Purpose |
+|------|---------|
+| `prisma/schema.prisma` | Database schema definition |
+| `prisma.config.ts` | Prisma configuration |
+| `lib/prisma/client.ts` | Prisma client singleton |
+| `lib/prisma/index.ts` | Prisma module exports |
+| `lib/generated/prisma/` | Generated Prisma client (auto-generated) |
+
+### Basic Usage
+
+```typescript
+// Import the Prisma client
+import { prisma } from "@/lib/prisma"
+
+// Basic queries
+const users = await prisma.user.findMany()
+const agent = await prisma.aiAgent.findUnique({ where: { id } })
+
+// With relations
+const workspace = await prisma.workspace.findFirst({
+  where: { slug: "my-workspace" },
+  include: {
+    members: true,
+    agents: true,
+  },
+})
+
+// Create with nested relations
+const partner = await prisma.partner.create({
+  data: {
+    name: "Acme Agency",
+    slug: "acme-agency",
+    workspaces: {
+      create: {
+        name: "Default Workspace",
+        slug: "default",
+      },
+    },
+  },
+})
+```
+
+### Transactions
+
+```typescript
+import { withTransaction } from "@/lib/prisma"
+
+// Execute multiple operations atomically
+const [user, membership] = await withTransaction(async (tx) => {
+  const user = await tx.user.create({ data: { ... } })
+  const membership = await tx.workspaceMember.create({
+    data: { userId: user.id, workspaceId, role: "member" }
+  })
+  return [user, membership]
+})
+```
+
+### Prisma vs Supabase Client
+
+| Use Prisma For | Use Supabase Client For |
+|----------------|------------------------|
+| Complex queries with relations | Real-time subscriptions |
+| Transactions | Authentication |
+| Type-safe CRUD operations | Storage (file uploads) |
+| Aggregations | RLS-dependent queries |
+
+### Prisma Commands
+
+```bash
+# Generate Prisma Client after schema changes
+npm run db:generate
+
+# Pull schema from database (introspection)
+npm run db:pull
+
+# Push schema to database (dev only)
+npm run db:push
+
+# Create and apply migrations
+npm run db:migrate
+
+# Deploy migrations to production
+npm run db:migrate:deploy
+
+# Open Prisma Studio (database GUI)
+npm run db:studio
+
+# Reset database (dev only - DESTRUCTIVE)
+npm run db:reset
+```
+
+---
+
 ## Environment Configuration
 
 ### Required Variables
@@ -1437,6 +1582,22 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 SUPABASE_SERVICE_ROLE_KEY=xxx
 ```
+
+### Database Connection (for Prisma)
+
+```bash
+# DATABASE_URL: Pooled connection (Transaction mode via Supavisor)
+# Use for all Prisma queries at runtime
+# Port 6543 for pgbouncer/Supavisor connection pooling
+DATABASE_URL="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
+
+# DIRECT_URL: Direct connection (Session mode)
+# Use for Prisma migrations only
+# Port 5432 for direct PostgreSQL connection
+DIRECT_URL="postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
+```
+
+> **Important**: Get connection strings from Supabase Dashboard → Settings → Database → Connection string
 
 ### Optional Variables
 
@@ -1462,16 +1623,19 @@ NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=uploads
 // lib/env.ts
 
 export const env = {
+  // Supabase
   supabaseUrl: getEnvVar("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
+  
+  // Prisma Database
+  databaseUrl: getEnvVar("DATABASE_URL", false),
+  directUrl: getEnvVar("DIRECT_URL", false),
+  
+  // App
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",
-  stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY", false),
-  stripePublishableKey: getEnvVar("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", false),
-  resendApiKey: getEnvVar("RESEND_API_KEY", false),
-  fromEmail: getEnvVar("FROM_EMAIL", false),
-  superAdminEmail: getEnvVar("SUPER_ADMIN_EMAIL", false),
-  supabaseStorageBucket: getEnvVar("NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET", false),
+  
+  // Optional services...
   isDev: process.env.NODE_ENV === "development",
   isProd: process.env.NODE_ENV === "production",
 }
@@ -1499,6 +1663,14 @@ npm run format
 
 # Type check
 npm run type-check
+
+# Prisma commands
+npm run db:generate     # Generate Prisma Client
+npm run db:pull         # Introspect database
+npm run db:push         # Push schema (dev)
+npm run db:migrate      # Create migration
+npm run db:migrate:deploy  # Deploy migrations
+npm run db:studio       # Open database GUI
 ```
 
 ---

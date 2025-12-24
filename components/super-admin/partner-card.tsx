@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Briefcase, Globe, Building2, ExternalLink } from "lucide-react"
-import type { Partner, PartnerDomain } from "@/types/database.types"
+import type { Partner, PartnerDomain, PartnerBranding } from "@/types/database.types"
 import { formatDistanceToNow } from "date-fns"
 import Link from "next/link"
 
@@ -25,6 +25,7 @@ const planColors: Record<string, string> = {
 export function PartnerCard({ partner }: PartnerCardProps) {
   const primaryDomain = partner.partner_domains?.find((d) => d.is_primary)
   const domainCount = partner.partner_domains?.length || 0
+  const branding = (partner.branding || {}) as PartnerBranding
 
   return (
     <Card className="bg-card border-border hover:border-primary/50 transition-colors">
@@ -33,11 +34,11 @@ export function PartnerCard({ partner }: PartnerCardProps) {
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: partner.branding?.primary_color || "#7c3aed" }}
+              style={{ backgroundColor: branding.primary_color || "#7c3aed" }}
             >
-              {partner.branding?.logo_url ? (
+              {branding.logo_url ? (
                 <img
-                  src={partner.branding.logo_url}
+                  src={branding.logo_url}
                   alt={partner.name}
                   className="w-6 h-6 object-contain"
                 />

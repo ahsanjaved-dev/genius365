@@ -1,127 +1,1335 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
+  }
+  public: {
+    Tables: {
+      ai_agents: {
+        Row: {
+          agent_public_api_key: Json[] | null
+          agent_secret_api_key: Json[] | null
+          config: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          external_agent_id: string | null
+          external_phone_number: string | null
+          id: string
+          is_active: boolean
+          last_conversation_at: string | null
+          last_sync_error: string | null
+          last_synced_at: string | null
+          model_provider: Database["public"]["Enums"]["model_provider"] | null
+          name: string
+          needs_resync: boolean
+          provider: Database["public"]["Enums"]["agent_provider"]
+          retell_llm_id: string | null
+          sync_status: string
+          tags: string[]
+          total_conversations: number
+          total_cost: number
+          total_minutes: number
+          transcriber_provider:
+            | Database["public"]["Enums"]["transcriber_provider"]
+            | null
+          updated_at: string
+          version: number
+          voice_provider: Database["public"]["Enums"]["voice_provider"] | null
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_public_api_key?: Json[] | null
+          agent_secret_api_key?: Json[] | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          external_agent_id?: string | null
+          external_phone_number?: string | null
+          id?: string
+          is_active?: boolean
+          last_conversation_at?: string | null
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          model_provider?: Database["public"]["Enums"]["model_provider"] | null
+          name: string
+          needs_resync?: boolean
+          provider: Database["public"]["Enums"]["agent_provider"]
+          retell_llm_id?: string | null
+          sync_status?: string
+          tags?: string[]
+          total_conversations?: number
+          total_cost?: number
+          total_minutes?: number
+          transcriber_provider?:
+            | Database["public"]["Enums"]["transcriber_provider"]
+            | null
+          updated_at?: string
+          version?: number
+          voice_provider?: Database["public"]["Enums"]["voice_provider"] | null
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_public_api_key?: Json[] | null
+          agent_secret_api_key?: Json[] | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          external_agent_id?: string | null
+          external_phone_number?: string | null
+          id?: string
+          is_active?: boolean
+          last_conversation_at?: string | null
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          model_provider?: Database["public"]["Enums"]["model_provider"] | null
+          name?: string
+          needs_resync?: boolean
+          provider?: Database["public"]["Enums"]["agent_provider"]
+          retell_llm_id?: string | null
+          sync_status?: string
+          tags?: string[]
+          total_conversations?: number
+          total_cost?: number
+          total_minutes?: number
+          transcriber_provider?:
+            | Database["public"]["Enums"]["transcriber_provider"]
+            | null
+          updated_at?: string
+          version?: number
+          voice_provider?: Database["public"]["Enums"]["voice_provider"] | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          new_values: Json | null
+          old_values: Json | null
+          user_agent: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          user_agent?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          user_agent?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
+      conversations: {
+        Row: {
+          agent_id: string | null
+          caller_name: string | null
+          cost_breakdown: Json
+          created_at: string
+          customer_rating: number | null
+          deleted_at: string | null
+          direction: Database["public"]["Enums"]["call_direction"]
+          duration_seconds: number
+          ended_at: string | null
+          error_code: string | null
+          error_message: string | null
+          external_id: string | null
+          follow_up_notes: string | null
+          followed_up_at: string | null
+          followed_up_by: string | null
+          id: string
+          metadata: Json
+          phone_number: string | null
+          quality_score: number | null
+          recording_url: string | null
+          requires_follow_up: boolean
+          sentiment: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["call_status"]
+          summary: string | null
+          total_cost: number
+          transcript: string | null
+          transcript_search: unknown
+          workspace_id: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          caller_name?: string | null
+          cost_breakdown?: Json
+          created_at?: string
+          customer_rating?: number | null
+          deleted_at?: string | null
+          direction: Database["public"]["Enums"]["call_direction"]
+          duration_seconds?: number
+          ended_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          external_id?: string | null
+          follow_up_notes?: string | null
+          followed_up_at?: string | null
+          followed_up_by?: string | null
+          id?: string
+          metadata?: Json
+          phone_number?: string | null
+          quality_score?: number | null
+          recording_url?: string | null
+          requires_follow_up?: boolean
+          sentiment?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["call_status"]
+          summary?: string | null
+          total_cost?: number
+          transcript?: string | null
+          transcript_search?: unknown
+          workspace_id?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          caller_name?: string | null
+          cost_breakdown?: Json
+          created_at?: string
+          customer_rating?: number | null
+          deleted_at?: string | null
+          direction?: Database["public"]["Enums"]["call_direction"]
+          duration_seconds?: number
+          ended_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          external_id?: string | null
+          follow_up_notes?: string | null
+          followed_up_at?: string | null
+          followed_up_by?: string | null
+          id?: string
+          metadata?: Json
+          phone_number?: string | null
+          quality_score?: number | null
+          recording_url?: string | null
+          requires_follow_up?: boolean
+          sentiment?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["call_status"]
+          summary?: string | null
+          total_cost?: number
+          transcript?: string | null
+          transcript_search?: unknown
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_followed_up_by_fkey"
+            columns: ["followed_up_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_domains: {
+        Row: {
+          created_at: string
+          hostname: string
+          id: string
+          is_primary: boolean
+          partner_id: string
+          verification_token: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          hostname: string
+          id?: string
+          is_primary?: boolean
+          partner_id: string
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          hostname?: string
+          id?: string
+          is_primary?: boolean
+          partner_id?: string
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_domains_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          message: string | null
+          partner_id: string
+          role: string
+          status: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          message?: string | null
+          partner_id: string
+          role?: string
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          message?: string | null
+          partner_id?: string
+          role?: string
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_invitations_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_members: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string | null
+          joined_at: string | null
+          partner_id: string
+          removed_at: string | null
+          removed_by: string | null
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          partner_id: string
+          removed_at?: string | null
+          removed_by?: string | null
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          partner_id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_members_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_requests: {
+        Row: {
+          billing_info: Json | null
+          branding_data: Json
+          business_description: string
+          company_name: string
+          contact_email: string
+          contact_name: string
+          created_at: string
+          custom_domain: string
+          desired_subdomain: string
+          expected_users: number | null
+          id: string
+          metadata: Json
+          phone: string | null
+          provisioned_partner_id: string | null
+          rejection_reason: string | null
+          requested_at: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_plan: string
+          status: Database["public"]["Enums"]["partner_request_status"]
+          updated_at: string
+          use_case: string
+        }
+        Insert: {
+          billing_info?: Json | null
+          branding_data?: Json
+          business_description: string
+          company_name: string
+          contact_email: string
+          contact_name: string
+          created_at?: string
+          custom_domain: string
+          desired_subdomain: string
+          expected_users?: number | null
+          id?: string
+          metadata?: Json
+          phone?: string | null
+          provisioned_partner_id?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selected_plan?: string
+          status?: Database["public"]["Enums"]["partner_request_status"]
+          updated_at?: string
+          use_case: string
+        }
+        Update: {
+          billing_info?: Json | null
+          branding_data?: Json
+          business_description?: string
+          company_name?: string
+          contact_email?: string
+          contact_name?: string
+          created_at?: string
+          custom_domain?: string
+          desired_subdomain?: string
+          expected_users?: number | null
+          id?: string
+          metadata?: Json
+          phone?: string | null
+          provisioned_partner_id?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selected_plan?: string
+          status?: Database["public"]["Enums"]["partner_request_status"]
+          updated_at?: string
+          use_case?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_requests_provisioned_partner_id_fkey"
+            columns: ["provisioned_partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partners: {
+        Row: {
+          branding: Json
+          created_at: string
+          deleted_at: string | null
+          features: Json
+          id: string
+          is_platform_partner: boolean
+          name: string
+          onboarding_status: string | null
+          plan_tier: string
+          request_id: string | null
+          resource_limits: Json
+          settings: Json
+          slug: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string
+          updated_at: string
+        }
+        Insert: {
+          branding?: Json
+          created_at?: string
+          deleted_at?: string | null
+          features?: Json
+          id?: string
+          is_platform_partner?: boolean
+          name: string
+          onboarding_status?: string | null
+          plan_tier?: string
+          request_id?: string | null
+          resource_limits?: Json
+          settings?: Json
+          slug: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string
+          updated_at?: string
+        }
+        Update: {
+          branding?: Json
+          created_at?: string
+          deleted_at?: string | null
+          features?: Json
+          id?: string
+          is_platform_partner?: boolean
+          name?: string
+          onboarding_status?: string | null
+          plan_tier?: string
+          request_id?: string | null
+          resource_limits?: Json
+          settings?: Json
+          slug?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partners_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "partner_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      super_admin: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          last_login_at: string | null
+          last_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id: string
+          last_login_at?: string | null
+          last_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
+          last_login_at?: string | null
+          last_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      usage_tracking: {
+        Row: {
+          billing_period: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          invoice_id: string | null
+          is_billable: boolean
+          metadata: Json
+          quantity: number
+          recorded_at: string
+          resource_provider: string | null
+          resource_type: Database["public"]["Enums"]["resource_type"]
+          total_cost: number | null
+          unit: string | null
+          unit_cost: number | null
+          workspace_id: string | null
+        }
+        Insert: {
+          billing_period?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          is_billable?: boolean
+          metadata?: Json
+          quantity: number
+          recorded_at?: string
+          resource_provider?: string | null
+          resource_type: Database["public"]["Enums"]["resource_type"]
+          total_cost?: number | null
+          unit?: string | null
+          unit_cost?: number | null
+          workspace_id?: string | null
+        }
+        Update: {
+          billing_period?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          invoice_id?: string | null
+          is_billable?: boolean
+          metadata?: Json
+          quantity?: number
+          recorded_at?: string
+          resource_provider?: string | null
+          resource_type?: Database["public"]["Enums"]["resource_type"]
+          total_cost?: number | null
+          unit?: string | null
+          unit_cost?: number | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_tracking_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_tracking_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          deleted_at: string | null
+          email: string
+          first_name: string | null
+          id: string
+          last_activity_at: string | null
+          last_login_at: string | null
+          last_name: string | null
+          phone_number: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          settings: Json
+          status: Database["public"]["Enums"]["user_status"]
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email: string
+          first_name?: string | null
+          id: string
+          last_activity_at?: string | null
+          last_login_at?: string | null
+          last_name?: string | null
+          phone_number?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          settings?: Json
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email?: string
+          first_name?: string | null
+          id?: string
+          last_activity_at?: string | null
+          last_login_at?: string | null
+          last_name?: string | null
+          phone_number?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          settings?: Json
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      workspace_integrations: {
+        Row: {
+          api_keys: Json
+          config: Json | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          provider: string
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          api_keys?: Json
+          config?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          provider: string
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          api_keys?: Json
+          config?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          provider?: string
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_integrations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          message: string | null
+          role: string
+          status: string
+          token: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          message?: string | null
+          role: string
+          status?: string
+          token?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          message?: string | null
+          role?: string
+          status?: string
+          token?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invitations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_members: {
+        Row: {
+          created_at: string
+          id: string
+          invited_at: string | null
+          invited_by: string | null
+          joined_at: string | null
+          removed_at: string | null
+          removed_by: string | null
+          role: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          role?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          role?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          current_month_cost: number
+          current_month_minutes: number
+          deleted_at: string | null
+          description: string | null
+          id: string
+          last_usage_reset_at: string
+          name: string
+          partner_id: string
+          resource_limits: Json
+          settings: Json
+          slug: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_month_cost?: number
+          current_month_minutes?: number
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          last_usage_reset_at?: string
+          name: string
+          partner_id: string
+          resource_limits?: Json
+          settings?: Json
+          slug: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_month_cost?: number
+          current_month_minutes?: number
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          last_usage_reset_at?: string
+          name?: string
+          partner_id?: string
+          resource_limits?: Json
+          settings?: Json
+          slug?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspaces_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      generate_slug: { Args: { input_text: string }; Returns: string }
+      get_my_org_id: { Args: never; Returns: string }
+      get_my_role: { Args: never; Returns: string }
+    }
+    Enums: {
+      agent_provider: "vapi" | "retell" | "synthflow"
+      call_direction: "inbound" | "outbound"
+      call_status:
+        | "initiated"
+        | "ringing"
+        | "in_progress"
+        | "completed"
+        | "failed"
+        | "no_answer"
+        | "busy"
+        | "canceled"
+      department_role: "owner" | "admin" | "member" | "viewer"
+      integration_status: "active" | "inactive" | "error" | "pending_setup"
+      integration_type:
+        | "make"
+        | "ghl"
+        | "twilio"
+        | "slack"
+        | "zapier"
+        | "calendar"
+        | "crm"
+        | "webhook"
+      invitation_status: "pending" | "accepted" | "expired" | "revoked"
+      invitation_type: "org_owner" | "org_member" | "department_member"
+      invoice_status:
+        | "draft"
+        | "open"
+        | "paid"
+        | "void"
+        | "uncollectible"
+        | "overdue"
+      model_provider: "openai" | "anthropic" | "google" | "groq"
+      organization_status:
+        | "pending_activation"
+        | "onboarding"
+        | "active"
+        | "suspended"
+        | "churned"
+      partner_request_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "provisioning"
+      plan_tier: "starter" | "professional" | "enterprise" | "custom"
+      resource_type:
+        | "voice_minutes"
+        | "api_calls"
+        | "storage_gb"
+        | "tts_characters"
+        | "llm_tokens"
+        | "stt_minutes"
+        | "phone_number_rental"
+        | "sms_messages"
+      subscription_status:
+        | "trialing"
+        | "active"
+        | "past_due"
+        | "canceled"
+        | "unpaid"
+      transcriber_provider: "deepgram" | "assemblyai" | "openai"
+      user_role: "org_owner" | "org_admin" | "org_member"
+      user_status: "pending_invitation" | "active" | "inactive" | "suspended"
+      voice_provider:
+        | "elevenlabs"
+        | "deepgram"
+        | "azure"
+        | "openai"
+        | "cartesia"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      agent_provider: ["vapi", "retell", "synthflow"],
+      call_direction: ["inbound", "outbound"],
+      call_status: [
+        "initiated",
+        "ringing",
+        "in_progress",
+        "completed",
+        "failed",
+        "no_answer",
+        "busy",
+        "canceled",
+      ],
+      department_role: ["owner", "admin", "member", "viewer"],
+      integration_status: ["active", "inactive", "error", "pending_setup"],
+      integration_type: [
+        "make",
+        "ghl",
+        "twilio",
+        "slack",
+        "zapier",
+        "calendar",
+        "crm",
+        "webhook",
+      ],
+      invitation_status: ["pending", "accepted", "expired", "revoked"],
+      invitation_type: ["org_owner", "org_member", "department_member"],
+      invoice_status: [
+        "draft",
+        "open",
+        "paid",
+        "void",
+        "uncollectible",
+        "overdue",
+      ],
+      model_provider: ["openai", "anthropic", "google", "groq"],
+      organization_status: [
+        "pending_activation",
+        "onboarding",
+        "active",
+        "suspended",
+        "churned",
+      ],
+      partner_request_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "provisioning",
+      ],
+      plan_tier: ["starter", "professional", "enterprise", "custom"],
+      resource_type: [
+        "voice_minutes",
+        "api_calls",
+        "storage_gb",
+        "tts_characters",
+        "llm_tokens",
+        "stt_minutes",
+        "phone_number_rental",
+        "sms_messages",
+      ],
+      subscription_status: [
+        "trialing",
+        "active",
+        "past_due",
+        "canceled",
+        "unpaid",
+      ],
+      transcriber_provider: ["deepgram", "assemblyai", "openai"],
+      user_role: ["org_owner", "org_admin", "org_member"],
+      user_status: ["pending_invitation", "active", "inactive", "suspended"],
+      voice_provider: ["elevenlabs", "deepgram", "azure", "openai", "cartesia"],
+    },
+  },
+} as const
+
+// ============================================================================
+// ZOD SCHEMAS FOR API VALIDATION
+// ============================================================================
 import { z } from "zod"
 
-// ============================================================================
-// ZOD SCHEMAS
-// ============================================================================
-
+// Agent API Key Schemas
 export const agentSecretApiKeySchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1).max(255),
-  key: z.string().min(1),
-  provider: z.string().optional(),
-  is_active: z.boolean().default(true),
+  id: z.string(),
+  provider: z.string(),
+  key: z.string(),
+  is_active: z.boolean(),
 })
 
 export const agentPublicApiKeySchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1).max(255),
-  key: z.string().min(1),
-  provider: z.string().optional(),
-  is_active: z.boolean().default(true),
+  id: z.string(),
+  provider: z.string(),
+  key: z.string(),
+  is_active: z.boolean(),
+})
+
+export const additionalApiKeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  secret_key: z.string().optional(),
+  public_key: z.string().optional(),
+})
+
+export const apiKeyConfigEntrySchema = z.object({
+  type: z.enum(["none", "default", "additional"]),
+  additional_key_id: z.string().optional(),
+})
+
+export const agentApiKeyConfigSchema = z.object({
+  public_key: apiKeyConfigEntrySchema.optional(),
+  secret_key: apiKeyConfigEntrySchema.optional(),
+  assigned_key_id: z.string().nullable().optional(),
 })
 
 export type AgentSecretApiKey = z.infer<typeof agentSecretApiKeySchema>
 export type AgentPublicApiKey = z.infer<typeof agentPublicApiKeySchema>
-
-export type AgentProvider = "vapi" | "retell" | "synthflow"
-
-export const createAgentSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
-  description: z.string().optional(),
-  provider: z.enum(["vapi", "retell", "synthflow"] as const),
-  voice_provider: z
-    .enum(["elevenlabs", "deepgram", "azure", "openai", "cartesia"] as const)
-    .optional(),
-  model_provider: z.enum(["openai", "anthropic", "google", "groq"] as const).optional(),
-  transcriber_provider: z.enum(["deepgram", "assemblyai", "openai"] as const).optional(),
-  config: z
-    .object({
-      system_prompt: z.string().optional(),
-      first_message: z.string().optional(),
-      voice_id: z.string().optional(),
-      voice_settings: z
-        .object({
-          stability: z.number().min(0).max(1).optional(),
-          similarity_boost: z.number().min(0).max(1).optional(),
-          speed: z.number().min(0.5).max(2).optional(),
-        })
-        .optional(),
-      model_settings: z
-        .object({
-          model: z.string().optional(),
-          temperature: z.number().min(0).max(2).optional(),
-          max_tokens: z.number().min(1).max(4096).optional(),
-        })
-        .optional(),
-      max_duration_seconds: z.number().min(60).max(3600).optional(),
-    })
-    .optional(),
-  agent_secret_api_key: z.array(agentSecretApiKeySchema).optional().default([]),
-  agent_public_api_key: z.array(agentPublicApiKeySchema).optional().default([]),
-  is_active: z.boolean().optional().default(true),
-})
-
-export type CreateAgentInput = z.infer<typeof createAgentSchema>
-
-export const updateAgentSchema = createAgentSchema.partial()
-export type UpdateAgentInput = z.infer<typeof updateAgentSchema>
-
-export const createIntegrationSchema = z.object({
-  integration_type: z.enum([
-    "make",
-    "ghl",
-    "twilio",
-    "slack",
-    "zapier",
-    "calendar",
-    "crm",
-  ] as const),
-  name: z.string().min(1).max(255),
-  credentials: z.record(z.string(), z.string()).optional(),
-  config: z.record(z.string(), z.unknown()).optional(),
-})
-
-export type CreateIntegrationInput = z.infer<typeof createIntegrationSchema>
-
-export type PlanTier = "free" | "starter" | "pro" | "enterprise"
-
-export interface User {
-  id: string
-  email: string
-  full_name: string | null
-  first_name: string | null
-  last_name: string | null
-  avatar_url: string | null
-  role: string
-  status: "active" | "invited" | "disabled"
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-// ============================================================================
-// AGENT API KEY SELECTION TYPES
-// ============================================================================
-
-export type ApiKeySelectionType = "none" | "default" | "additional"
-
-export const selectedApiKeySchema = z.object({
-  type: z.enum(["none", "default", "additional"] as const),
-  additional_key_id: z.string().uuid().optional(),
-  additional_key_name: z.string().optional(),
-})
-
-export type SelectedApiKey = z.infer<typeof selectedApiKeySchema>
-
-export const agentApiKeyConfigSchema = z.object({
-  secret_key: selectedApiKeySchema.optional(),
-  public_key: selectedApiKeySchema.optional(),
-})
-
+export type AdditionalApiKey = z.infer<typeof additionalApiKeySchema>
+export type ApiKeyConfigEntry = z.infer<typeof apiKeyConfigEntrySchema>
 export type AgentApiKeyConfig = z.infer<typeof agentApiKeyConfigSchema>
 
 // ============================================================================
-// AGENT TYPES
+// CUSTOM TYPES FOR API KEY WORKFLOW
+// ============================================================================
+export type SyncStatus = 'not_synced' | 'pending' | 'synced' | 'error'
+
+export interface ApiKey {
+  id: string
+  name: string
+  secret_key: string
+  public_key: string
+}
+
+export interface WorkspaceIntegrationApiKeys {
+  api_keys: ApiKey[]
+}
+
+// ============================================================================
+// ENTITY TYPES (Derived from Supabase Database Types)
+// ============================================================================
+
+// Table types using the Tables helper
+export type SuperAdmin = Tables<'super_admin'>
+export type Partner = Tables<'partners'>
+export type PartnerDomain = Tables<'partner_domains'>
+export type PartnerRequest = Tables<'partner_requests'>
+export type Workspace = Tables<'workspaces'>
+export type WorkspaceInvitation = Tables<'workspace_invitations'>
+export type WorkspaceMember = Tables<'workspace_members'>
+export type Conversation = Tables<'conversations'>
+export type UsageTracking = Tables<'usage_tracking'>
+export type User = Tables<'users'>
+export type AuditLog = Tables<'audit_log'>
+export type WorkspaceIntegration = Tables<'workspace_integrations'>
+export type PartnerMember = Tables<'partner_members'>
+export type PartnerInvitation = Tables<'partner_invitations'>
+
+// AIAgent type with typed config and api keys
+export type AIAgent = Omit<Tables<'ai_agents'>, 'config' | 'agent_secret_api_key' | 'agent_public_api_key'> & {
+  config: AgentConfig
+  agent_secret_api_key: AgentSecretApiKey[] | null
+  agent_public_api_key: AgentPublicApiKey[] | null
+}
+
+// Agent provider type from enum
+export type AgentProvider = Database['public']['Enums']['agent_provider']
+
+// ============================================================================
+// AGENT CONFIG TYPES
 // ============================================================================
 
 export interface AgentConfig {
@@ -139,291 +1347,39 @@ export interface AgentConfig {
     max_tokens?: number
   }
   transcriber_settings?: {
-    model?: string
     language?: string
+    model?: string
   }
-  end_call_phrases?: string[]
   max_duration_seconds?: number
-  retell_llm_id?: string
   api_key_config?: AgentApiKeyConfig
-}
-
-export interface AIAgent {
-  id: string
-  name: string
-  description: string | null
-  provider: AgentProvider
-  voice_provider: string | null
-  model_provider: string | null
-  transcriber_provider: string | null
-  config: AgentConfig
-  is_active: boolean
-  workspace_id: string | null
-  created_by: string
-  external_agent_id: string | null
-  agent_secret_api_key: AgentSecretApiKey[]
-  agent_public_api_key: AgentPublicApiKey[]
-  created_at: string
-  updated_at: string
-  // Computed fields (optional, from joins/aggregations)
-  total_conversations?: number
-  total_minutes?: number
-  total_cost?: number
-}
-
-export interface VapiAgentConfig {
-  name: string
-  voice?: {
-    provider: string
-    voiceId: string
-    stability?: number
-    similarityBoost?: number
-  }
-  model?: {
-    provider: string
-    model: string
-    temperature?: number
-    maxTokens?: number
-    systemPrompt?: string
-  }
-  transcriber?: {
-    provider: string
-    model?: string
-    language?: string
-  }
-  firstMessage?: string
-  endCallPhrases?: string[]
-  maxDurationSeconds?: number
-}
-
-export interface RetellAgentConfig {
-  agent_name: string
-  voice_id: string
-  llm_websocket_url?: string
-  webhook_url?: string
-}
-
-export interface SynthflowAgentConfig {
-  name: string
-  voice_id: string
-  model_id: string
-  instructions: string
+  retell_llm_id?: string
+  end_call_phrases?: string[]
 }
 
 // ============================================================================
 // CONVERSATION TYPES
 // ============================================================================
 
-export interface Conversation {
-  id: string
-  workspace_id?: string | null
-  agent_id: string
-  external_call_id: string | null
-  direction: "inbound" | "outbound"
-  status: "queued" | "in_progress" | "completed" | "failed" | "no_answer"
-  phone_number: string | null
-  caller_name: string | null
-  started_at: string | null
-  ended_at: string | null
-  duration_seconds: number
-  recording_url: string | null
-  transcript: string | null
-  summary: string | null
-  sentiment: "positive" | "neutral" | "negative" | null
-  quality_score: number | null
-  customer_rating: number | null
-  total_cost: number | null
-  cost_breakdown: Record<string, number> | null
-  requires_follow_up: boolean
-  follow_up_notes: string | null
-  metadata: Record<string, unknown> | null
-  created_at: string
-  updated_at: string
-}
-
 export interface ConversationWithAgent extends Conversation {
-  agent?: AIAgent
-}
-
-export interface ConversationWithDetails extends Conversation {
-  agent?: AIAgent
+  agent?: Pick<Tables<'ai_agents'>, 'id' | 'name' | 'provider'> | null
 }
 
 // ============================================================================
-// DASHBOARD & ADMIN TYPES
-// ============================================================================
-
-export interface DashboardStats {
-  total_agents: number
-  total_conversations: number
-  total_minutes: number
-  total_cost: number
-  conversations_this_month: number
-  minutes_this_month: number
-  cost_this_month: number
-  active_agents?: number
-  conversations_today?: number
-  average_duration?: number
-  success_rate?: number
-}
-
-export interface SuperAdmin {
-  id: string
-  email: string
-  full_name: string | null
-  first_name: string | null
-  last_name: string | null
-  avatar_url: string | null
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-// ============================================================================
-// API TYPES
-// ============================================================================
-
-export interface ApiResponse<T = unknown> {
-  data?: T
-  error?: string
-  message?: string
-}
-
-export interface PaginatedResponse<T> {
-  data: T[]
-  total: number
-  page: number
-  pageSize: number
-  totalPages: number
-}
-
-// ============================================================================
-// PARTNER & WORKSPACE TYPES (Milestone 1)
+// PARTNER BRANDING TYPES
 // ============================================================================
 
 export interface PartnerBranding {
-  company_name?: string
   logo_url?: string
   favicon_url?: string
   primary_color?: string
   secondary_color?: string
+  company_name?: string
+  background_color?: string
+  text_color?: string
 }
-
-export interface PartnerFeatures {
-  white_label?: boolean
-  custom_domain?: boolean
-  api_access?: boolean
-  sso?: boolean
-  advanced_analytics?: boolean
-}
-
-export interface PartnerResourceLimits {
-  max_workspaces?: number
-  max_users_per_workspace?: number
-  max_agents_per_workspace?: number
-}
-
-export interface Partner {
-  id: string
-  name: string
-  slug: string
-  branding: PartnerBranding
-  plan_tier: string
-  features: PartnerFeatures
-  resource_limits: PartnerResourceLimits
-  stripe_customer_id: string | null
-  stripe_subscription_id: string | null
-  subscription_status: string
-  settings: Record<string, unknown>
-  is_platform_partner: boolean
-  deleted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PartnerDomain {
-  id: string
-  partner_id: string
-  hostname: string
-  is_primary: boolean
-  verified_at: string | null
-  verification_token: string | null
-  created_at: string
-}
-
-export interface WorkspaceResourceLimits {
-  max_agents?: number
-  max_users?: number
-  max_minutes_per_month?: number
-}
-
-export interface Workspace {
-  id: string
-  partner_id: string
-  name: string
-  slug: string
-  description: string | null
-  resource_limits: WorkspaceResourceLimits
-  settings: Record<string, unknown>
-  current_month_minutes: number
-  current_month_cost: number
-  last_usage_reset_at: string
-  status: string
-  deleted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export type WorkspaceMemberRole = "owner" | "admin" | "member" | "viewer"
-
-export interface WorkspaceMember {
-  id: string
-  workspace_id: string
-  user_id: string
-  role: WorkspaceMemberRole
-  invited_by: string | null
-  invited_at: string | null
-  joined_at: string | null
-  removed_at: string | null
-  removed_by: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface WorkspaceMemberWithUser extends WorkspaceMember {
-  user?: {
-    id: string
-    email: string
-    first_name: string | null
-    last_name: string | null
-    avatar_url: string | null
-  }
-}
-
-export interface WorkspaceWithMembership extends Workspace {
-  role: WorkspaceMemberRole
-}
-
-// Zod schemas for validation
-export const createWorkspaceSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
-  slug: z
-    .string()
-    .min(1, "Slug is required")
-    .max(100)
-    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
-  description: z.string().max(1000).optional(),
-  resource_limits: z
-    .object({
-      max_agents: z.number().min(1).max(100).optional(),
-      max_users: z.number().min(1).max(100).optional(),
-      max_minutes_per_month: z.number().min(0).optional(),
-    })
-    .optional(),
-})
 
 // ============================================================================
-// PARTNER AUTH CONTEXT TYPES (Milestone 3)
+// AUTH TYPES
 // ============================================================================
 
 export interface PartnerAuthUser {
@@ -434,6 +1390,9 @@ export interface PartnerAuthUser {
   avatar_url: string | null
 }
 
+export type WorkspaceMemberRole = 'owner' | 'admin' | 'member' | 'viewer'
+export type PartnerMemberRole = 'owner' | 'admin' | 'member'
+
 export interface AccessibleWorkspace {
   id: string
   name: string
@@ -441,76 +1400,8 @@ export interface AccessibleWorkspace {
   partner_id: string
   description: string | null
   role: WorkspaceMemberRole
-  resource_limits: WorkspaceResourceLimits
+  resource_limits: Record<string, unknown>
   status: string
-}
-
-export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>
-
-// ============================================================================
-// WORKSPACE INVITATION TYPES (Milestone 2)
-// ============================================================================
-
-export type WorkspaceInvitationStatus = "pending" | "accepted" | "expired" | "cancelled"
-
-export interface WorkspaceInvitation {
-  id: string
-  workspace_id: string
-  email: string
-  role: "admin" | "member" | "viewer"
-  token: string
-  message: string | null
-  invited_by: string
-  status: WorkspaceInvitationStatus
-  expires_at: string
-  accepted_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface WorkspaceInvitationWithInviter extends WorkspaceInvitation {
-  inviter?: {
-    email: string
-    first_name: string | null
-    last_name: string | null
-  }
-}
-
-export const createWorkspaceInvitationSchema = z.object({
-  email: z.string().email("Valid email is required"),
-  role: z.enum(["admin", "member", "viewer"]),
-  message: z.string().max(500).optional(),
-})
-
-export type CreateWorkspaceInvitationInput = z.infer<typeof createWorkspaceInvitationSchema>
-
-// ============================================================================
-// PARTNER MEMBER TYPES
-// ============================================================================
-
-export type PartnerMemberRole = "owner" | "admin" | "member"
-
-export interface PartnerMember {
-  id: string
-  partner_id: string
-  user_id: string
-  role: PartnerMemberRole
-  invited_by: string | null
-  joined_at: string | null
-  removed_at: string | null
-  removed_by: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PartnerMemberWithUser extends PartnerMember {
-  user?: {
-    id: string
-    email: string
-    first_name: string | null
-    last_name: string | null
-    avatar_url: string | null
-  }
 }
 
 export interface PartnerMembership {
@@ -523,80 +1414,141 @@ export interface PartnerMembership {
 }
 
 // ============================================================================
-// WORKSPACE INTEGRATION TYPES
+// DASHBOARD STATS TYPES
 // ============================================================================
 
-export type IntegrationProvider =
-  | "vapi"
-  | "retell"
-  | "synthflow"
-  | "hubspot"
-  | "salesforce"
-  | "zapier"
-  | "slack"
+export interface DashboardStats {
+  total_agents?: number
+  active_agents?: number
+  total_conversations?: number
+  conversations_this_month?: number
+  minutes_this_month?: number
+  cost_this_month?: number
+  total_minutes?: number
+  total_cost?: number
+  avg_duration_seconds?: number
+  avg_quality_score?: number | null
+  conversations_trend?: number
+  recent_activity?: {
+    date: string
+    conversations: number
+    minutes: number
+  }[]
+}
 
-// Additional API key schema
-export const additionalApiKeySchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1, "Key name is required").max(255),
-  secret_key: z.string().min(1, "Secret API key is required"),
-  public_key: z.string().optional(),
-})
+// ============================================================================
+// API RESPONSE TYPES
+// ============================================================================
 
-export type AdditionalApiKey = z.infer<typeof additionalApiKeySchema>
+export interface ApiResponse<T = unknown> {
+  data?: T
+  error?: string
+  success?: boolean
+}
 
-// API Keys structure for workspace integrations
+export interface PaginatedResponse<T = unknown> {
+  data: T[]
+  total: number
+  totalPages: number
+  pagination?: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+    hasMore: boolean
+  }
+}
+
+// ============================================================================
+// INTEGRATION API KEYS TYPES
+// ============================================================================
+
 export interface IntegrationApiKeys {
+  default_secret_key?: string
+  default_public_key?: string
+  additional_keys?: AdditionalApiKey[]
+  has_default_secret_key?: boolean
+  has_default_public_key?: boolean
+}
+
+// ============================================================================
+// WORKSPACE INTEGRATION INPUT TYPES
+// ============================================================================
+
+export interface CreateWorkspaceIntegrationInput {
+  provider: string
+  name: string
   default_secret_key: string
   default_public_key?: string
-  additional_keys: AdditionalApiKey[]
+  additional_keys?: AdditionalApiKey[]
+  config?: Record<string, unknown>
 }
 
-export interface WorkspaceIntegration {
-  id: string
-  workspace_id: string
-  provider: IntegrationProvider
-  name: string
-  api_keys: IntegrationApiKeys
-  is_active: boolean
-  config: Record<string, unknown>
-  created_by: string | null
-  created_at: string
-  updated_at: string
+export interface UpdateWorkspaceIntegrationInput {
+  name?: string
+  default_secret_key?: string
+  default_public_key?: string
+  additional_keys?: AdditionalApiKey[]
+  config?: Record<string, unknown>
 }
 
-// Safe version without sensitive data (for listing)
-export interface WorkspaceIntegrationSafe {
-  id: string
-  workspace_id: string
-  provider: IntegrationProvider
-  name: string
-  has_public_key: boolean
-  additional_keys_count: number
-  is_active: boolean
-  config: Record<string, unknown>
-  created_at: string
-  updated_at: string
+// ============================================================================
+// WORKSPACE INVITATION INPUT TYPES
+// ============================================================================
+
+export interface CreateWorkspaceInvitationInput {
+  email: string
+  role: WorkspaceMemberRole
+  message?: string
 }
+
+// ============================================================================
+// ZOD VALIDATION SCHEMAS FOR FORMS/API
+// ============================================================================
+
+export const createPartnerRequestSchema = z.object({
+  company_name: z.string().min(1, "Company name is required").max(255),
+  contact_name: z.string().min(1, "Contact name is required").max(255),
+  contact_email: z.string().email("Invalid email address"),
+  phone: z.string().optional(),
+  business_description: z.string().min(10, "Please provide a business description"),
+  use_case: z.string().min(10, "Please describe your use case"),
+  desired_subdomain: z.string().min(3, "Subdomain must be at least 3 characters").max(50),
+  custom_domain: z.string().optional().default(""),
+  selected_plan: z.enum(["starter", "professional", "enterprise"]).default("starter"),
+  expected_users: z.number().optional(),
+  branding_data: z.object({
+    logo_url: z.string().optional(),
+    primary_color: z.string().optional(),
+    secondary_color: z.string().optional(),
+    company_name: z.string().optional(),
+  }).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+})
+
+export type CreatePartnerRequestInput = z.infer<typeof createPartnerRequestSchema>
+
+export const createWorkspaceSchema = z.object({
+  name: z.string().min(1, "Name is required").max(255),
+  description: z.string().optional(),
+  slug: z.string().min(1, "Slug is required").max(100).regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  resource_limits: z.object({
+    max_agents: z.number().optional(),
+    max_users: z.number().optional(),
+    max_minutes_per_month: z.number().optional(),
+  }).optional(),
+})
+
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>
 
 export const createWorkspaceIntegrationSchema = z.object({
-  provider: z.enum([
-    "vapi",
-    "retell",
-    "synthflow",
-    "hubspot",
-    "salesforce",
-    "zapier",
-    "slack",
-  ] as const),
+  provider: z.enum(["vapi", "retell", "synthflow", "hubspot", "salesforce", "zapier", "slack"] as const),
   name: z.string().min(1, "Connection name is required").max(255),
   default_secret_key: z.string().min(1, "Default secret API key is required"),
   default_public_key: z.string().optional(),
   additional_keys: z.array(additionalApiKeySchema).optional().default([]),
   config: z.record(z.string(), z.unknown()).optional(),
 })
-
-export type CreateWorkspaceIntegrationInput = z.infer<typeof createWorkspaceIntegrationSchema>
 
 export const updateWorkspaceIntegrationSchema = z.object({
   name: z.string().min(1, "Connection name is required").max(255).optional(),
@@ -606,137 +1558,8 @@ export const updateWorkspaceIntegrationSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
 })
 
-export type UpdateWorkspaceIntegrationInput = z.infer<typeof updateWorkspaceIntegrationSchema>
-
-// ============================================================================
-// PARTNER REQUEST TYPES (Phase 1 - Milestone 1)
-// ============================================================================
-
-export type PartnerRequestStatus = "pending" | "approved" | "rejected" | "provisioning"
-
-export type PartnerOnboardingStatus = "active" | "provisioning" | "suspended"
-
-export interface PartnerRequestBrandingData {
-  logo_url?: string
-  primary_color?: string
-  secondary_color?: string
-  favicon_url?: string
-  company_name?: string
-}
-
-export interface PartnerRequest {
-  id: string
-  status: PartnerRequestStatus
-
-  // Company & Contact
-  company_name: string
-  contact_email: string
-  contact_name: string
-  phone: string | null
-
-  // Domain & Technical
-  desired_subdomain: string
-  custom_domain: string | null
-
-  // Business Information
-  business_description: string
-  expected_users: number | null
-  use_case: string
-
-  // Branding
-  branding_data: PartnerRequestBrandingData
-
-  // Plan & Billing
-  selected_plan: string
-  billing_info: Record<string, unknown> | null
-
-  // Request Tracking
-  requested_at: string
-  reviewed_at: string | null
-  reviewed_by: string | null
-  rejection_reason: string | null
-
-  // Provisioning
-  provisioned_partner_id: string | null
-
-  // Metadata
-  metadata: Record<string, unknown>
-
-  // Timestamps
-  created_at: string
-  updated_at: string
-}
-
-export interface PartnerRequestWithReviewer extends PartnerRequest {
-  reviewer?: {
-    id: string
-    email: string
-    first_name: string | null
-    last_name: string | null
-  }
-}
-
-export interface PartnerRequestWithPartner extends PartnerRequest {
-  partner?: Partner
-}
-
-export const partnerRequestBrandingSchema = z.object({
-  logo_url: z.string().url().optional().or(z.literal("")),
-  primary_color: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/)
-    .optional(),
-  secondary_color: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/)
-    .optional(),
-  favicon_url: z.string().url().optional().or(z.literal("")),
-  company_name: z.string().max(255).optional(),
+export const createWorkspaceInvitationSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  role: z.enum(["owner", "admin", "member", "viewer"] as const),
+  message: z.string().optional(),
 })
-
-export const createPartnerRequestSchema = z.object({
-  // Company & Contact (Step 1)
-  company_name: z.string().min(2, "Company name must be at least 2 characters").max(255),
-  contact_name: z.string().min(2, "Contact name must be at least 2 characters").max(255),
-  contact_email: z.string().email("Valid email is required"),
-  phone: z.string().optional(),
-
-  // Business Details (Step 2)
-  business_description: z.string().min(10, "Please provide at least 10 characters").max(1000),
-  expected_users: z.number().int().min(1).max(10000).optional(),
-  use_case: z.string().min(10, "Please describe your use case").max(1000),
-
-  // Technical & Branding (Step 3)
-  custom_domain: z
-    .string()
-    .min(4, "Domain must be at least 4 characters")
-    .max(255)
-    .regex(
-      /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,}$/,
-      "Please enter a valid domain (e.g., app.yourdomain.com)"
-    ),
-  desired_subdomain: z
-    .string()
-    .min(3)
-    .max(50)
-    .regex(/^[a-z0-9-]+$/)
-    .optional(),
-  branding_data: partnerRequestBrandingSchema.optional(),
-
-  // Plan Selection
-  selected_plan: z.enum(["enterprise"]).default("enterprise"),
-
-  // Optional Metadata
-  metadata: z.record(z.string(), z.string()).optional(),
-})
-
-export type CreatePartnerRequestInput = z.infer<typeof createPartnerRequestSchema>
-
-export const updatePartnerRequestSchema = z.object({
-  status: z.enum(["pending", "approved", "rejected", "provisioning"]).optional(),
-  rejection_reason: z.string().optional(),
-  reviewed_by: z.string().uuid().optional(),
-  provisioned_partner_id: z.string().uuid().optional(),
-})
-
-export type UpdatePartnerRequestInput = z.infer<typeof updatePartnerRequestSchema>

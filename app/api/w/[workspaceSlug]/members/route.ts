@@ -118,7 +118,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .eq("workspace_id", ctx.workspace.id)
       .is("removed_at", null)
 
-    const maxUsers = ctx.workspace.resource_limits.max_users || 20
+    const resourceLimits = ctx.workspace.resource_limits as { max_users?: number } | null
+    const maxUsers = resourceLimits?.max_users || 20
     if (count && count >= maxUsers) {
       return apiError(`Member limit reached. Maximum: ${maxUsers} members.`, 403)
     }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import type { PartnerBranding } from "@/types/database.types"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,21 +67,23 @@ export default function PartnerDetailPage() {
   // Initialize edit form when partner loads
   const initEditForm = () => {
     if (partner) {
+      const partnerBranding = (partner.branding || {}) as PartnerBranding
       setName(partner.name)
-      setCompanyName(partner.branding?.company_name || "")
-      setPrimaryColor(partner.branding?.primary_color || "#7c3aed")
+      setCompanyName(partnerBranding.company_name || "")
+      setPrimaryColor(partnerBranding.primary_color || "#7c3aed")
       setEditMode(true)
     }
   }
 
   const handleSave = async () => {
     try {
+      const partnerBranding = (partner?.branding || {}) as PartnerBranding
       await updatePartner.mutateAsync({
         id: partnerId,
         data: {
           name,
           branding: {
-            ...partner?.branding,
+            ...partnerBranding,
             company_name: companyName,
             primary_color: primaryColor,
           },
@@ -146,6 +149,7 @@ export default function PartnerDetailPage() {
   }
 
   const workspaces = workspacesData?.data || []
+  const branding = (partner.branding || {}) as PartnerBranding
 
   return (
     <div className="space-y-6">
@@ -308,7 +312,7 @@ export default function PartnerDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Display Name</span>
                   <span className="text-foreground">
-                    {partner.branding?.company_name || partner.name}
+                    {branding.company_name || partner.name}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -316,10 +320,10 @@ export default function PartnerDetailPage() {
                   <div className="flex items-center gap-2">
                     <div
                       className="w-6 h-6 rounded"
-                      style={{ backgroundColor: partner.branding?.primary_color || "#7c3aed" }}
+                      style={{ backgroundColor: branding.primary_color || "#7c3aed" }}
                     />
                     <span className="text-foreground">
-                      {partner.branding?.primary_color || "#7c3aed"}
+                      {branding.primary_color || "#7c3aed"}
                     </span>
                   </div>
                 </div>

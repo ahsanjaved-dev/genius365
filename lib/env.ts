@@ -12,6 +12,14 @@ export const env = {
   supabaseAnonKey: getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
 
+  // Prisma / Database
+  // DATABASE_URL: Pooled connection string for Prisma queries
+  // Format: postgresql://[user]:[password]@[host]:[port]/postgres?pgbouncer=true&connection_limit=10
+  databaseUrl: getEnvVar("DATABASE_URL", false),
+  // DIRECT_URL: Direct connection for Prisma migrations (bypasses pgbouncer)
+  // Format: postgresql://[user]:[password]@[host]:[port]/postgres
+  directUrl: getEnvVar("DIRECT_URL", false),
+
   // App Configuration
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",
 

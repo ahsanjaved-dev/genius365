@@ -117,7 +117,7 @@ async function getRetellApiKeyForAgent(
     }
 
     if (apiKeyConfig.secret_key.type === "default") {
-      return apiKeys.default_secret_key
+      return apiKeys.default_secret_key || null
     }
 
     if (apiKeyConfig.secret_key.type === "additional") {
@@ -131,7 +131,7 @@ async function getRetellApiKeyForAgent(
         return null
       }
 
-      return additionalKey.secret_key
+      return additionalKey.secret_key || null
     }
 
     return null
