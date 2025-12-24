@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Phone, Loader2 } from "lucide-react"
 import { TestCallModal } from "./test-call-modal"
-import { useTestCallValidation } from "@/lib/hooks/use-test-call-validation"
+import { useTestCallValidation } from "@/lib/hooks/use-test-call-validations"
 import type { AIAgent } from "@/types/database.types"
 
 interface TestCallButtonProps {

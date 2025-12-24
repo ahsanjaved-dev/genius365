@@ -19,7 +19,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     const { data: integrations, error } = await ctx.adminClient
       .from("workspace_integrations")
-      .select("id, workspace_id, provider, name, api_keys, is_active, config, created_at, updated_at")
+      .select(
+        "id, workspace_id, provider, name, api_keys, is_active, config, created_at, updated_at"
+      )
       .eq("workspace_id", ctx.workspace.id)
       .order("created_at", { ascending: false })
 
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const validation = createWorkspaceIntegrationSchema.safeParse(body)
 
     if (!validation.success) {
-      return apiError(validation.error.issues[0].message)
+      return apiError(validation.error.issues[0]?.message ?? "Validation failed")
     }
 
     // Check if integration already exists for this provider
@@ -74,7 +76,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .single()
 
     if (existing) {
-      return apiError(`${validation.data.provider} integration already exists. Please update or disconnect it first.`)
+      return apiError(
+        `${validation.data.provider} integration already exists. Please update or disconnect it first.`
+      )
     }
 
     // Construct api_keys object
@@ -96,7 +100,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         created_by: ctx.user.id,
         is_active: true,
       })
-      .select("id, workspace_id, provider, name, api_keys, is_active, config, created_at, updated_at")
+      .select(
+        "id, workspace_id, provider, name, api_keys, is_active, config, created_at, updated_at"
+      )
       .single()
 
     if (error) {
