@@ -3,8 +3,6 @@ import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { createWorkspaceAgentSchema } from "@/types/api.types"
 import { createAuditLog, getRequestMetadata } from "@/lib/audit"
-import { safeVapiSync, shouldSyncToVapi } from "@/lib/integrations/vapi/agent/sync"
-import { safeRetellSync, shouldSyncToRetell } from "@/lib/integrations/retell/agent/sync"
 import type { AgentProvider, AIAgent } from "@/types/database.types"
 
 interface RouteContext {
@@ -93,22 +91,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return apiError(`Agent limit reached for this workspace. Maximum: ${maxAgents} agents.`, 403)
     }
 
-    // CHANGED: Build config with default API keys automatically
-    // This ensures agents are always created with default keys from the workspace integration
+    // NEW FLOW: Build config WITHOUT auto-assigning API keys
+    // Agent starts with no API key assigned and sync_status = "not_synced"
     const inputConfig = validation.data.config || {}
-    const existingApiKeyConfig = inputConfig.api_key_config || {}
     
-    const configWithDefaultKeys = {
+    const configWithoutDefaultKeys = {
       ...inputConfig,
       api_key_config: {
-        secret_key: existingApiKeyConfig.secret_key || { type: "default" as const },
-        public_key: existingApiKeyConfig.public_key || { type: "default" as const },
+        // No keys assigned by default - admin will configure later
+        secret_key: { type: "none" as const },
+        public_key: { type: "none" as const },
+        assigned_key_id: null,
       },
     }
 
-    console.log(`[AgentCreate] Creating agent with provider: ${validation.data.provider}, api_key_config:`, JSON.stringify(configWithDefaultKeys.api_key_config))
+    console.log(`[AgentCreate] Creating agent with provider: ${validation.data.provider}, NO API keys assigned (not_synced)`)
 
-    // Create agent with default API keys
+    // Create agent WITHOUT syncing - sync will happen when admin assigns API key
     const { data: agent, error } = await ctx.adminClient
       .from("ai_agents")
       .insert({
@@ -120,10 +119,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         voice_provider: validation.data.voice_provider,
         model_provider: validation.data.model_provider,
         transcriber_provider: validation.data.transcriber_provider,
-        config: configWithDefaultKeys, // CHANGED: Use config with default API keys
-        agent_secret_api_key: validation.data.agent_secret_api_key || [],
-        agent_public_api_key: validation.data.agent_public_api_key || [],
+        config: configWithoutDefaultKeys,
+        agent_secret_api_key: [],
+        agent_public_api_key: [],
         is_active: validation.data.is_active ?? true,
+        // NEW: Set sync_status to not_synced - no sync on creation
+        sync_status: "not_synced",
+        needs_resync: false,
       })
       .select()
       .single()
@@ -133,21 +135,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return apiError("Failed to create agent")
     }
 
-    // Sync with external provider
-    let syncedAgent = agent as AIAgent
-    const typedAgent = agent as AIAgent
-
-    if (typedAgent.provider === "vapi" && shouldSyncToVapi(typedAgent)) {
-      const syncResult = await safeVapiSync(typedAgent, "create")
-      if (syncResult.success && syncResult.agent) {
-        syncedAgent = syncResult.agent
-      }
-    } else if (typedAgent.provider === "retell" && shouldSyncToRetell(typedAgent)) {
-      const syncResult = await safeRetellSync(typedAgent, "create")
-      if (syncResult.success && syncResult.agent) {
-        syncedAgent = syncResult.agent
-      }
-    }
+    // NEW FLOW: DO NOT sync on creation
+    // Sync will happen when admin assigns API key via PATCH
 
     // Audit log
     const { ipAddress, userAgent } = getRequestMetadata(request)
@@ -161,12 +150,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         name: agent.name,
         provider: agent.provider,
         workspace_id: ctx.workspace.id,
+        sync_status: "not_synced",
       },
       ipAddress,
       userAgent,
     })
 
-    return apiResponse(syncedAgent, 201)
+    return apiResponse(agent, 201)
   } catch (error) {
     console.error("POST /api/w/[slug]/agents error:", error)
     return serverError()

@@ -53,21 +53,24 @@ export function shouldSyncToRetell(agent: AIAgent): boolean {
     return false
   }
 
-  // Check legacy keys first
+  // NEW FLOW: Check if an API key is assigned via assigned_key_id
+  const apiKeyConfig = agent.config?.api_key_config
+  if (apiKeyConfig?.assigned_key_id) {
+    return true
+  }
+
+  // Legacy: Check if secret_key type is configured (not "none")
+  const secretKeyConfig = apiKeyConfig?.secret_key
+  if (secretKeyConfig && secretKeyConfig.type !== "none") {
+    return true
+  }
+
+  // Legacy: Check legacy keys stored directly on agent
   const hasLegacySecretKey = agent.agent_secret_api_key?.some(
     (key) => key.provider === "retell" && key.is_active
   )
 
-  // Check new api_key_config
-  const apiKeyConfig = agent.config?.api_key_config
-  const hasNewApiKeyConfig =
-    apiKeyConfig?.secret_key?.type === "default" ||
-    apiKeyConfig?.secret_key?.type === "additional" ||
-    // ADDED: Also sync when type is "none" or undefined (will use default key from integration)
-    !apiKeyConfig?.secret_key ||
-    apiKeyConfig?.secret_key?.type === "none"
-
-  return hasLegacySecretKey || hasNewApiKeyConfig
+  return hasLegacySecretKey || false
 }
 
 // ============================================================================
@@ -111,9 +114,29 @@ async function getRetellApiKeyForAgent(
     const apiKeys = integration.api_keys as IntegrationApiKeys
     const apiKeyConfig = agent.config?.api_key_config
 
-    // UPDATED: Handle "none" or undefined by falling back to default key
+    // NEW FLOW: Check assigned_key_id first
+    if (apiKeyConfig?.assigned_key_id) {
+      const keyId = apiKeyConfig.assigned_key_id
+      
+      // Check if it's the default key
+      if (keyId === "default" && apiKeys.default_secret_key) {
+        return apiKeys.default_secret_key
+      }
+      
+      // Check additional keys
+      const additionalKey = apiKeys.additional_keys?.find((k) => k.id === keyId)
+      if (additionalKey?.secret_key) {
+        return additionalKey.secret_key
+      }
+      
+      console.error("[RetellSync] Assigned key not found:", keyId)
+      return null
+    }
+
+    // Legacy flow: Check secret_key.type
     if (!apiKeyConfig?.secret_key || apiKeyConfig.secret_key.type === "none") {
-      return apiKeys.default_secret_key || null
+      // No key configured
+      return null
     }
 
     if (apiKeyConfig.secret_key.type === "default") {
@@ -151,7 +174,7 @@ export async function safeRetellSync(
 ): Promise<RetellSyncResult> {
   try {
     if (!shouldSyncToRetell(agent)) {
-      console.log("[RetellSync] Skipping sync - not configured for Retell")
+      console.log("[RetellSync] Skipping sync - no API key configured")
       return { success: true }
     }
 
@@ -161,7 +184,7 @@ export async function safeRetellSync(
       console.error("[RetellSync] No API key found for agent")
       return {
         success: false,
-        error: "No Retell API key configured. Please set up API keys in the agent or integration settings.",
+        error: "No Retell API key configured. Please assign an API key in the agent settings.",
       }
     }
 
@@ -210,14 +233,20 @@ export async function safeRetellSync(
 
         const config = agent.config || {}
 
-        // Update LLM if we have the llm_id stored
+        // Try to update LLM if we have the llm_id stored
+        let llmUpdateFailed = false
         if (config.retell_llm_id) {
           console.log("[RetellSync] Updating LLM on Retell:", config.retell_llm_id)
           const llmPayload = mapToRetellLLM(agent)
-          await updateRetellLLMWithKey(config.retell_llm_id, llmPayload, secretKey)
+          const llmUpdateResponse = await updateRetellLLMWithKey(config.retell_llm_id, llmPayload, secretKey)
+          
+          if (!llmUpdateResponse.success) {
+            console.log("[RetellSync] LLM update failed, will create new agent...")
+            llmUpdateFailed = true
+          }
         }
 
-        // Update Agent
+        // Try to update Agent
         console.log("[RetellSync] Updating Agent on Retell:", agent.external_agent_id)
         const agentPayload = mapToRetellAgent(agent, config.retell_llm_id || "")
         // Remove response_engine from update payload (can't change LLM reference)
@@ -228,6 +257,12 @@ export async function safeRetellSync(
           updatePayload,
           secretKey
         )
+
+        // If update fails (agent doesn't exist or API key from different account), create new agent
+        if (!agentResponse.success || llmUpdateFailed) {
+          console.log("[RetellSync] Update failed, creating new agent on Retell instead...")
+          return await safeRetellSync(agent, "create")
+        }
 
         return await processRetellResponse(agentResponse, agent.id)
       }
