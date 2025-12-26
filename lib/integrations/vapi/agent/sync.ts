@@ -40,18 +40,24 @@ export function shouldSyncToVapi(agent: AIAgent): boolean {
     return false
   }
 
-  // Check legacy keys (stored directly on agent)
+  // NEW FLOW: Check if an API key is assigned via assigned_key_id
+  const apiKeyConfig = agent.config?.api_key_config
+  if (apiKeyConfig?.assigned_key_id) {
+    return true
+  }
+
+  // Legacy: Check if secret_key type is configured (not "none")
+  const secretKeyConfig = apiKeyConfig?.secret_key
+  if (secretKeyConfig && secretKeyConfig.type !== "none") {
+    return true
+  }
+
+  // Legacy: Check legacy keys stored directly on agent
   const hasLegacySecretKey = agent.agent_secret_api_key?.some(
     (key) => key.provider === "vapi" && key.is_active
   )
 
-  // Check new api_key_config (references workspace integration)
-  const apiKeyConfig = agent.config?.api_key_config
-  const hasNewApiKeyConfig =
-    apiKeyConfig?.secret_key?.type === "default" ||
-    apiKeyConfig?.secret_key?.type === "additional"
-
-  return hasLegacySecretKey || hasNewApiKeyConfig
+  return hasLegacySecretKey || false
 }
 
 // ============================================================================
@@ -61,7 +67,7 @@ export function shouldSyncToVapi(agent: AIAgent): boolean {
 async function getVapiApiKeyForAgent(
   agent: AIAgent
 ): Promise<{ secretKey: string; publicKey?: string } | null> {
-  // First check legacy keys
+  // First check legacy keys stored directly on agent
   const legacyKey = agent.agent_secret_api_key?.find(
     (key) => key.provider === "vapi" && key.is_active
   )
@@ -76,15 +82,9 @@ async function getVapiApiKeyForAgent(
     }
   }
 
-  // Check new api_key_config
-  const apiKeyConfig = agent.config?.api_key_config
-  if (!apiKeyConfig?.secret_key || apiKeyConfig.secret_key.type === "none") {
-    return null
-  }
-
   // Need to fetch from workspace_integrations
   if (!agent.workspace_id) {
-    console.error("Agent has no workspace_id, cannot fetch integration keys")
+    console.error("[VapiSync] Agent has no workspace_id, cannot fetch integration keys")
     return null
   }
 
@@ -100,11 +100,42 @@ async function getVapiApiKeyForAgent(
       .single()
 
     if (error || !integration) {
-      console.error("Failed to fetch VAPI integration:", error)
+      console.error("[VapiSync] Failed to fetch VAPI integration:", error)
       return null
     }
 
     const apiKeys = integration.api_keys as IntegrationApiKeys
+    const apiKeyConfig = agent.config?.api_key_config
+
+    // NEW FLOW: Check assigned_key_id first
+    if (apiKeyConfig?.assigned_key_id) {
+      const keyId = apiKeyConfig.assigned_key_id
+      
+      // Check if it's the default key
+      if (keyId === "default" && apiKeys.default_secret_key) {
+        return {
+          secretKey: apiKeys.default_secret_key,
+          publicKey: apiKeys.default_public_key,
+        }
+      }
+      
+      // Check additional keys
+      const additionalKey = apiKeys.additional_keys?.find((k) => k.id === keyId)
+      if (additionalKey?.secret_key) {
+        return {
+          secretKey: additionalKey.secret_key,
+          publicKey: additionalKey.public_key,
+        }
+      }
+      
+      console.error("[VapiSync] Assigned key not found:", keyId)
+      return null
+    }
+
+    // Legacy flow: Check secret_key.type
+    if (!apiKeyConfig?.secret_key || apiKeyConfig.secret_key.type === "none") {
+      return null
+    }
 
     if (apiKeyConfig.secret_key.type === "default") {
       if (!apiKeys.default_secret_key) return null
@@ -121,7 +152,7 @@ async function getVapiApiKeyForAgent(
       )
 
       if (!additionalKey || !additionalKey.secret_key) {
-        console.error("Additional key not found:", additionalKeyId)
+        console.error("[VapiSync] Additional key not found:", additionalKeyId)
         return null
       }
 
@@ -133,7 +164,7 @@ async function getVapiApiKeyForAgent(
 
     return null
   } catch (error) {
-    console.error("Error fetching API keys for agent:", error)
+    console.error("[VapiSync] Error fetching API keys for agent:", error)
     return null
   }
 }
@@ -148,7 +179,7 @@ export async function safeVapiSync(
 ): Promise<VapiSyncResult> {
   try {
     if (!shouldSyncToVapi(agent)) {
-      console.log("[VapiSync] Skipping sync - not configured for VAPI")
+      console.log("[VapiSync] Skipping sync - no API key configured")
       return { success: true }
     }
 
@@ -159,7 +190,7 @@ export async function safeVapiSync(
       console.error("[VapiSync] No API key found for agent")
       return {
         success: false,
-        error: "No VAPI API key configured. Please set up API keys in the agent or integration settings.",
+        error: "No VAPI API key configured. Please assign an API key in the agent settings.",
       }
     }
 
@@ -179,12 +210,21 @@ export async function safeVapiSync(
           response = await createVapiAgentWithKey(payload, keys.secretKey)
           return await processVapiResponse(response, agent.id)
         }
+        
         console.log("[VapiSync] Updating agent on VAPI:", agent.external_agent_id)
         response = await updateVapiAgentWithKey(
           agent.external_agent_id,
           payload,
           keys.secretKey
         )
+        
+        // If update fails (agent doesn't exist or API key from different account), create new agent
+        if (!response.success) {
+          console.log("[VapiSync] Update failed, creating new agent on VAPI instead...")
+          const createResponse = await createVapiAgentWithKey(payload, keys.secretKey)
+          return await processVapiResponse(createResponse, agent.id)
+        }
+        
         return await processVapiResponse(response, agent.id)
 
       case "delete":

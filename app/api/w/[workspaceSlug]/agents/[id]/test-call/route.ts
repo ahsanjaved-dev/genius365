@@ -72,8 +72,31 @@ async function getApiKeysForAgent(
     const apiKeys = integration.api_keys as IntegrationApiKeys
     const apiKeyConfig = agent.config?.api_key_config
 
-    // Get secret key - Handle "none" or undefined by falling back to default
     let secretKey: string | undefined
+    let publicKey: string | undefined
+
+    // NEW FLOW: Check assigned_key_id first
+    if (apiKeyConfig?.assigned_key_id) {
+      const keyId = apiKeyConfig.assigned_key_id
+      
+      if (keyId === "default") {
+        secretKey = apiKeys.default_secret_key
+        publicKey = apiKeys.default_public_key
+      } else {
+        // Find in additional keys
+        const additionalKey = apiKeys.additional_keys?.find((k) => k.id === keyId)
+        if (additionalKey) {
+          secretKey = additionalKey.secret_key
+          publicKey = additionalKey.public_key
+        }
+      }
+      
+      console.log(`[TestCall] Using assigned_key_id: ${keyId}, secretKey: ${secretKey ? 'found' : 'not found'}, publicKey: ${publicKey ? 'found' : 'not found'}`)
+      return { secretKey, publicKey }
+    }
+
+    // LEGACY FLOW: Check secret_key.type
+    // Get secret key - Handle "none" or undefined by falling back to default
     if (!apiKeyConfig?.secret_key || apiKeyConfig.secret_key.type === "none") {
       // Fall back to default secret key
       secretKey = apiKeys.default_secret_key
@@ -87,7 +110,6 @@ async function getApiKeysForAgent(
     }
 
     // Get public key - Handle "none" or undefined by falling back to default
-    let publicKey: string | undefined
     if (!apiKeyConfig?.public_key || apiKeyConfig.public_key.type === "none") {
       // Fall back to default public key
       publicKey = apiKeys.default_public_key

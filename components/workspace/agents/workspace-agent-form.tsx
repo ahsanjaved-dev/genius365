@@ -15,12 +15,15 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Key, Lock, Globe, AlertCircle, ExternalLink, Check } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Loader2, Key, Lock, Globe, AlertCircle, ExternalLink, Check, AlertTriangle, CloudOff } from "lucide-react"
 import type { AIAgent } from "@/types/database.types"
 import type { CreateWorkspaceAgentInput } from "@/types/api.types"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAllIntegrationsWithDetails } from "@/lib/hooks/use-workspace-integrations"
+import { useState } from "react"
+
 interface WorkspaceAgentFormProps {
   initialData?: AIAgent
   onSubmit: (data: CreateWorkspaceAgentInput) => Promise<void>
@@ -58,6 +61,7 @@ const formSchema = z.object({
         .object({
           secret_key: selectedApiKeySchema.optional(),
           public_key: selectedApiKeySchema.optional(),
+          assigned_key_id: z.string().nullable().optional(),
         })
         .optional(),
     })
@@ -67,6 +71,18 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>
 
+// Helper to get current assigned key ID from agent config
+function getAssignedKeyId(config: any): string | null {
+  if (!config?.api_key_config) return null
+  if (config.api_key_config.assigned_key_id) return config.api_key_config.assigned_key_id
+  
+  const secretKey = config.api_key_config.secret_key
+  if (!secretKey || secretKey.type === "none") return null
+  if (secretKey.type === "default") return "default"
+  if (secretKey.type === "additional") return secretKey.additional_key_id || null
+  return null
+}
+
 export function WorkspaceAgentForm({
   initialData,
   onSubmit,
@@ -74,9 +90,13 @@ export function WorkspaceAgentForm({
 }: WorkspaceAgentFormProps) {
   const params = useParams()
   const workspaceSlug = params.workspaceSlug as string
+  const [showKeyChangeWarning, setShowKeyChangeWarning] = useState(false)
 
   // Fetch all integrations with details for the current workspace
   const { data: integrations, isLoading: integrationsLoading } = useAllIntegrationsWithDetails()
+
+  // Get the initial assigned key ID
+  const initialAssignedKeyId = initialData ? getAssignedKeyId(initialData.config) : null
 
   const {
     register,
@@ -100,10 +120,11 @@ export function WorkspaceAgentForm({
         first_message: (initialData?.config as any)?.first_message || "",
         voice_id: (initialData?.config as any)?.voice_id || "",
         voice_settings: (initialData?.config as any)?.voice_settings || {},
-        // CHANGED: Default to "default" keys instead of "none"
+        // NEW FLOW: Default to "none" for new agents
         api_key_config: (initialData?.config as any)?.api_key_config || {
-          secret_key: { type: "default" },
-          public_key: { type: "default" },
+          secret_key: { type: "none" },
+          public_key: { type: "none" },
+          assigned_key_id: null,
         },
       },
     },
@@ -111,38 +132,42 @@ export function WorkspaceAgentForm({
 
   const selectedProvider = watch("provider")
   const apiKeyConfig = watch("config.api_key_config")
+  
+  // Check if agent is synced
+  const syncStatus = initialData?.sync_status || "not_synced"
+  const isNotSynced = syncStatus === "not_synced"
+  const isSyncError = syncStatus === "error"
 
   // Get the integration for the selected provider
   const currentIntegration = integrations?.find((i: any) => i.provider === selectedProvider)
 
-// FIX: Ensure api_key_config is always sent to backend with proper defaults
-const handleFormSubmit = async (data: FormData) => {
-  // Build a complete config object with api_key_config
-  const currentConfig = data.config || {}
-  const apiKeyConfigData = currentConfig.api_key_config || {}
-  
-  const completeConfig = {
-    system_prompt: currentConfig.system_prompt || "",
-    first_message: currentConfig.first_message || "",
-    voice_id: currentConfig.voice_id || "",
-    voice_settings: currentConfig.voice_settings || {},
-    api_key_config: {
-      secret_key: apiKeyConfigData.secret_key || { type: "default" as const },
-      public_key: apiKeyConfigData.public_key || { type: "default" as const },
-    },
-  }
+  const handleFormSubmit = async (data: FormData) => {
+    const currentConfig = data.config || {}
+    const apiKeyConfigData = currentConfig.api_key_config || {}
+    
+    const completeConfig = {
+      system_prompt: currentConfig.system_prompt || "",
+      first_message: currentConfig.first_message || "",
+      voice_id: currentConfig.voice_id || "",
+      voice_settings: currentConfig.voice_settings || {},
+      api_key_config: {
+        secret_key: apiKeyConfigData.secret_key || { type: "none" as const },
+        public_key: apiKeyConfigData.public_key || { type: "none" as const },
+        assigned_key_id: apiKeyConfigData.assigned_key_id || null,
+      },
+    }
 
-  const submitData = {
-    ...data,
-    config: completeConfig,
-    agent_secret_api_key: [],
-    agent_public_api_key: [],
+    const submitData = {
+      ...data,
+      config: completeConfig,
+      agent_secret_api_key: [],
+      agent_public_api_key: [],
+    }
+    
+    console.log("[WorkspaceAgentForm] Submitting with config:", JSON.stringify(submitData.config, null, 2))
+    
+    await onSubmit(submitData as CreateWorkspaceAgentInput)
   }
-  
-  console.log("[WorkspaceAgentForm] Submitting with config:", JSON.stringify(submitData.config, null, 2))
-  
-  await onSubmit(submitData as CreateWorkspaceAgentInput)
-}
 
   const getProviderDisplayName = (provider: string) => {
     switch (provider) {
@@ -158,10 +183,19 @@ const handleFormSubmit = async (data: FormData) => {
   }
 
   const handleSecretKeySelection = (value: string) => {
+    // Check if changing from an existing key
+    if (initialAssignedKeyId && value !== initialAssignedKeyId) {
+      setShowKeyChangeWarning(true)
+    } else {
+      setShowKeyChangeWarning(false)
+    }
+
     if (value === "none") {
       setValue("config.api_key_config.secret_key", { type: "none" })
+      setValue("config.api_key_config.assigned_key_id", null)
     } else if (value === "default") {
       setValue("config.api_key_config.secret_key", { type: "default" })
+      setValue("config.api_key_config.assigned_key_id", "default")
     } else {
       const additionalKey = currentIntegration?.additional_keys?.find((k: any) => k.id === value)
       setValue("config.api_key_config.secret_key", {
@@ -169,6 +203,7 @@ const handleFormSubmit = async (data: FormData) => {
         additional_key_id: value,
         additional_key_name: additionalKey?.name || "Additional Key",
       })
+      setValue("config.api_key_config.assigned_key_id", value)
     }
   }
 
@@ -199,6 +234,34 @@ const handleFormSubmit = async (data: FormData) => {
     if (!config || config.type === "none") return "none"
     if (config.type === "default") return "default"
     return config.additional_key_id || "none"
+  }
+
+  const renderSyncStatus = () => {
+    if (isNotSynced) {
+      return (
+        <Badge variant="outline" className="text-amber-600 border-amber-600/30 bg-amber-500/10">
+          <CloudOff className="w-3 h-3 mr-1" />
+          Not Synced
+        </Badge>
+      )
+    }
+    if (isSyncError) {
+      return (
+        <Badge variant="outline" className="text-red-600 border-red-600/30 bg-red-500/10">
+          <AlertCircle className="w-3 h-3 mr-1" />
+          Sync Error
+        </Badge>
+      )
+    }
+    if (syncStatus === "synced") {
+      return (
+        <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+          <Check className="w-3 h-3 mr-1" />
+          Synced
+        </Badge>
+      )
+    }
+    return null
   }
 
   const renderApiKeyStatus = (type: "secret" | "public") => {
@@ -232,11 +295,48 @@ const handleFormSubmit = async (data: FormData) => {
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+      {/* Sync Status Alert for existing agents */}
+      {initialData && (isNotSynced || isSyncError) && (
+        <Alert variant={isSyncError ? "destructive" : "default"} className={isNotSynced ? "border-amber-500/50 bg-amber-500/10" : ""}>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>{isSyncError ? "Sync Error" : "Agent Not Synced"}</AlertTitle>
+          <AlertDescription>
+            {isNotSynced ? (
+              <>
+                This agent has not been synced to {getProviderDisplayName(initialData.provider)}. 
+                Assign an API key below to sync the agent.
+              </>
+            ) : (
+              <>
+                There was an error syncing this agent. Error: {initialData.last_sync_error || "Unknown error"}
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Key Change Warning */}
+      {showKeyChangeWarning && (
+        <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-600">API Key Change Warning</AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-400">
+            You are changing the API key for this agent. To preserve call logs, ensure the new API key 
+            is from the same provider account as the previous one.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Basic Information Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-          <CardDescription>Configure the basic settings for your AI agent</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Basic Information</CardTitle>
+              <CardDescription>Configure the basic settings for your AI agent</CardDescription>
+            </div>
+            {initialData && renderSyncStatus()}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -270,11 +370,13 @@ const handleFormSubmit = async (data: FormData) => {
               value={selectedProvider}
               onValueChange={(value: FormData["provider"]) => {
                 setValue("provider", value)
-                // CHANGED: Reset to default keys when provider changes (instead of none)
-                setValue("config.api_key_config.secret_key", { type: "default" })
-                setValue("config.api_key_config.public_key", { type: "default" })
+                // Reset API key config when provider changes
+                setValue("config.api_key_config.secret_key", { type: "none" })
+                setValue("config.api_key_config.public_key", { type: "none" })
+                setValue("config.api_key_config.assigned_key_id", null)
+                setShowKeyChangeWarning(false)
               }}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !!initialData} // Don't allow provider change on edit
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select provider" />
@@ -285,6 +387,11 @@ const handleFormSubmit = async (data: FormData) => {
                 <SelectItem value="synthflow">Synthflow</SelectItem>
               </SelectContent>
             </Select>
+            {initialData && (
+              <p className="text-xs text-muted-foreground">
+                Provider cannot be changed after agent creation.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -310,15 +417,24 @@ const handleFormSubmit = async (data: FormData) => {
             API Key Configuration
           </CardTitle>
           <CardDescription>
-            Select which API keys from your{" "}
-            <Link
-              href={`/w/${workspaceSlug}/integrations`}
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              integrations
-              <ExternalLink className="w-3 h-3" />
-            </Link>{" "}
-            to use for this agent.
+            {!initialData ? (
+              <>
+                API keys are configured by admin. You can create the agent now and the admin 
+                will assign API keys later to sync with {getProviderDisplayName(selectedProvider)}.
+              </>
+            ) : (
+              <>
+                Select which API keys from your{" "}
+                <Link
+                  href={`/w/${workspaceSlug}/integrations`}
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  integrations
+                  <ExternalLink className="w-3 h-3" />
+                </Link>{" "}
+                to use for this agent.
+              </>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -333,8 +449,11 @@ const handleFormSubmit = async (data: FormData) => {
                 No {getProviderDisplayName(selectedProvider)} Integration
               </h4>
               <p className="text-sm text-muted-foreground mb-4">
-                Connect {getProviderDisplayName(selectedProvider)} in your integrations to use API
-                keys.
+                {!initialData ? (
+                  <>You can still create the agent. An admin needs to connect {getProviderDisplayName(selectedProvider)} and assign API keys to sync.</>
+                ) : (
+                  <>Connect {getProviderDisplayName(selectedProvider)} in your integrations to use API keys.</>
+                )}
               </p>
               <Button variant="outline" asChild>
                 <Link href={`/w/${workspaceSlug}/integrations`}>Go to Integrations</Link>
@@ -352,8 +471,8 @@ const handleFormSubmit = async (data: FormData) => {
                   {renderApiKeyStatus("secret")}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Server-side key for creating and syncing agents with{" "}
-                  {getProviderDisplayName(selectedProvider)}.
+                  Server-side key for syncing agents with {getProviderDisplayName(selectedProvider)}.
+                  {!initialData && " (Optional - can be configured later by admin)"}
                 </p>
                 <Select
                   value={getSecretKeyValue()}
@@ -367,7 +486,7 @@ const handleFormSubmit = async (data: FormData) => {
                     <SelectItem value="none">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                        <span>No Key</span>
+                        <span>No Key (Not Synced)</span>
                       </div>
                     </SelectItem>
                     {currentIntegration.has_default_secret_key && (
@@ -536,7 +655,7 @@ const handleFormSubmit = async (data: FormData) => {
             </div>
           </div>
 
-          {/* Voice ID Input - NEW FIELD */}
+          {/* Voice ID Input */}
           <div className="space-y-2">
             <Label htmlFor="voice_id">Voice ID</Label>
             <Input
