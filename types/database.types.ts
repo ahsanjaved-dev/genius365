@@ -1725,3 +1725,90 @@ export const updateKnowledgeDocumentSchema = z.object({
 })
 
 export type UpdateKnowledgeDocumentInput = z.infer<typeof updateKnowledgeDocumentSchema>
+
+// ============================================================================
+// LEADS TYPES AND SCHEMAS
+// ============================================================================
+
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'lost' | 'nurturing'
+export type LeadSource = 'voice_agent' | 'manual' | 'import' | 'api' | 'webhook'
+
+export interface Lead {
+  id: string
+  workspace_id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  phone: string | null
+  company: string | null
+  job_title: string | null
+  status: LeadStatus
+  source: LeadSource
+  priority: number
+  score: number
+  agent_id: string | null
+  conversation_id: string | null
+  assigned_to: string | null
+  notes: string | null
+  tags: string[]
+  custom_fields: Json
+  last_contacted_at: string | null
+  next_follow_up_at: string | null
+  created_by: string | null
+  deleted_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadWithAgent extends Lead {
+  agent?: Pick<Tables<'ai_agents'>, 'id' | 'name' | 'provider'> | null
+}
+
+export const leadStatusSchema = z.enum(['new', 'contacted', 'qualified', 'converted', 'lost', 'nurturing'])
+export const leadSourceSchema = z.enum(['voice_agent', 'manual', 'import', 'api', 'webhook'])
+
+export const createLeadSchema = z.object({
+  first_name: z.string().max(255).optional().nullable(),
+  last_name: z.string().max(255).optional().nullable(),
+  email: z.string().max(255).optional().nullable().or(z.literal('')).transform(v => v === '' ? null : v),
+  phone: z.string().max(50).optional().nullable(),
+  company: z.string().max(255).optional().nullable(),
+  job_title: z.string().max(255).optional().nullable(),
+  status: leadStatusSchema.optional().default('new'),
+  source: leadSourceSchema.optional().default('manual'),
+  priority: z.number().min(0).max(2).optional().default(0),
+  score: z.number().min(0).max(100).optional().default(0),
+  agent_id: z.string().uuid().optional().nullable(),
+  conversation_id: z.string().uuid().optional().nullable(),
+  assigned_to: z.string().uuid().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  tags: z.array(z.string()).optional().default([]),
+  custom_fields: z.record(z.string(), z.unknown()).optional().default({}),
+  next_follow_up_at: z.string().datetime().optional().nullable(),
+})
+
+export const updateLeadSchema = createLeadSchema.partial()
+
+export type CreateLeadInput = z.infer<typeof createLeadSchema>
+export type UpdateLeadInput = z.infer<typeof updateLeadSchema>
+
+// Form input type for React Hook Form (all fields optional for form handling)
+export type LeadFormInput = {
+  first_name?: string | null
+  last_name?: string | null
+  email?: string | null
+  phone?: string | null
+  company?: string | null
+  job_title?: string | null
+  status?: LeadStatus
+  source?: LeadSource
+  priority?: number
+  score?: number
+  agent_id?: string | null
+  conversation_id?: string | null
+  assigned_to?: string | null
+  notes?: string | null
+  tags?: string[]
+  custom_fields?: Record<string, unknown>
+  next_follow_up_at?: string | null
+}

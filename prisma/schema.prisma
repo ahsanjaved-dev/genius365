@@ -110,6 +110,23 @@ enum SyncStatus {
   error
 }
 
+enum LeadStatus {
+  new
+  contacted
+  qualified
+  converted
+  lost
+  nurturing
+}
+
+enum LeadSource {
+  voice_agent
+  manual
+  import
+  api
+  webhook
+}
+
 // =============================================================================
 // PARTNER (Agency/Organization) - Top Level
 // =============================================================================
@@ -276,6 +293,7 @@ model Workspace {
   usageTracking      UsageTracking[]
   integrations       WorkspaceIntegration[]
   knowledgeDocuments KnowledgeDocument[]
+  leads              Lead[]
 
   @@unique([partnerId, slug])
   @@map("workspaces")
@@ -392,6 +410,7 @@ model AiAgent {
   workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   creator       User?          @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   conversations Conversation[]
+  leads         Lead[]
 
   @@map("ai_agents")
 }
@@ -495,6 +514,8 @@ model User {
   followedUpConversations Conversation[]
   createdDocuments        KnowledgeDocument[] @relation("DocumentCreator")
   updatedDocuments        KnowledgeDocument[] @relation("DocumentUpdater")
+  assignedLeads           Lead[]              @relation("AssignedLeads")
+  createdLeads            Lead[]              @relation("CreatedLeads")
 
   @@map("users")
 }
@@ -585,6 +606,62 @@ model KnowledgeDocument {
   updater       User?                    @relation("DocumentUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("knowledge_documents")
+}
+
+// =============================================================================
+// LEADS
+// =============================================================================
+
+model Lead {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String      @map("workspace_id") @db.Uuid
+
+  // Contact information
+  firstName        String?     @map("first_name") @db.VarChar(255)
+  lastName         String?     @map("last_name") @db.VarChar(255)
+  email            String?     @db.VarChar(255)
+  phone            String?     @db.VarChar(50)
+  company          String?     @db.VarChar(255)
+  jobTitle         String?     @map("job_title") @db.VarChar(255)
+
+  // Lead management
+  status           LeadStatus  @default(new)
+  source           LeadSource  @default(manual)
+  priority         Int         @default(0) // 0=low, 1=medium, 2=high
+  score            Int         @default(0) // Lead score (0-100)
+
+  // Related entities
+  agentId          String?     @map("agent_id") @db.Uuid
+  conversationId   String?     @map("conversation_id") @db.Uuid
+  assignedTo       String?     @map("assigned_to") @db.Uuid
+
+  // Additional info
+  notes            String?
+  tags             String[]    @default([])
+  customFields     Json        @default("{}") @map("custom_fields")
+
+  // Engagement tracking
+  lastContactedAt  DateTime?   @map("last_contacted_at") @db.Timestamptz
+  nextFollowUpAt   DateTime?   @map("next_follow_up_at") @db.Timestamptz
+
+  // Audit fields
+  createdBy        String?     @map("created_by") @db.Uuid
+  deletedAt        DateTime?   @map("deleted_at") @db.Timestamptz
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent            AiAgent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  assignee         User?       @relation("AssignedLeads", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator          User?       @relation("CreatedLeads", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([email])
+  @@index([phone])
+  @@index([createdAt])
+  @@map("leads")
 }
 
 // =============================================================================
