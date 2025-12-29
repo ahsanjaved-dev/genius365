@@ -1456,6 +1456,15 @@ export interface AgentConfig {
   tools?: FunctionTool[]
   /** Default server URL for tool calls (used if tool doesn't specify its own) */
   tools_server_url?: string
+  /** Knowledge base configuration */
+  knowledge_base?: {
+    /** Whether knowledge base is enabled */
+    enabled?: boolean
+    /** IDs of linked knowledge documents */
+    document_ids?: string[]
+    /** How to inject knowledge into the prompt: 'system_prompt' appends to system prompt */
+    injection_mode?: 'system_prompt'
+  }
 }
 
 // ============================================================================

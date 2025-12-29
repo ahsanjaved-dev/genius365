@@ -160,6 +160,13 @@ export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>
 // WORKSPACE-SCOPED SCHEMAS (Milestone 5)
 // ============================================================================
 
+// Knowledge base config schema for agents
+export const agentKnowledgeBaseConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  document_ids: z.array(z.string().uuid()).optional().default([]),
+  injection_mode: z.enum(["system_prompt"]).optional().default("system_prompt"),
+})
+
 // Agent schema for workspace context (no department_id, workspace comes from URL)
 export const createWorkspaceAgentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -194,11 +201,15 @@ export const createWorkspaceAgentSchema = z.object({
       // Function tools configuration
       tools: functionToolsArraySchema.optional(),
       tools_server_url: z.string().url().optional(),
+      // Knowledge base configuration
+      knowledge_base: agentKnowledgeBaseConfigSchema.optional(),
     })
     .optional(),
   agent_secret_api_key: z.array(agentSecretApiKeySchema).optional().default([]),
   agent_public_api_key: z.array(agentPublicApiKeySchema).optional().default([]),
   is_active: z.boolean().optional().default(true),
+  // Knowledge document IDs to link with agent (convenience field)
+  knowledge_document_ids: z.array(z.string().uuid()).optional().default([]),
 })
 
 export type CreateWorkspaceAgentInput = z.infer<typeof createWorkspaceAgentSchema>

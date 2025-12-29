@@ -58,7 +58,30 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return notFound("Agent")
     }
 
-    return apiResponse(agent)
+    // Fetch linked knowledge documents
+    const { data: knowledgeLinks } = await ctx.adminClient
+      .from("agent_knowledge_documents")
+      .select(`
+        knowledge_document_id,
+        knowledge_documents:knowledge_document_id (
+          id,
+          title,
+          description,
+          document_type,
+          status,
+          category
+        )
+      `)
+      .eq("agent_id", id)
+
+    const knowledgeDocuments = knowledgeLinks
+      ?.map((link: { knowledge_documents: unknown }) => link.knowledge_documents)
+      .filter(Boolean) || []
+
+    return apiResponse({
+      ...agent,
+      knowledge_documents: knowledgeDocuments,
+    })
   } catch (error) {
     console.error("GET /api/w/[slug]/agents/[id] error:", error)
     return serverError()
@@ -112,10 +135,63 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       warningMessage = "Warning: Changing API keys may affect call logs. Ensure the new key is from the same provider account to preserve call history."
     }
 
-    // Prepare update data
-    const updateData: Record<string, any> = {
-      ...validation.data,
+    // Handle knowledge document updates if provided
+    const knowledgeDocumentIds = validation.data.knowledge_document_ids
+    let knowledgeBaseContent = ""
+    
+    if (knowledgeDocumentIds !== undefined) {
+      // Delete existing links
+      await ctx.adminClient
+        .from("agent_knowledge_documents")
+        .delete()
+        .eq("agent_id", id)
+      
+      // Insert new links
+      if (knowledgeDocumentIds.length > 0) {
+        const knowledgeLinks = knowledgeDocumentIds.map((docId: string) => ({
+          agent_id: id,
+          knowledge_document_id: docId,
+        }))
+
+        await ctx.adminClient
+          .from("agent_knowledge_documents")
+          .insert(knowledgeLinks)
+
+        // Fetch the documents and prepare content
+        const { data: knowledgeDocs } = await ctx.adminClient
+          .from("knowledge_documents")
+          .select("id, title, content, document_type")
+          .in("id", knowledgeDocumentIds)
+          .eq("workspace_id", ctx.workspace.id)
+          .eq("status", "active")
+          .is("deleted_at", null)
+
+        if (knowledgeDocs && knowledgeDocs.length > 0) {
+          knowledgeBaseContent = "\n\n--- KNOWLEDGE BASE ---\n" +
+            knowledgeDocs
+              .map((doc: { title: string; content: string | null }) => `## ${doc.title}\n${doc.content || ""}`)
+              .join("\n\n") +
+            "\n--- END KNOWLEDGE BASE ---\n"
+        }
+      }
+    }
+
+    // Prepare update data - remove knowledge_document_ids as it's not a column
+    const { knowledge_document_ids: _, ...restData } = validation.data
+    const updateData: Record<string, unknown> = {
+      ...restData,
       updated_at: new Date().toISOString(),
+    }
+
+    // If knowledge base content was updated, update system prompt
+    if (knowledgeDocumentIds !== undefined && validation.data.config) {
+      const baseSystemPrompt = (validation.data.config.system_prompt || "")
+        .replace(/\n\n--- KNOWLEDGE BASE ---[\s\S]*--- END KNOWLEDGE BASE ---\n/g, "")
+      
+      updateData.config = {
+        ...validation.data.config,
+        system_prompt: baseSystemPrompt + knowledgeBaseContent,
+      }
     }
 
     // If key is being assigned or changed, mark for sync

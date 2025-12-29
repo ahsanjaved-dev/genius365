@@ -191,3 +191,27 @@ export function useKnowledgeBaseCategories() {
   return categories
 }
 
+// Hook for fetching active knowledge documents for agent selection
+export function useActiveKnowledgeDocuments() {
+  const params = useParams()
+  const workspaceSlug = params.workspaceSlug as string
+
+  return useQuery<PaginatedResponse<KnowledgeDocument>>({
+    queryKey: ["workspace-knowledge-base-active", workspaceSlug],
+    queryFn: async () => {
+      const searchParams = new URLSearchParams()
+      searchParams.set("status", "active")
+      searchParams.set("pageSize", "100") // Fetch up to 100 active documents
+
+      const res = await fetch(`/api/w/${workspaceSlug}/knowledge-base?${searchParams}`)
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || "Failed to fetch documents")
+      }
+      const json = await res.json()
+      return json.data
+    },
+    enabled: !!workspaceSlug,
+  })
+}
+

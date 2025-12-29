@@ -91,12 +91,42 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return apiError(`Agent limit reached for this workspace. Maximum: ${maxAgents} agents.`, 403)
     }
 
+    // Get knowledge document IDs from the request
+    const knowledgeDocumentIds = validation.data.knowledge_document_ids || []
+
+    // If knowledge base is enabled, fetch the documents and prepare content
+    let knowledgeBaseContent = ""
+    if (knowledgeDocumentIds.length > 0) {
+      const { data: knowledgeDocs } = await ctx.adminClient
+        .from("knowledge_documents")
+        .select("id, title, content, document_type")
+        .in("id", knowledgeDocumentIds)
+        .eq("workspace_id", ctx.workspace.id)
+        .eq("status", "active")
+        .is("deleted_at", null)
+
+      if (knowledgeDocs && knowledgeDocs.length > 0) {
+        // Build knowledge base content to inject into system prompt
+        knowledgeBaseContent = "\n\n--- KNOWLEDGE BASE ---\n" +
+          knowledgeDocs
+            .map((doc) => `## ${doc.title}\n${doc.content || ""}`)
+            .join("\n\n") +
+          "\n--- END KNOWLEDGE BASE ---\n"
+      }
+    }
+
     // NEW FLOW: Build config WITHOUT auto-assigning API keys
     // Agent starts with no API key assigned and sync_status = "not_synced"
     const inputConfig = validation.data.config || {}
     
+    // If knowledge base content exists, append it to the system prompt
+    const systemPromptWithKnowledge = knowledgeBaseContent
+      ? (inputConfig.system_prompt || "") + knowledgeBaseContent
+      : inputConfig.system_prompt
+
     const configWithoutDefaultKeys = {
       ...inputConfig,
+      system_prompt: systemPromptWithKnowledge,
       api_key_config: {
         // No keys assigned by default - admin will configure later
         secret_key: { type: "none" as const },
@@ -106,6 +136,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     console.log(`[AgentCreate] Creating agent with provider: ${validation.data.provider}, NO API keys assigned (not_synced)`)
+    if (knowledgeDocumentIds.length > 0) {
+      console.log(`[AgentCreate] Linking ${knowledgeDocumentIds.length} knowledge documents`)
+    }
 
     // Create agent WITHOUT syncing - sync will happen when admin assigns API key
     const { data: agent, error } = await ctx.adminClient
@@ -135,6 +168,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return apiError("Failed to create agent")
     }
 
+    // Link knowledge documents to the agent
+    if (knowledgeDocumentIds.length > 0) {
+      const knowledgeLinks = knowledgeDocumentIds.map((docId) => ({
+        agent_id: agent.id,
+        knowledge_document_id: docId,
+      }))
+
+      const { error: linkError } = await ctx.adminClient
+        .from("agent_knowledge_documents")
+        .insert(knowledgeLinks)
+
+      if (linkError) {
+        console.error("Failed to link knowledge documents:", linkError)
+        // Don't fail the whole operation, just log the error
+      }
+    }
+
     // NEW FLOW: DO NOT sync on creation
     // Sync will happen when admin assigns API key via PATCH
 
@@ -151,6 +201,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         provider: agent.provider,
         workspace_id: ctx.workspace.id,
         sync_status: "not_synced",
+        knowledge_document_count: knowledgeDocumentIds.length,
       },
       ipAddress,
       userAgent,

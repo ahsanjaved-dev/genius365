@@ -407,10 +407,11 @@ model AiAgent {
   updatedAt           DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  creator       User?          @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  conversations Conversation[]
-  leads         Lead[]
+  workspace          Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  creator            User?                    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  conversations      Conversation[]
+  leads              Lead[]
+  knowledgeDocuments AgentKnowledgeDocument[]
 
   @@map("ai_agents")
 }
@@ -604,8 +605,29 @@ model KnowledgeDocument {
   workspace     Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   creator       User?                    @relation("DocumentCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       User?                    @relation("DocumentUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  agents        AgentKnowledgeDocument[]
 
   @@map("knowledge_documents")
+}
+
+// =============================================================================
+// AGENT KNOWLEDGE DOCUMENTS (Junction table for many-to-many)
+// =============================================================================
+
+model AgentKnowledgeDocument {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId             String            @map("agent_id") @db.Uuid
+  knowledgeDocumentId String            @map("knowledge_document_id") @db.Uuid
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  agent             AiAgent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  knowledgeDocument KnowledgeDocument @relation(fields: [knowledgeDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, knowledgeDocumentId])
+  @@index([agentId])
+  @@index([knowledgeDocumentId])
+  @@map("agent_knowledge_documents")
 }
 
 // =============================================================================

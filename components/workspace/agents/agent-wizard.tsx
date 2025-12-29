@@ -8,6 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -28,11 +31,19 @@ import {
   Smile,
   Coffee,
   Wrench,
+  FileText,
+  HelpCircle,
+  ShoppingBag,
+  FileCheck,
+  Scroll,
+  FileQuestion,
+  AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { functionToolsArraySchema, type CreateWorkspaceAgentInput } from "@/types/api.types"
-import type { FunctionTool } from "@/types/database.types"
+import type { FunctionTool, KnowledgeDocument, KnowledgeDocumentType } from "@/types/database.types"
 import { FunctionToolEditor } from "./function-tool-editor"
+import { useActiveKnowledgeDocuments } from "@/lib/hooks/use-workspace-knowledge-base"
 
 // ============================================================================
 // TYPES
@@ -51,7 +62,7 @@ interface WizardFormData {
   provider: "vapi" | "retell" | "synthflow"
   language: string
   enableKnowledgeBase: boolean
-  knowledgeFiles: string[]
+  knowledgeDocumentIds: string[]
   enablePhoneNumber: boolean
   phoneNumber: string
   // Step 2: Voice
@@ -64,6 +75,16 @@ interface WizardFormData {
   style: "formal" | "friendly" | "casual"
   tools: FunctionTool[]
   toolsServerUrl: string
+}
+
+// Knowledge document type icons
+const documentTypeIcons: Record<KnowledgeDocumentType, React.ComponentType<{ className?: string }>> = {
+  document: FileText,
+  faq: HelpCircle,
+  product_info: ShoppingBag,
+  policy: FileCheck,
+  script: Scroll,
+  other: FileQuestion,
 }
 
 // ============================================================================
@@ -170,7 +191,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     provider: "vapi",
     language: "en-US",
     enableKnowledgeBase: false,
-    knowledgeFiles: [],
+    knowledgeDocumentIds: [],
     enablePhoneNumber: false,
     phoneNumber: "",
     voice: "aria",
@@ -182,6 +203,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     tools: [],
     toolsServerUrl: "",
   })
+
+  // Fetch knowledge documents for selection
+  const { data: knowledgeDocsData, isLoading: isLoadingDocs, error: docsError } = useActiveKnowledgeDocuments()
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -275,10 +299,20 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
         // Include function tools if any are configured
         tools,
         tools_server_url: formData.toolsServerUrl || undefined,
+        // Include knowledge base configuration
+        knowledge_base: formData.enableKnowledgeBase
+          ? {
+              enabled: true,
+              document_ids: formData.knowledgeDocumentIds,
+              injection_mode: "system_prompt",
+            }
+          : undefined,
       },
       agent_secret_api_key: [],
       agent_public_api_key: [],
       is_active: true,
+      // Include knowledge document IDs for linking
+      knowledge_document_ids: formData.enableKnowledgeBase ? formData.knowledgeDocumentIds : [],
     }
 
     await onSubmit(apiData)
@@ -452,20 +486,113 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
             <Separator />
 
             {/* Knowledge Base Toggle */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-primary" />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <BookOpen className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <Label className="mb-0">Knowledge Base</Label>
+                    <p className="text-xs text-muted-foreground">Connect documents to give your agent context</p>
+                  </div>
                 </div>
-                <div>
-                  <Label className="mb-0">Knowledge Base</Label>
-                  <p className="text-xs text-muted-foreground">Connect files to give your agent context</p>
-                </div>
+                <Switch
+                  checked={formData.enableKnowledgeBase}
+                  onCheckedChange={(checked) => {
+                    updateFormData("enableKnowledgeBase", checked)
+                    if (!checked) {
+                      updateFormData("knowledgeDocumentIds", [])
+                    }
+                  }}
+                />
               </div>
-              <Switch
-                checked={formData.enableKnowledgeBase}
-                onCheckedChange={(checked) => updateFormData("enableKnowledgeBase", checked)}
-              />
+
+              {/* Knowledge Document Selection */}
+              {formData.enableKnowledgeBase && (
+                <div className="ml-13 pl-4 border-l-2 border-primary/20">
+                  {isLoadingDocs ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : docsError ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      Failed to load documents
+                    </div>
+                  ) : knowledgeDocsData?.data && knowledgeDocsData.data.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Select Documents</Label>
+                      <ScrollArea className="h-[200px] rounded-lg border p-2">
+                        <div className="space-y-1">
+                          {knowledgeDocsData.data.map((doc: KnowledgeDocument) => {
+                            const DocIcon = documentTypeIcons[doc.document_type] || FileText
+                            const isSelected = formData.knowledgeDocumentIds.includes(doc.id)
+                            
+                            return (
+                              <div
+                                key={doc.id}
+                                className={cn(
+                                  "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors",
+                                  isSelected
+                                    ? "bg-primary/10 border border-primary/30"
+                                    : "hover:bg-muted"
+                                )}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    updateFormData(
+                                      "knowledgeDocumentIds",
+                                      formData.knowledgeDocumentIds.filter((id) => id !== doc.id)
+                                    )
+                                  } else {
+                                    updateFormData("knowledgeDocumentIds", [
+                                      ...formData.knowledgeDocumentIds,
+                                      doc.id,
+                                    ])
+                                  }
+                                }}
+                              >
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => {}}
+                                  className="pointer-events-none"
+                                />
+                                <DocIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{doc.title}</p>
+                                  {doc.description && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {doc.description}
+                                    </p>
+                                  )}
+                                </div>
+                                {doc.category && (
+                                  <Badge variant="outline" className="text-xs shrink-0">
+                                    {doc.category}
+                                  </Badge>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.knowledgeDocumentIds.length} document{formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} selected
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 rounded-lg bg-muted/50">
+                      <BookOpen className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">No documents available</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Create documents in the Knowledge Base section first
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Phone Number Toggle */}
@@ -726,7 +853,11 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 </div>
                 <div>
                   <p className="text-muted-foreground">Knowledge Base</p>
-                  <p className="font-medium">{formData.enableKnowledgeBase ? "Enabled" : "Not configured"}</p>
+                  <p className="font-medium">
+                    {formData.enableKnowledgeBase
+                      ? `${formData.knowledgeDocumentIds.length} document${formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} linked`
+                      : "Not configured"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Phone Number</p>
