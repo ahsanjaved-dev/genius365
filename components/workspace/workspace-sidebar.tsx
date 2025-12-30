@@ -1,13 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
 import {
   LayoutDashboard,
   LayoutGrid,
@@ -19,13 +16,8 @@ import {
   CreditCard,
   BarChart3,
   Phone,
-  Settings,
-  LogOut,
   ChevronDown,
   Check,
-  MoreVertical,
-  HelpCircle,
-  ShieldCheck,
   Building2,
   UserPlus,
   Plus,
@@ -37,12 +29,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { createClient } from "@/lib/supabase/client"
-import type { AccessibleWorkspace, PartnerAuthUser } from "@/types/database.types"
+import type { AccessibleWorkspace } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
 
 interface Props {
@@ -51,7 +41,6 @@ interface Props {
   workspaces: AccessibleWorkspace[]
   isCollapsed: boolean
   partnerRole?: "owner" | "admin" | "member" | null
-  user?: PartnerAuthUser
 }
 
 // Generate a consistent gradient based on string
@@ -90,21 +79,11 @@ const roleConfig = {
   viewer: { icon: User, label: "Viewer" },
 }
 
-export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isCollapsed, partnerRole, user }: Props) {
+export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isCollapsed, partnerRole }: Props) {
   const pathname = usePathname()
-  const router = useRouter()
 
   const branding = partner.branding
   const primaryColor = branding.primary_color || "#7c3aed"
-  
-  // User display data
-  const userName = user?.first_name 
-    ? `${user.first_name} ${user.last_name || ""}`.trim() 
-    : user?.email || "User"
-  const userEmail = user?.email || ""
-  const userInitials = user?.first_name 
-    ? `${user.first_name[0]}${user.last_name?.[0] || ""}`.toUpperCase()
-    : user?.email?.[0]?.toUpperCase() || "U"
   const companyName = branding.company_name || partner.name
 
   // Navigation items scoped to current workspace
@@ -113,7 +92,7 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
   // Role-based navigation - some items only for admins/owners
   const isWorkspaceAdmin = currentWorkspace.role === "owner" || currentWorkspace.role === "admin"
   const isPartnerAdmin = partnerRole === "owner" || partnerRole === "admin"
-  
+
   const navigation = [
     { title: "Dashboard", href: `${baseUrl}/dashboard`, icon: LayoutDashboard },
     { title: "Agents", href: `${baseUrl}/agents`, icon: Bot },
@@ -132,13 +111,6 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
     { title: "Organization Team", href: `/org/team`, icon: Building2 },
     { title: "Invite Members", href: `/org/invitations`, icon: UserPlus },
   ] : []
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
-  }
 
   return (
     <div
@@ -372,92 +344,6 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
         </nav>
       </ScrollArea>
 
-      {/* User Footer - Fixed at bottom */}
-      <div className={cn("p-3 border-t border-border shrink-0", isCollapsed && "px-2")}>
-        {isCollapsed ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex justify-center outline-none">
-                <Avatar className="h-9 w-9 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all">
-                  <AvatarFallback className="text-xs bg-primary/10 text-primary">{userInitials}</AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" side="right" className="w-48">
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium">{userName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href={`${baseUrl}/settings`} className="flex items-center gap-2 cursor-pointer">
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                <HelpCircle className="h-4 w-4" />
-                Help Center
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
-              >
-                <LogOut className="h-4 w-4" />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <div className="flex items-center gap-3 px-2">
-            <Avatar className="h-9 w-9 shrink-0">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">{userInitials}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{userName}</p>
-              <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem asChild>
-                  <Link href={`${baseUrl}/settings`} className="flex items-center gap-2 cursor-pointer">
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                  <ShieldCheck className="h-4 w-4" />
-                  Agent Review
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                  <Users className="h-4 w-4" />
-                  Join Community
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                  <HelpCircle className="h-4 w-4" />
-                  Help Center
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

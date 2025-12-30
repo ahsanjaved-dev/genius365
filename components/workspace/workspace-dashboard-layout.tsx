@@ -50,7 +50,6 @@ export function WorkspaceDashboardLayout({
           workspaces={workspaces}
           isCollapsed={isCollapsed}
           partnerRole={partnerRole}
-          user={user}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           <WorkspaceHeader
