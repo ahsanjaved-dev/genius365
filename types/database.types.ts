@@ -1465,6 +1465,17 @@ export interface AgentConfig {
     /** How to inject knowledge into the prompt: 'system_prompt' appends to system prompt */
     injection_mode?: 'system_prompt'
   }
+  /** Telephony configuration (Vapi phone numbers) */
+  telephony?: AgentTelephonyConfig
+}
+
+// ============================================================================
+// AGENT TELEPHONY CONFIG
+// ============================================================================
+
+export interface AgentTelephonyConfig {
+  /** Vapi phone number ID assigned to this agent */
+  vapi_phone_number_id?: string
 }
 
 // ============================================================================

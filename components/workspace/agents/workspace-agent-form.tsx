@@ -16,14 +16,15 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Loader2, Key, Lock, Globe, AlertCircle, ExternalLink, Check, AlertTriangle, CloudOff, Wrench } from "lucide-react"
+import { Loader2, Key, Lock, Globe, AlertCircle, ExternalLink, Check, AlertTriangle, CloudOff, Wrench, Phone, PhoneCall, PhoneOff, Copy } from "lucide-react"
 import type { AIAgent, FunctionTool } from "@/types/database.types"
 import type { CreateWorkspaceAgentInput } from "@/types/api.types"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useAllIntegrationsWithDetails } from "@/lib/hooks/use-workspace-integrations"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { FunctionToolEditor } from "./function-tool-editor"
+import { toast } from "sonner"
 
 interface WorkspaceAgentFormProps {
   initialData?: AIAgent
@@ -100,6 +101,35 @@ export function WorkspaceAgentForm({
   const [toolsServerUrl, setToolsServerUrl] = useState<string>(
     (initialData?.config as any)?.tools_server_url || ""
   )
+
+  // Phone number state (for Vapi agents)
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(
+    initialData?.external_phone_number || null
+  )
+  const [phoneNumberId, setPhoneNumberId] = useState<string | null>(
+    (initialData?.config as any)?.telephony?.vapi_phone_number_id || null
+  )
+  const [isProvisioningPhone, setIsProvisioningPhone] = useState(false)
+  const [isReleasingPhone, setIsReleasingPhone] = useState(false)
+  const [outboundNumber, setOutboundNumber] = useState("")
+  const [isCallingOutbound, setIsCallingOutbound] = useState(false)
+  const [isLoadingPhoneNumber, setIsLoadingPhoneNumber] = useState(false)
+
+  // Fetch phone number details on mount if we have an ID but no number
+  useEffect(() => {
+    if (initialData && initialData.provider === "vapi" && phoneNumberId && !phoneNumber) {
+      setIsLoadingPhoneNumber(true)
+      fetch(`/api/w/${workspaceSlug}/agents/${initialData.id}/phone-number`)
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.data?.currentPhoneNumber) {
+            setPhoneNumber(result.data.currentPhoneNumber)
+          }
+        })
+        .catch((err) => console.error("Failed to fetch phone number:", err))
+        .finally(() => setIsLoadingPhoneNumber(false))
+    }
+  }, [initialData, phoneNumberId, phoneNumber, workspaceSlug])
 
   // Fetch all integrations with details for the current workspace
   const { data: integrations, isLoading: integrationsLoading } = useAllIntegrationsWithDetails()
@@ -736,6 +766,294 @@ export function WorkspaceAgentForm({
           />
         </CardContent>
       </Card>
+
+      {/* Phone Number Card - Only for existing Vapi agents */}
+      {initialData && selectedProvider === "vapi" && (
+        <Card>
+          {/* Debug: Log phone number state */}
+          {console.log("[PhoneNumber UI] Current state:", { phoneNumber, phoneNumberId })}
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              Phone Number
+            </CardTitle>
+            <CardDescription>
+              Provision a free SIP phone number to enable calling for this agent. 
+              Note: Free Vapi numbers are SIP-based and work best with web calls.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Phone Number Status */}
+            {isLoadingPhoneNumber ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Loading phone number...</span>
+              </div>
+            ) : phoneNumber && phoneNumberId ? (
+              <div className="space-y-4">
+                {/* Current Phone Number Display */}
+                <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-100 dark:bg-green-800 rounded-full">
+                      <Phone className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-green-900 dark:text-green-100 break-all">
+                        {phoneNumber}
+                      </p>
+                      <p className="text-sm text-green-700 dark:text-green-300">
+                        {phoneNumber?.startsWith("sip:") 
+                          ? "SIP address for VoIP calls (use web call for testing)"
+                          : "Call this number to test inbound calls"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(phoneNumber)
+                        toast.success("Phone number copied to clipboard")
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsReleasingPhone(true)
+                        try {
+                          const res = await fetch(
+                            `/api/w/${workspaceSlug}/agents/${initialData.id}/phone-number`,
+                            { method: "DELETE" }
+                          )
+                          const result = await res.json()
+                          if (!res.ok) {
+                            throw new Error(result.error || "Failed to release phone number")
+                          }
+                          setPhoneNumber(null)
+                          setPhoneNumberId(null)
+                          toast.success("Phone number released")
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to release phone number")
+                        } finally {
+                          setIsReleasingPhone(false)
+                        }
+                      }}
+                      disabled={isReleasingPhone}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      {isReleasingPhone ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <PhoneOff className="h-4 w-4" />
+                      )}
+                      <span className="ml-1">Release</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Outbound Call Section */}
+                <div className="space-y-3">
+                  <Label>Test Outbound Call</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enter a phone number to place a test outbound call from this agent.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="+14155551234"
+                      value={outboundNumber}
+                      onChange={(e) => setOutboundNumber(e.target.value)}
+                      disabled={isCallingOutbound}
+                    />
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        if (!outboundNumber.trim()) {
+                          toast.error("Please enter a phone number")
+                          return
+                        }
+                        setIsCallingOutbound(true)
+                        try {
+                          const res = await fetch(
+                            `/api/w/${workspaceSlug}/agents/${initialData.id}/outbound-call`,
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ customerNumber: outboundNumber.trim() }),
+                            }
+                          )
+                          const result = await res.json()
+                          if (!res.ok) {
+                            throw new Error(result.error || "Failed to initiate call")
+                          }
+                          toast.success(`Call initiated to ${outboundNumber}`)
+                          setOutboundNumber("")
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to initiate outbound call")
+                        } finally {
+                          setIsCallingOutbound(false)
+                        }
+                      }}
+                      disabled={isCallingOutbound || !outboundNumber.trim()}
+                    >
+                      {isCallingOutbound ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <PhoneCall className="h-4 w-4 mr-2" />
+                      )}
+                      Call
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : phoneNumberId && !phoneNumber ? (
+              /* Phone number ID exists but number is still activating */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-yellow-100 dark:bg-yellow-800 rounded-full">
+                      <Loader2 className="h-5 w-5 text-yellow-600 dark:text-yellow-400 animate-spin" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-yellow-900 dark:text-yellow-100">
+                        Phone number activating...
+                      </p>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                        Your number is being set up. This may take a few minutes.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsLoadingPhoneNumber(true)
+                      fetch(`/api/w/${workspaceSlug}/agents/${initialData.id}/phone-number`)
+                        .then((res) => res.json())
+                        .then((result) => {
+                          console.log("[PhoneNumber] Check status response:", result)
+                          const phoneNum = result.data?.currentPhoneNumber || result.data?.sipUri
+                          if (phoneNum) {
+                            setPhoneNumber(phoneNum)
+                            toast.success("Phone number is now active!")
+                          } else {
+                            toast.info(`Status: ${result.data?.vapiStatus || 'activating'}. Phone number may take a few more minutes.`)
+                          }
+                        })
+                        .catch(() => toast.error("Failed to check status"))
+                        .finally(() => setIsLoadingPhoneNumber(false))
+                    }}
+                  >
+                    Check Status
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* No Phone Number - Show Provision Button */}
+                {!initialData.external_agent_id ? (
+                  <div className="text-center py-6 border-2 border-dashed rounded-lg bg-muted/30 dark:bg-muted/10">
+                    <AlertCircle className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Agent must be synced with Vapi before provisioning a phone number.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Save the agent with an API key assigned first.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 border-2 border-dashed rounded-lg bg-muted/30 dark:bg-muted/10">
+                    <Phone className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground mb-4">
+                      No phone number assigned. Get a free US phone number to enable calling.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        setIsProvisioningPhone(true)
+                        try {
+                          const res = await fetch(
+                            `/api/w/${workspaceSlug}/agents/${initialData.id}/phone-number`,
+                            { method: "POST" }
+                          )
+                          const result = await res.json()
+                          console.log("[PhoneNumber] Provision response:", result)
+                          if (!res.ok) {
+                            throw new Error(result.error || "Failed to provision phone number")
+                          }
+                          
+                          // New response format: displayNumber (best available), sipUri, phoneNumber (PSTN)
+                          const data = result.data
+                          const newPhoneNumberId = data?.phoneNumberId
+                          // Use displayNumber (which prefers PSTN, falls back to SIP URI)
+                          const newPhoneNumber = data?.displayNumber || data?.sipUri || data?.phoneNumber
+                          
+                          console.log("[PhoneNumber] Setting state:", { 
+                            newPhoneNumber, 
+                            newPhoneNumberId,
+                            sipUri: data?.sipUri,
+                            status: data?.status 
+                          })
+                          
+                          if (newPhoneNumberId) {
+                            setPhoneNumberId(newPhoneNumberId)
+                            if (newPhoneNumber && newPhoneNumber !== "Activating...") {
+                              setPhoneNumber(newPhoneNumber)
+                              // Show appropriate message based on number type
+                              if (data?.sipUri && !data?.phoneNumber) {
+                                toast.success(`SIP number provisioned: ${newPhoneNumber}`)
+                              } else {
+                                toast.success(`Phone number ${newPhoneNumber} provisioned successfully!`)
+                              }
+                            } else {
+                              // Number is activating - will show "activating" UI
+                              toast.success("Phone number provisioned! Activating...")
+                            }
+                          } else {
+                            console.error("[PhoneNumber] Missing phoneNumberId in response:", result)
+                            toast.error("Phone number provisioned but data not returned correctly")
+                          }
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to provision phone number")
+                        } finally {
+                          setIsProvisioningPhone(false)
+                        }
+                      }}
+                      disabled={isProvisioningPhone}
+                    >
+                      {isProvisioningPhone ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Provisioning...
+                        </>
+                      ) : (
+                        <>
+                          <Phone className="h-4 w-4 mr-2" />
+                          Get Free US Number
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info Box */}
+            <div className="rounded-lg bg-muted/50 dark:bg-muted/20 p-4 text-sm border border-border/50">
+              <p className="text-muted-foreground">
+                <Phone className="inline w-4 h-4 mr-1" />
+                Free Vapi numbers are limited to US national calls. Up to 10 free numbers per Vapi account.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex justify-end gap-4">
         <Button type="button" variant="outline" disabled={isSubmitting} asChild>
