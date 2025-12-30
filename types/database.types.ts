@@ -7,13 +7,47 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
+      agent_knowledge_documents: {
+        Row: {
+          agent_id: string
+          created_at: string | null
+          id: string
+          knowledge_document_id: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string | null
+          id?: string
+          knowledge_document_id: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string | null
+          id?: string
+          knowledge_document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_documents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_knowledge_documents_knowledge_document_id_fkey"
+            columns: ["knowledge_document_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_agents: {
         Row: {
           agent_public_api_key: Json[] | null
@@ -40,9 +74,7 @@ export type Database = {
           total_conversations: number
           total_cost: number
           total_minutes: number
-          transcriber_provider:
-            | Database["public"]["Enums"]["transcriber_provider"]
-            | null
+          transcriber_provider: Database["public"]["Enums"]["transcriber_provider"] | null
           updated_at: string
           version: number
           voice_provider: Database["public"]["Enums"]["voice_provider"] | null
@@ -73,9 +105,7 @@ export type Database = {
           total_conversations?: number
           total_cost?: number
           total_minutes?: number
-          transcriber_provider?:
-            | Database["public"]["Enums"]["transcriber_provider"]
-            | null
+          transcriber_provider?: Database["public"]["Enums"]["transcriber_provider"] | null
           updated_at?: string
           version?: number
           voice_provider?: Database["public"]["Enums"]["voice_provider"] | null
@@ -106,9 +136,7 @@ export type Database = {
           total_conversations?: number
           total_cost?: number
           total_minutes?: number
-          transcriber_provider?:
-            | Database["public"]["Enums"]["transcriber_provider"]
-            | null
+          transcriber_provider?: Database["public"]["Enums"]["transcriber_provider"] | null
           updated_at?: string
           version?: number
           voice_provider?: Database["public"]["Enums"]["voice_provider"] | null
@@ -142,6 +170,7 @@ export type Database = {
           metadata: Json | null
           new_values: Json | null
           old_values: Json | null
+          partner_id: string | null
           user_agent: string | null
           user_id: string | null
           workspace_id: string | null
@@ -156,6 +185,7 @@ export type Database = {
           metadata?: Json | null
           new_values?: Json | null
           old_values?: Json | null
+          partner_id?: string | null
           user_agent?: string | null
           user_id?: string | null
           workspace_id?: string | null
@@ -170,11 +200,34 @@ export type Database = {
           metadata?: Json | null
           new_values?: Json | null
           old_values?: Json | null
+          partner_id?: string | null
           user_agent?: string | null
           user_id?: string | null
           workspace_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversations: {
         Row: {
@@ -287,6 +340,220 @@ export type Database = {
           },
           {
             foreignKeyName: "conversations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_documents: {
+        Row: {
+          category: string | null
+          content: string | null
+          content_hash: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          document_type: Database["public"]["Enums"]["knowledge_document_type"]
+          embedding_status: string | null
+          file_name: string | null
+          file_size_bytes: number | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          last_used_at: string | null
+          status: Database["public"]["Enums"]["knowledge_document_status"]
+          tags: string[] | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+          usage_count: number | null
+          workspace_id: string
+        }
+        Insert: {
+          category?: string | null
+          content?: string | null
+          content_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          document_type?: Database["public"]["Enums"]["knowledge_document_type"]
+          embedding_status?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          last_used_at?: string | null
+          status?: Database["public"]["Enums"]["knowledge_document_status"]
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          usage_count?: number | null
+          workspace_id: string
+        }
+        Update: {
+          category?: string | null
+          content?: string | null
+          content_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          document_type?: Database["public"]["Enums"]["knowledge_document_type"]
+          embedding_status?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          last_used_at?: string | null
+          status?: Database["public"]["Enums"]["knowledge_document_status"]
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          usage_count?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_documents_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_documents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          agent_id: string | null
+          assigned_to: string | null
+          company: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          custom_fields: Json | null
+          deleted_at: string | null
+          email: string | null
+          first_name: string | null
+          id: string
+          job_title: string | null
+          last_contacted_at: string | null
+          last_name: string | null
+          next_follow_up_at: string | null
+          notes: string | null
+          phone: string | null
+          priority: number
+          score: number
+          source: Database["public"]["Enums"]["lead_source"]
+          status: Database["public"]["Enums"]["lead_status"]
+          tags: string[] | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          agent_id?: string | null
+          assigned_to?: string | null
+          company?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          custom_fields?: Json | null
+          deleted_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          job_title?: string | null
+          last_contacted_at?: string | null
+          last_name?: string | null
+          next_follow_up_at?: string | null
+          notes?: string | null
+          phone?: string | null
+          priority?: number
+          score?: number
+          source?: Database["public"]["Enums"]["lead_source"]
+          status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[] | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          agent_id?: string | null
+          assigned_to?: string | null
+          company?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          custom_fields?: Json | null
+          deleted_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          job_title?: string | null
+          last_contacted_at?: string | null
+          last_name?: string | null
+          next_follow_up_at?: string | null
+          notes?: string | null
+          phone?: string | null
+          priority?: number
+          score?: number
+          source?: Database["public"]["Enums"]["lead_source"]
+          status?: Database["public"]["Enums"]["lead_status"]
+          tags?: string[] | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -523,7 +790,7 @@ export type Database = {
           {
             foreignKeyName: "partner_requests_provisioned_partner_id_fkey"
             columns: ["provisioned_partner_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "partners"
             referencedColumns: ["id"]
           },
@@ -591,7 +858,7 @@ export type Database = {
           {
             foreignKeyName: "partners_request_id_fkey"
             columns: ["request_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "partner_requests"
             referencedColumns: ["id"]
           },
@@ -965,8 +1232,6 @@ export type Database = {
     }
     Functions: {
       generate_slug: { Args: { input_text: string }; Returns: string }
-      get_my_org_id: { Args: never; Returns: string }
-      get_my_role: { Args: never; Returns: string }
     }
     Enums: {
       agent_provider: "vapi" | "retell" | "synthflow"
@@ -980,33 +1245,28 @@ export type Database = {
         | "no_answer"
         | "busy"
         | "canceled"
-      department_role: "owner" | "admin" | "member" | "viewer"
-      integration_status: "active" | "inactive" | "error" | "pending_setup"
-      integration_type:
-        | "make"
-        | "ghl"
-        | "twilio"
-        | "slack"
-        | "zapier"
-        | "calendar"
-        | "crm"
-        | "webhook"
-      invitation_status: "pending" | "accepted" | "expired" | "revoked"
-      invitation_type: "org_owner" | "org_member" | "department_member"
-      invoice_status:
+      knowledge_document_status:
         | "draft"
-        | "open"
-        | "paid"
-        | "void"
-        | "uncollectible"
-        | "overdue"
-      model_provider: "openai" | "anthropic" | "google" | "groq"
-      organization_status:
-        | "pending_activation"
-        | "onboarding"
+        | "processing"
         | "active"
-        | "suspended"
-        | "churned"
+        | "archived"
+        | "error"
+      knowledge_document_type:
+        | "document"
+        | "faq"
+        | "product_info"
+        | "policy"
+        | "script"
+        | "other"
+      lead_source: "voice_agent" | "manual" | "import" | "api" | "webhook"
+      lead_status:
+        | "new"
+        | "contacted"
+        | "qualified"
+        | "converted"
+        | "lost"
+        | "nurturing"
+      model_provider: "openai" | "anthropic" | "google" | "groq"
       partner_request_status:
         | "pending"
         | "approved"
@@ -1028,6 +1288,7 @@ export type Database = {
         | "past_due"
         | "canceled"
         | "unpaid"
+      sync_status: "not_synced" | "pending" | "synced" | "error"
       transcriber_provider: "deepgram" | "assemblyai" | "openai"
       user_role: "org_owner" | "org_admin" | "org_member"
       user_status: "pending_invitation" | "active" | "inactive" | "suspended"
@@ -1176,36 +1437,31 @@ export const Constants = {
         "busy",
         "canceled",
       ],
-      department_role: ["owner", "admin", "member", "viewer"],
-      integration_status: ["active", "inactive", "error", "pending_setup"],
-      integration_type: [
-        "make",
-        "ghl",
-        "twilio",
-        "slack",
-        "zapier",
-        "calendar",
-        "crm",
-        "webhook",
-      ],
-      invitation_status: ["pending", "accepted", "expired", "revoked"],
-      invitation_type: ["org_owner", "org_member", "department_member"],
-      invoice_status: [
+      knowledge_document_status: [
         "draft",
-        "open",
-        "paid",
-        "void",
-        "uncollectible",
-        "overdue",
+        "processing",
+        "active",
+        "archived",
+        "error",
+      ],
+      knowledge_document_type: [
+        "document",
+        "faq",
+        "product_info",
+        "policy",
+        "script",
+        "other",
+      ],
+      lead_source: ["voice_agent", "manual", "import", "api", "webhook"],
+      lead_status: [
+        "new",
+        "contacted",
+        "qualified",
+        "converted",
+        "lost",
+        "nurturing",
       ],
       model_provider: ["openai", "anthropic", "google", "groq"],
-      organization_status: [
-        "pending_activation",
-        "onboarding",
-        "active",
-        "suspended",
-        "churned",
-      ],
       partner_request_status: [
         "pending",
         "approved",
@@ -1230,6 +1486,7 @@ export const Constants = {
         "canceled",
         "unpaid",
       ],
+      sync_status: ["not_synced", "pending", "synced", "error"],
       transcriber_provider: ["deepgram", "assemblyai", "openai"],
       user_role: ["org_owner", "org_admin", "org_member"],
       user_status: ["pending_invitation", "active", "inactive", "suspended"],
