@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Shield, Loader2, Eye, EyeOff } from "lucide-react"
+import { Shield, Loader2, Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle2 } from "lucide-react"
 
 export default function SuperAdminLoginPage() {
   const router = useRouter()
@@ -15,6 +16,13 @@ export default function SuperAdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isDark, setIsDark] = useState(false)
+
+  // Detect dark mode preference on mount
+  useEffect(() => {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    setIsDark(prefersDark)
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,6 +30,11 @@ export default function SuperAdminLoginPage() {
     setError(null)
 
     try {
+      // Validate inputs
+      if (!email || !password) {
+        throw new Error("Please enter both email and password")
+      }
+
       const supabase = createClient()
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -51,109 +64,157 @@ export default function SuperAdminLoginPage() {
     }
   }
 
+  const isFormValid = email && password && !loading
+
   return (
-    <div className="superadmin-theme min-h-screen flex bg-white">
+    <div className="superadmin-theme min-h-screen flex flex-col lg:flex-row bg-background">
       {/* Left Side - Form */}
-      <div className="flex-1 flex items-center justify-center p-8 lg:p-16">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12 dark:bg-slate-900 ">
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-6 shadow-lg shadow-primary/25">
-              <Shield className="w-7 h-7 text-primary-foreground" />
-            </div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Super Admin</h1>
-            <p className="text-muted-foreground">Platform administration access</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2 dark:text-white">
+              Welcome back
+            </h1>
+            <p className="text-muted-foreground">Sign in to your administrator account</p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-5">
-            {/* Error Message */}
+            {/* Error Alert */}
             {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
-                {error}
+              <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg flex gap-3 items-start">
+                <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-destructive text-sm">{error}</p>
+                </div>
               </div>
             )}
 
-            {/* Email */}
-            <div>
-              <Label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-                Email
+            {/* Email Field */}
+            <div className="space-y-2">
+              <Label
+                htmlFor="email"
+                className="text-sm font-medium text-foreground dark:text-white"
+              >
+                Email Address
               </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@genius365.ai"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-                className="w-full px-4 py-3 h-auto border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all bg-background text-foreground placeholder:text-muted-foreground"
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="admin@genius365.ai"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                  autoComplete="email"
+                  required
+                  className="pl-9 h-10 bg-background text-foreground placeholder:text-foreground/50 border border-input focus:border-primary focus:ring-2 focus:ring-primary/20 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 dark:border-slate-700"
+                />
+              </div>
             </div>
 
-            {/* Password */}
-            <div>
-              <Label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
+            {/* Password Field */}
+            <div className="space-y-2">
+              <Label
+                htmlFor="password"
+                className="text-sm font-medium text-foreground dark:text-white "
+              >
                 Password
               </Label>
               <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
                   disabled={loading}
-                  className="w-full px-4 py-3 h-auto pr-12 border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all bg-background text-foreground placeholder:text-muted-foreground"
+                  autoComplete="current-password"
+                  required
+                  className="pl-9 pr-10 h-10 bg-background text-foreground placeholder:text-foreground/50 border border-input focus:border-primary focus:ring-2 focus:ring-primary/20 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 dark:border-slate-700"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? (
-                    <Eye className="w-5 h-5" />
-                  ) : (
-                    <EyeOff className="w-5 h-5" />
-                  )}
+                  {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 h-auto bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors"
-            >
+            <Button type="submit" disabled={loading} className="w-full h-10 font-medium">
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Authenticating...
                 </>
               ) : (
-                "Sign in"
+                <>
+                  <Lock className="w-4 h-4 mr-2" />
+                  Sign in
+                </>
               )}
             </Button>
           </form>
 
-          {/* Footer Note */}
-          <p className="text-center mt-8 text-muted-foreground text-sm">
-            This area is restricted to platform administrators only.
-          </p>
+          {/* Security Notice */}
+          <div className="mt-6 p-3 bg-primary/5 border border-primary/10 rounded-lg">
+            <p className="text-xs text-muted-foreground flex items-center gap-2">
+              <Shield className="w-4 h-4 text-primary" />
+              <span>This area is restricted to platform administrators only.</span>
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Right Side - Gradient Panel (desktop only) */}
-      <div className="hidden lg:flex lg:flex-1 items-center justify-center p-16 rounded-l-[3rem] bg-gradient-to-br from-violet-200 via-blue-200 to-purple-200">
+      <div className="hidden lg:flex lg:flex-1 items-center justify-center p-8 lg:p-16 bg-linear-to-br from-primary/10 via-primary/5 to-background dark:from-purple-950 dark:via-slate-900 dark:to-slate-950 border-l border-border">
         <div className="max-w-lg text-center">
-          <h2 className="text-4xl font-bold text-gray-800 mb-6 leading-tight">
-            Welcome to <span className="text-primary">Genius365</span> Platform Admin
+          {/* Content */}
+          <h2 className="text-4xl lg:text-5xl font-bold text-foreground mb-4 leading-tight dark:text-white">
+            Platform Administration
           </h2>
-          <p className="text-xl text-gray-700">
-            Manage partners, workspaces, and platform settings from one place.
+          <p className="text-lg text-muted-foreground mb-8 dark:text-slate-300">
+            Secure access to manage partners, workspaces, and platform-wide settings.
           </p>
+
+          {/* Features */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-primary mt-1 shrink-0 dark:text-purple-400" />
+              <div className="text-left">
+                <p className="font-semibold text-foreground dark:text-white">Partner Management</p>
+                <p className="text-sm text-muted-foreground dark:text-slate-400">
+                  Manage all agencies and their configurations
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-primary mt-1 shrink-0 dark:text-purple-400" />
+              <div className="text-left">
+                <p className="font-semibold text-foreground dark:text-white">Billing & Usage</p>
+                <p className="text-sm text-muted-foreground dark:text-slate-400">
+                  Monitor platform usage and billing metrics
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-primary mt-1 shrink-0 dark:text-purple-400" />
+              <div className="text-left">
+                <p className="font-semibold text-foreground dark:text-white">Security & Access</p>
+                <p className="text-sm text-muted-foreground dark:text-slate-400">
+                  Control authorization and platform security
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

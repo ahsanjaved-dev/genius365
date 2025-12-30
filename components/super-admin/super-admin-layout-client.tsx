@@ -2,43 +2,28 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import {
   LayoutDashboard,
-  Building2,
+  Briefcase,
   CreditCard,
   LogOut,
   Shield,
-  Briefcase,
   PanelLeftClose,
   PanelLeft,
   Menu,
-  Search,
-  Bell,
-  Sun,
-  Moon,
-  MoreVertical,
-  Settings,
-  HelpCircle,
-  Users,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { SuperAdmin } from "@/types/database.types"
+
+// Import ResolvedPartner type from api
+import type { ResolvedPartner } from "@/lib/api/partner"
+import { SuperAdminHeader } from "./super-admin-header"
 
 const navigation = [
   { title: "Dashboard", href: "/super-admin", icon: LayoutDashboard },
@@ -48,10 +33,11 @@ const navigation = [
 
 interface SuperAdminLayoutClientProps {
   superAdmin: SuperAdmin
+  partner: ResolvedPartner
   children: React.ReactNode
 }
 
-export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayoutClientProps) {
+export function SuperAdminLayoutClient({ superAdmin, partner, children }: SuperAdminLayoutClientProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -76,19 +62,6 @@ export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayou
     localStorage.setItem("superadmin-sidebar-collapsed", String(newCollapsed))
   }
 
-  const toggleTheme = () => {
-    const newDark = !isDark
-    setIsDark(newDark)
-    localStorage.setItem("superadmin-theme", newDark ? "dark" : "light")
-  }
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/super-admin/login")
-    router.refresh()
-  }
-
   const initials =
     `${superAdmin.first_name?.[0] || ""}${superAdmin.last_name?.[0] || ""}`.toUpperCase() || "SA"
 
@@ -109,9 +82,22 @@ export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayou
       {/* Logo */}
       <div className={cn("p-4 border-b border-border", collapsed && "px-2")}>
         <Link href="/super-admin" className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center flex-shrink-0">
-            <Shield className="w-5 h-5 text-primary-foreground" />
-          </div>
+          {/* Logo Image from Partner Branding */}
+          {partner.branding?.logo_url ? (
+            <div className="w-10 h-10 flex-shrink-0 relative">
+              <Image
+                src={partner.branding.logo_url}
+                alt="Platform Logo"
+                fill
+                className="object-contain rounded-lg"
+                priority
+              />
+            </div>
+          ) : (
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 text-primary-foreground" />
+            </div>
+          )}
           {!collapsed && (
             <div>
               <h1 className="text-lg font-bold text-foreground">Genius365</h1>
@@ -152,56 +138,7 @@ export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayou
         </nav>
       </ScrollArea>
 
-      {/* User Menu */}
-      <div className={cn("p-3 border-t border-border", collapsed && "px-2")}>
-        {collapsed ? (
-          <div className="flex justify-center">
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9 flex-shrink-0">
-              <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
-                {superAdmin.first_name} {superAdmin.last_name}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">{superAdmin.email}</p>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <HelpCircle className="mr-2 h-4 w-4" />
-                  Help Center
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      </div>
+      {/* User Menu - Moved to Header */}
     </>
   )
 
@@ -221,6 +158,8 @@ export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayou
         {/* Mobile Sidebar */}
         <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
           <SheetContent side="left" className="w-64 p-0 bg-card">
+            {/* Hidden title for accessibility (required by Dialog/Sheet) */}
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
             <div className="flex flex-col h-full">
               <SidebarContent />
             </div>
@@ -278,62 +217,8 @@ export function SuperAdminLayoutClient({ superAdmin, children }: SuperAdminLayou
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Search */}
-                <div className="hidden md:block relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search..."
-                    className="pl-9 w-64 bg-muted/50 border-border"
-                  />
-                </div>
-
-                {/* Theme Toggle */}
-                <Button variant="ghost" size="icon" onClick={toggleTheme}>
-                  {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                </Button>
-
-                {/* Notifications */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="relative">
-                      <Bell className="h-5 w-5" />
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80">
-                    <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      No new notifications
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* User Avatar (mobile only) */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="lg:hidden">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                          {initials}
-                        </AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>
-                      <div>
-                        <p className="font-medium">{superAdmin.first_name} {superAdmin.last_name}</p>
-                        <p className="text-xs text-muted-foreground">{superAdmin.email}</p>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="text-destructive">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Log out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {/* New Header Component - Theme + User Menu */}
+                <SuperAdminHeader superAdmin={superAdmin} isDark={isDark} setIsDark={setIsDark} />
               </div>
             </div>
           </header>

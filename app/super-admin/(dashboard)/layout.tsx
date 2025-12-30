@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getSuperAdminContext } from "@/lib/api/super-admin-auth"
+import { getPartnerFromHost } from "@/lib/api/partner"
 import { SuperAdminLayoutClient } from "@/components/super-admin/super-admin-layout-client"
 
 export default async function SuperAdminDashboardLayout({
@@ -13,5 +14,8 @@ export default async function SuperAdminDashboardLayout({
     redirect("/super-admin/login")
   }
 
-  return <SuperAdminLayoutClient superAdmin={context.superAdmin}>{children}</SuperAdminLayoutClient>
+  // Get platform partner branding for logo
+  const partner = await getPartnerFromHost()
+
+  return <SuperAdminLayoutClient superAdmin={context.superAdmin} partner={partner}>{children}</SuperAdminLayoutClient>
 }
