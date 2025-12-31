@@ -24,6 +24,7 @@ import {
   Crown,
   Shield,
   User,
+  Megaphone,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -96,7 +97,7 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
   const navigation = [
     { title: "Dashboard", href: `${baseUrl}/dashboard`, icon: LayoutDashboard },
     { title: "Agents", href: `${baseUrl}/agents`, icon: Bot },
-    { title: "Leads", href: `${baseUrl}/leads`, icon: Users },
+    { title: "Campaigns", href: `${baseUrl}/campaigns`, icon: Megaphone },
     { title: "Knowledge Base", href: `${baseUrl}/knowledge-base`, icon: BookOpen },
     { title: "Integrations", href: `${baseUrl}/integrations`, icon: Plug },
     { title: "Telephony", href: `${baseUrl}/telephony`, icon: PhoneCall },

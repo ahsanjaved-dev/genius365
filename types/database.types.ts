@@ -1,10 +1,4 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   __InternalSupabase: {
@@ -1245,33 +1239,12 @@ export type Database = {
         | "no_answer"
         | "busy"
         | "canceled"
-      knowledge_document_status:
-        | "draft"
-        | "processing"
-        | "active"
-        | "archived"
-        | "error"
-      knowledge_document_type:
-        | "document"
-        | "faq"
-        | "product_info"
-        | "policy"
-        | "script"
-        | "other"
+      knowledge_document_status: "draft" | "processing" | "active" | "archived" | "error"
+      knowledge_document_type: "document" | "faq" | "product_info" | "policy" | "script" | "other"
       lead_source: "voice_agent" | "manual" | "import" | "api" | "webhook"
-      lead_status:
-        | "new"
-        | "contacted"
-        | "qualified"
-        | "converted"
-        | "lost"
-        | "nurturing"
+      lead_status: "new" | "contacted" | "qualified" | "converted" | "lost" | "nurturing"
       model_provider: "openai" | "anthropic" | "google" | "groq"
-      partner_request_status:
-        | "pending"
-        | "approved"
-        | "rejected"
-        | "provisioning"
+      partner_request_status: "pending" | "approved" | "rejected" | "provisioning"
       plan_tier: "starter" | "professional" | "enterprise" | "custom"
       resource_type:
         | "voice_minutes"
@@ -1282,22 +1255,12 @@ export type Database = {
         | "stt_minutes"
         | "phone_number_rental"
         | "sms_messages"
-      subscription_status:
-        | "trialing"
-        | "active"
-        | "past_due"
-        | "canceled"
-        | "unpaid"
+      subscription_status: "trialing" | "active" | "past_due" | "canceled" | "unpaid"
       sync_status: "not_synced" | "pending" | "synced" | "error"
       transcriber_provider: "deepgram" | "assemblyai" | "openai"
       user_role: "org_owner" | "org_admin" | "org_member"
       user_status: "pending_invitation" | "active" | "inactive" | "suspended"
-      voice_provider:
-        | "elevenlabs"
-        | "deepgram"
-        | "azure"
-        | "openai"
-        | "cartesia"
+      voice_provider: "elevenlabs" | "deepgram" | "azure" | "openai" | "cartesia"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1328,10 +1291,8 @@ export type Tables<
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1437,37 +1398,12 @@ export const Constants = {
         "busy",
         "canceled",
       ],
-      knowledge_document_status: [
-        "draft",
-        "processing",
-        "active",
-        "archived",
-        "error",
-      ],
-      knowledge_document_type: [
-        "document",
-        "faq",
-        "product_info",
-        "policy",
-        "script",
-        "other",
-      ],
+      knowledge_document_status: ["draft", "processing", "active", "archived", "error"],
+      knowledge_document_type: ["document", "faq", "product_info", "policy", "script", "other"],
       lead_source: ["voice_agent", "manual", "import", "api", "webhook"],
-      lead_status: [
-        "new",
-        "contacted",
-        "qualified",
-        "converted",
-        "lost",
-        "nurturing",
-      ],
+      lead_status: ["new", "contacted", "qualified", "converted", "lost", "nurturing"],
       model_provider: ["openai", "anthropic", "google", "groq"],
-      partner_request_status: [
-        "pending",
-        "approved",
-        "rejected",
-        "provisioning",
-      ],
+      partner_request_status: ["pending", "approved", "rejected", "provisioning"],
       plan_tier: ["starter", "professional", "enterprise", "custom"],
       resource_type: [
         "voice_minutes",
@@ -1479,13 +1415,7 @@ export const Constants = {
         "phone_number_rental",
         "sms_messages",
       ],
-      subscription_status: [
-        "trialing",
-        "active",
-        "past_due",
-        "canceled",
-        "unpaid",
-      ],
+      subscription_status: ["trialing", "active", "past_due", "canceled", "unpaid"],
       sync_status: ["not_synced", "pending", "synced", "error"],
       transcriber_provider: ["deepgram", "assemblyai", "openai"],
       user_role: ["org_owner", "org_admin", "org_member"],
@@ -1542,7 +1472,7 @@ export type AgentApiKeyConfig = z.infer<typeof agentApiKeyConfigSchema>
 // ============================================================================
 // CUSTOM TYPES FOR API KEY WORKFLOW
 // ============================================================================
-export type SyncStatus = 'not_synced' | 'pending' | 'synced' | 'error'
+export type SyncStatus = "not_synced" | "pending" | "synced" | "error"
 
 export interface ApiKey {
   id: string
@@ -1560,30 +1490,33 @@ export interface WorkspaceIntegrationApiKeys {
 // ============================================================================
 
 // Table types using the Tables helper
-export type SuperAdmin = Tables<'super_admin'>
-export type Partner = Tables<'partners'>
-export type PartnerDomain = Tables<'partner_domains'>
-export type PartnerRequest = Tables<'partner_requests'>
-export type Workspace = Tables<'workspaces'>
-export type WorkspaceInvitation = Tables<'workspace_invitations'>
-export type WorkspaceMember = Tables<'workspace_members'>
-export type Conversation = Tables<'conversations'>
-export type UsageTracking = Tables<'usage_tracking'>
-export type User = Tables<'users'>
-export type AuditLog = Tables<'audit_log'>
-export type WorkspaceIntegration = Tables<'workspace_integrations'>
-export type PartnerMember = Tables<'partner_members'>
-export type PartnerInvitation = Tables<'partner_invitations'>
+export type SuperAdmin = Tables<"super_admin">
+export type Partner = Tables<"partners">
+export type PartnerDomain = Tables<"partner_domains">
+export type PartnerRequest = Tables<"partner_requests">
+export type Workspace = Tables<"workspaces">
+export type WorkspaceInvitation = Tables<"workspace_invitations">
+export type WorkspaceMember = Tables<"workspace_members">
+export type Conversation = Tables<"conversations">
+export type UsageTracking = Tables<"usage_tracking">
+export type User = Tables<"users">
+export type AuditLog = Tables<"audit_log">
+export type WorkspaceIntegration = Tables<"workspace_integrations">
+export type PartnerMember = Tables<"partner_members">
+export type PartnerInvitation = Tables<"partner_invitations">
 
 // AIAgent type with typed config and api keys
-export type AIAgent = Omit<Tables<'ai_agents'>, 'config' | 'agent_secret_api_key' | 'agent_public_api_key'> & {
+export type AIAgent = Omit<
+  Tables<"ai_agents">,
+  "config" | "agent_secret_api_key" | "agent_public_api_key"
+> & {
   config: AgentConfig
   agent_secret_api_key: AgentSecretApiKey[] | null
   agent_public_api_key: AgentPublicApiKey[] | null
 }
 
 // Agent provider type from enum
-export type AgentProvider = Database['public']['Enums']['agent_provider']
+export type AgentProvider = Database["public"]["Enums"]["agent_provider"]
 
 // ============================================================================
 // FUNCTION TOOL TYPES
@@ -1594,7 +1527,7 @@ export type AgentProvider = Database['public']['Enums']['agent_provider']
  * Follows OpenAI function calling schema format
  */
 export interface FunctionToolParameterProperty {
-  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
+  type: "string" | "number" | "integer" | "boolean" | "array" | "object"
   description?: string
   enum?: string[]
   items?: FunctionToolParameterProperty
@@ -1604,7 +1537,7 @@ export interface FunctionToolParameterProperty {
 }
 
 export interface FunctionToolParameters {
-  type: 'object'
+  type: "object"
   properties: Record<string, FunctionToolParameterProperty>
   required?: string[]
 }
@@ -1616,7 +1549,7 @@ export interface FunctionToolParameters {
  * - 'transferCall': Built-in tool to transfer the call
  * - 'dtmf': Built-in tool for dial-tone multi-frequency signals
  */
-export type FunctionToolType = 'function' | 'endCall' | 'transferCall' | 'dtmf'
+export type FunctionToolType = "function" | "endCall" | "transferCall" | "dtmf"
 
 /**
  * Base function tool definition (provider-agnostic)
@@ -1648,32 +1581,36 @@ export interface FunctionTool {
 /**
  * Zod schema for FunctionTool validation
  */
-export const functionToolParameterPropertySchema: z.ZodType<FunctionToolParameterProperty> = z.lazy(() =>
-  z.object({
-    type: z.enum(['string', 'number', 'integer', 'boolean', 'array', 'object']),
-    description: z.string().optional(),
-    enum: z.array(z.string()).optional(),
-    items: functionToolParameterPropertySchema.optional(),
-    properties: z.record(z.string(), functionToolParameterPropertySchema).optional(),
-    required: z.array(z.string()).optional(),
-    default: z.unknown().optional(),
-  })
+export const functionToolParameterPropertySchema: z.ZodType<FunctionToolParameterProperty> = z.lazy(
+  () =>
+    z.object({
+      type: z.enum(["string", "number", "integer", "boolean", "array", "object"]),
+      description: z.string().optional(),
+      enum: z.array(z.string()).optional(),
+      items: functionToolParameterPropertySchema.optional(),
+      properties: z.record(z.string(), functionToolParameterPropertySchema).optional(),
+      required: z.array(z.string()).optional(),
+      default: z.unknown().optional(),
+    })
 )
 
 export const functionToolParametersSchema = z.object({
-  type: z.literal('object'),
+  type: z.literal("object"),
   properties: z.record(z.string(), functionToolParameterPropertySchema),
   required: z.array(z.string()).optional(),
 })
 
-export const functionToolTypeSchema = z.enum(['function', 'endCall', 'transferCall', 'dtmf'])
+export const functionToolTypeSchema = z.enum(["function", "endCall", "transferCall", "dtmf"])
 
 export const functionToolSchema = z.object({
   id: z.string(),
-  name: z.string().min(1, 'Function name is required').regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Function name must be a valid identifier'),
-  description: z.string().min(1, 'Description is required'),
+  name: z
+    .string()
+    .min(1, "Function name is required")
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, "Function name must be a valid identifier"),
+  description: z.string().min(1, "Description is required"),
   parameters: functionToolParametersSchema,
-  tool_type: functionToolTypeSchema.optional().default('function'),
+  tool_type: functionToolTypeSchema.optional().default("function"),
   async: z.boolean().optional(),
   server_url: z.string().url().optional(),
   speak_during_execution: z.boolean().optional(),
@@ -1720,7 +1657,7 @@ export interface AgentConfig {
     /** IDs of linked knowledge documents */
     document_ids?: string[]
     /** How to inject knowledge into the prompt: 'system_prompt' appends to system prompt */
-    injection_mode?: 'system_prompt'
+    injection_mode?: "system_prompt"
   }
   /** Telephony configuration (Vapi phone numbers) */
   telephony?: AgentTelephonyConfig
@@ -1740,7 +1677,7 @@ export interface AgentTelephonyConfig {
 // ============================================================================
 
 export interface ConversationWithAgent extends Conversation {
-  agent?: Pick<Tables<'ai_agents'>, 'id' | 'name' | 'provider'> | null
+  agent?: Pick<Tables<"ai_agents">, "id" | "name" | "provider"> | null
 }
 
 // ============================================================================
@@ -1769,8 +1706,8 @@ export interface PartnerAuthUser {
   avatar_url: string | null
 }
 
-export type WorkspaceMemberRole = 'owner' | 'admin' | 'member' | 'viewer'
-export type PartnerMemberRole = 'owner' | 'admin' | 'member'
+export type WorkspaceMemberRole = "owner" | "admin" | "member" | "viewer"
+export type PartnerMemberRole = "owner" | "admin" | "member"
 
 export interface AccessibleWorkspace {
   id: string
@@ -1875,12 +1812,14 @@ export const createPartnerRequestSchema = z.object({
   custom_domain: z.string().optional().default(""),
   selected_plan: z.enum(["starter", "professional", "enterprise"]).default("starter"),
   expected_users: z.number().optional(),
-  branding_data: z.object({
-    logo_url: z.string().optional(),
-    primary_color: z.string().optional(),
-    secondary_color: z.string().optional(),
-    company_name: z.string().optional(),
-  }).optional(),
+  branding_data: z
+    .object({
+      logo_url: z.string().optional(),
+      primary_color: z.string().optional(),
+      secondary_color: z.string().optional(),
+      company_name: z.string().optional(),
+    })
+    .optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -1889,18 +1828,32 @@ export type CreatePartnerRequestInput = z.infer<typeof createPartnerRequestSchem
 export const createWorkspaceSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional(),
-  slug: z.string().min(1, "Slug is required").max(100).regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
-  resource_limits: z.object({
-    max_agents: z.number().optional(),
-    max_users: z.number().optional(),
-    max_minutes_per_month: z.number().optional(),
-  }).optional(),
+  slug: z
+    .string()
+    .min(1, "Slug is required")
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  resource_limits: z
+    .object({
+      max_agents: z.number().optional(),
+      max_users: z.number().optional(),
+      max_minutes_per_month: z.number().optional(),
+    })
+    .optional(),
 })
 
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>
 
 export const createWorkspaceIntegrationSchema = z.object({
-  provider: z.enum(["vapi", "retell", "synthflow", "hubspot", "salesforce", "zapier", "slack"] as const),
+  provider: z.enum([
+    "vapi",
+    "retell",
+    "synthflow",
+    "hubspot",
+    "salesforce",
+    "zapier",
+    "slack",
+  ] as const),
   name: z.string().min(1, "Connection name is required").max(255),
   default_secret_key: z.string().min(1, "Default secret API key is required"),
   default_public_key: z.string().optional(),
@@ -1930,8 +1883,14 @@ export const createWorkspaceInvitationSchema = z.object({
 // KNOWLEDGE BASE TYPES AND SCHEMAS
 // ============================================================================
 
-export type KnowledgeDocumentType = 'document' | 'faq' | 'product_info' | 'policy' | 'script' | 'other'
-export type KnowledgeDocumentStatus = 'draft' | 'processing' | 'active' | 'archived' | 'error'
+export type KnowledgeDocumentType =
+  | "document"
+  | "faq"
+  | "product_info"
+  | "policy"
+  | "script"
+  | "other"
+export type KnowledgeDocumentStatus = "draft" | "processing" | "active" | "archived" | "error"
 
 export interface KnowledgeDocument {
   id: string
@@ -1959,26 +1918,26 @@ export interface KnowledgeDocument {
 }
 
 export const knowledgeDocumentTypeSchema = z.enum([
-  'document',
-  'faq',
-  'product_info',
-  'policy',
-  'script',
-  'other',
+  "document",
+  "faq",
+  "product_info",
+  "policy",
+  "script",
+  "other",
 ])
 
 export const knowledgeDocumentStatusSchema = z.enum([
-  'draft',
-  'processing',
-  'active',
-  'archived',
-  'error',
+  "draft",
+  "processing",
+  "active",
+  "archived",
+  "error",
 ])
 
 export const createKnowledgeDocumentSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),
   description: z.string().max(2000).optional(),
-  document_type: knowledgeDocumentTypeSchema.default('document'),
+  document_type: knowledgeDocumentTypeSchema.default("document"),
   content: z.string().optional(),
   tags: z.array(z.string()).optional().default([]),
   category: z.string().max(255).optional(),
@@ -2004,88 +1963,160 @@ export const updateKnowledgeDocumentSchema = z.object({
 export type UpdateKnowledgeDocumentInput = z.infer<typeof updateKnowledgeDocumentSchema>
 
 // ============================================================================
-// LEADS TYPES AND SCHEMAS
+// CALL CAMPAIGNS TYPES AND SCHEMAS
 // ============================================================================
 
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'lost' | 'nurturing'
-export type LeadSource = 'voice_agent' | 'manual' | 'import' | 'api' | 'webhook'
+export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "cancelled"
+export type CampaignScheduleType = "immediate" | "scheduled"
+export type RecipientCallStatus =
+  | "pending"
+  | "queued"
+  | "calling"
+  | "completed"
+  | "failed"
+  | "skipped"
+export type RecipientCallOutcome =
+  | "answered"
+  | "no_answer"
+  | "busy"
+  | "voicemail"
+  | "invalid_number"
+  | "declined"
+  | "error"
 
-export interface Lead {
+export const campaignStatusSchema = z.enum(["draft", "active", "paused", "completed", "cancelled"])
+export const campaignScheduleTypeSchema = z.enum(["immediate", "scheduled"])
+export const recipientCallStatusSchema = z.enum([
+  "pending",
+  "queued",
+  "calling",
+  "completed",
+  "failed",
+  "skipped",
+])
+export const recipientCallOutcomeSchema = z.enum([
+  "answered",
+  "no_answer",
+  "busy",
+  "voicemail",
+  "invalid_number",
+  "declined",
+  "error",
+])
+
+export interface CallCampaign {
   id: string
   workspace_id: string
+  agent_id: string
+  name: string
+  description: string | null
+  status: CampaignStatus
+  schedule_type: CampaignScheduleType
+  scheduled_start_at: string | null
+  business_hours_only: boolean
+  business_hours_start: string | null
+  business_hours_end: string | null
+  timezone: string
+  concurrency_limit: number
+  max_attempts: number
+  retry_delay_minutes: number
+  total_recipients: number
+  pending_calls: number
+  completed_calls: number
+  successful_calls: number
+  failed_calls: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  started_at: string | null
+  completed_at: string | null
+  deleted_at: string | null
+}
+
+export interface CallCampaignWithAgent extends CallCampaign {
+  agent?: Pick<Tables<"ai_agents">, "id" | "name" | "provider" | "is_active"> | null
+}
+
+export interface CallRecipient {
+  id: string
+  campaign_id: string
+  workspace_id: string
+  phone_number: string
+  phone_country_code: string | null
+  phone_validated: boolean
   first_name: string | null
   last_name: string | null
   email: string | null
-  phone: string | null
   company: string | null
-  job_title: string | null
-  status: LeadStatus
-  source: LeadSource
-  priority: number
-  score: number
-  agent_id: string | null
+  custom_variables: Record<string, unknown>
+  call_status: RecipientCallStatus
+  call_outcome: RecipientCallOutcome | null
+  attempts: number
+  last_attempt_at: string | null
+  next_attempt_at: string | null
   conversation_id: string | null
-  assigned_to: string | null
-  notes: string | null
-  tags: string[]
-  custom_fields: Json
-  last_contacted_at: string | null
-  next_follow_up_at: string | null
-  created_by: string | null
-  deleted_at: string | null
+  external_call_id: string | null
+  call_duration_seconds: number | null
+  call_started_at: string | null
+  call_ended_at: string | null
+  call_cost: number | null
+  last_error: string | null
   created_at: string
   updated_at: string
 }
 
-export interface LeadWithAgent extends Lead {
-  agent?: Pick<Tables<'ai_agents'>, 'id' | 'name' | 'provider'> | null
-}
-
-export const leadStatusSchema = z.enum(['new', 'contacted', 'qualified', 'converted', 'lost', 'nurturing'])
-export const leadSourceSchema = z.enum(['voice_agent', 'manual', 'import', 'api', 'webhook'])
-
-export const createLeadSchema = z.object({
-  first_name: z.string().max(255).optional().nullable(),
-  last_name: z.string().max(255).optional().nullable(),
-  email: z.string().max(255).optional().nullable().or(z.literal('')).transform(v => v === '' ? null : v),
-  phone: z.string().max(50).optional().nullable(),
-  company: z.string().max(255).optional().nullable(),
-  job_title: z.string().max(255).optional().nullable(),
-  status: leadStatusSchema.optional().default('new'),
-  source: leadSourceSchema.optional().default('manual'),
-  priority: z.number().min(0).max(2).optional().default(0),
-  score: z.number().min(0).max(100).optional().default(0),
-  agent_id: z.string().uuid().optional().nullable(),
-  conversation_id: z.string().uuid().optional().nullable(),
-  assigned_to: z.string().uuid().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  tags: z.array(z.string()).optional().default([]),
-  custom_fields: z.record(z.string(), z.unknown()).optional().default({}),
-  next_follow_up_at: z.string().datetime().optional().nullable(),
+// Create Campaign Schema
+export const createCampaignSchema = z.object({
+  name: z.string().min(1, "Campaign name is required").max(255),
+  description: z.string().max(2000).optional().nullable(),
+  agent_id: z.string().uuid("Please select an agent"),
+  schedule_type: campaignScheduleTypeSchema.default("immediate"),
+  scheduled_start_at: z.string().datetime().optional().nullable(),
+  business_hours_only: z.boolean().default(false),
+  business_hours_start: z.string().optional().nullable(),
+  business_hours_end: z.string().optional().nullable(),
+  timezone: z.string().default("UTC"),
+  concurrency_limit: z.number().int().min(1).max(10).default(1),
+  max_attempts: z.number().int().min(1).max(5).default(3),
+  retry_delay_minutes: z.number().int().min(5).default(30),
 })
 
-export const updateLeadSchema = createLeadSchema.partial()
+export const updateCampaignSchema = createCampaignSchema.partial().extend({
+  status: campaignStatusSchema.optional(),
+})
 
-export type CreateLeadInput = z.infer<typeof createLeadSchema>
-export type UpdateLeadInput = z.infer<typeof updateLeadSchema>
+// Input types for form handling
+export type CreateCampaignFormInput = z.input<typeof createCampaignSchema>
+// Output types after validation/transforms
+export type CreateCampaignInput = z.output<typeof createCampaignSchema>
+export type UpdateCampaignInput = z.output<typeof updateCampaignSchema>
 
-// Form input type for React Hook Form (all fields optional for form handling)
-export type LeadFormInput = {
-  first_name?: string | null
-  last_name?: string | null
-  email?: string | null
-  phone?: string | null
-  company?: string | null
-  job_title?: string | null
-  status?: LeadStatus
-  source?: LeadSource
-  priority?: number
-  score?: number
-  agent_id?: string | null
-  conversation_id?: string | null
-  assigned_to?: string | null
-  notes?: string | null
-  tags?: string[]
-  custom_fields?: Record<string, unknown>
-  next_follow_up_at?: string | null
-}
+// Create Recipient Schema (phone is required)
+export const createRecipientSchema = z.object({
+  phone_number: z.string().min(1, "Phone number is required").max(50),
+  first_name: z.string().max(255).optional().nullable(),
+  last_name: z.string().max(255).optional().nullable(),
+  email: z.string().email().max(255).optional().nullable().or(z.literal("")),
+  company: z.string().max(255).optional().nullable(),
+  custom_variables: z.record(z.string(), z.unknown()).optional(),
+})
+
+export const updateRecipientSchema = createRecipientSchema.partial().extend({
+  call_status: recipientCallStatusSchema.optional(),
+  call_outcome: recipientCallOutcomeSchema.optional().nullable(),
+})
+
+// Bulk import schema
+export const importRecipientsSchema = z.object({
+  recipients: z
+    .array(createRecipientSchema)
+    .min(1, "At least one recipient is required")
+    .max(10000, "Maximum 10,000 recipients per import"),
+})
+
+// Input types for form handling  
+export type CreateRecipientFormInput = z.input<typeof createRecipientSchema>
+// Output types after validation/transforms
+export type CreateRecipientInput = z.output<typeof createRecipientSchema>
+export type UpdateRecipientInput = z.output<typeof updateRecipientSchema>
+export type ImportRecipientsInput = z.output<typeof importRecipientsSchema>

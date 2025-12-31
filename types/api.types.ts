@@ -253,24 +253,6 @@ export {
 } from "./database.types"
 
 // ============================================================================
-// LEAD SCHEMAS (Re-exported from database.types)
-// ============================================================================
-
-export {
-  leadStatusSchema,
-  leadSourceSchema,
-  createLeadSchema,
-  updateLeadSchema,
-  type Lead,
-  type LeadStatus,
-  type LeadSource,
-  type CreateLeadInput,
-  type UpdateLeadInput,
-  type LeadFormInput,
-  type LeadWithAgent,
-} from "./database.types"
-
-// ============================================================================
 // CONVERSATION SCHEMAS
 // ============================================================================
 

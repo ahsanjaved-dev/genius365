@@ -1,0 +1,461 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { CampaignStatusBadge, CallStatusBadge, CallOutcomeBadge } from "@/components/workspace/campaigns/campaign-status-badge"
+import { ImportRecipientsDialog } from "@/components/workspace/campaigns/import-recipients-dialog"
+import { AddRecipientDialog } from "@/components/workspace/campaigns/add-recipient-dialog"
+import {
+  useCampaign,
+  useCampaignRecipients,
+  useUpdateCampaign,
+  useDeleteRecipient,
+} from "@/lib/hooks/use-campaigns"
+import {
+  ArrowLeft,
+  Loader2,
+  Bot,
+  Users,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Play,
+  Pause,
+  Upload,
+  Plus,
+  Trash2,
+  Phone,
+  MoreVertical,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { formatDistanceToNow } from "date-fns"
+import { toast } from "sonner"
+import type { CallRecipient, RecipientCallStatus } from "@/types/database.types"
+
+const statusFilterOptions = [
+  { value: "all", label: "All Status" },
+  { value: "pending", label: "Pending" },
+  { value: "queued", label: "Queued" },
+  { value: "calling", label: "Calling" },
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+]
+
+export default function CampaignDetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const workspaceSlug = params.workspaceSlug as string
+  const campaignId = params.id as string
+
+  const [statusFilter, setStatusFilter] = useState<RecipientCallStatus | "all">("all")
+  const [page, setPage] = useState(1)
+  const [importOpen, setImportOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<CallRecipient | null>(null)
+
+  const { data: campaignData, isLoading: campaignLoading, refetch: refetchCampaign } = useCampaign(campaignId)
+  const { data: recipientsData, isLoading: recipientsLoading, refetch: refetchRecipients } = useCampaignRecipients(
+    campaignId,
+    { status: statusFilter, page, pageSize: 50 }
+  )
+  const updateMutation = useUpdateCampaign()
+  const deleteRecipientMutation = useDeleteRecipient()
+
+  const campaign = campaignData?.data
+  const recipients = recipientsData?.data || []
+  const totalRecipients = recipientsData?.total || 0
+  const totalPages = recipientsData?.totalPages || 1
+
+  if (campaignLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!campaign) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-xl font-semibold">Campaign not found</h2>
+        <Button variant="link" onClick={() => router.back()}>
+          Go back
+        </Button>
+      </div>
+    )
+  }
+
+  const progress = campaign.total_recipients > 0
+    ? Math.round((campaign.completed_calls / campaign.total_recipients) * 100)
+    : 0
+
+  const canStart = (campaign.status === "draft" || campaign.status === "paused") && campaign.total_recipients > 0
+  const canPause = campaign.status === "active"
+  const isEditable = campaign.status === "draft" || campaign.status === "paused"
+
+  const handleStatusChange = async (newStatus: "active" | "paused") => {
+    try {
+      await updateMutation.mutateAsync({ id: campaignId, data: { status: newStatus } })
+      toast.success(newStatus === "active" ? "Campaign started" : "Campaign paused")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update campaign")
+    }
+  }
+
+  const handleDeleteRecipient = async () => {
+    if (!deleteTarget) return
+    try {
+      await deleteRecipientMutation.mutateAsync({
+        campaignId,
+        recipientId: deleteTarget.id,
+      })
+      toast.success("Recipient removed")
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete recipient")
+    }
+  }
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "—"
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push(`/w/${workspaceSlug}/campaigns`)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">{campaign.name}</h1>
+              <CampaignStatusBadge status={campaign.status} />
+            </div>
+            {campaign.agent && (
+              <div className="flex items-center gap-2 text-muted-foreground mt-1">
+                <Bot className="h-4 w-4" />
+                <span>{campaign.agent.name}</span>
+                <span className="text-xs">({campaign.agent.provider})</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => { refetchCampaign(); refetchRecipients(); }}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {canPause && (
+            <Button variant="outline" onClick={() => handleStatusChange("paused")}>
+              <Pause className="h-4 w-4 mr-2" />
+              Pause
+            </Button>
+          )}
+          {canStart && (
+            <Button onClick={() => handleStatusChange("active")}>
+              <Play className="h-4 w-4 mr-2" />
+              {campaign.status === "paused" ? "Resume" : "Start"} Campaign
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-2xl font-bold">{campaign.total_recipients}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-yellow-600" />
+              <div>
+                <p className="text-2xl font-bold">{campaign.pending_calls}</p>
+                <p className="text-xs text-muted-foreground">Pending</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <div>
+                <p className="text-2xl font-bold">{campaign.successful_calls}</p>
+                <p className="text-xs text-muted-foreground">Answered</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold">{campaign.failed_calls}</p>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div>
+              <p className="text-2xl font-bold">{progress}%</p>
+              <p className="text-xs text-muted-foreground">Progress</p>
+              <Progress value={progress} className="h-2 mt-2" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recipients Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="h-5 w-5" />
+                Recipients
+              </CardTitle>
+              <CardDescription>{totalRecipients} phone numbers</CardDescription>
+            </div>
+            {isEditable && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setAddOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add
+                </Button>
+                <Button onClick={() => setImportOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import CSV
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Filter */}
+          <div className="flex items-center gap-4 mb-4">
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v as RecipientCallStatus | "all")
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusFilterOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {recipientsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : recipients.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 border border-dashed rounded-lg">
+              <Users className="h-10 w-10 text-muted-foreground mb-4" />
+              <h3 className="font-semibold">No recipients yet</h3>
+              <p className="text-muted-foreground text-center max-w-sm mt-1">
+                {statusFilter !== "all"
+                  ? "No recipients match this filter."
+                  : "Import a CSV file or add recipients manually to get started."}
+              </p>
+              {isEditable && statusFilter === "all" && (
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" onClick={() => setAddOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Manually
+                  </Button>
+                  <Button onClick={() => setImportOpen(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Phone Number</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Outcome</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Attempts</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recipients.map((recipient) => (
+                    <TableRow key={recipient.id}>
+                      <TableCell className="font-mono">{recipient.phone_number}</TableCell>
+                      <TableCell>
+                        {recipient.first_name || recipient.last_name
+                          ? `${recipient.first_name || ""} ${recipient.last_name || ""}`.trim()
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        <CallStatusBadge status={recipient.call_status} />
+                      </TableCell>
+                      <TableCell>
+                        <CallOutcomeBadge outcome={recipient.call_outcome} />
+                      </TableCell>
+                      <TableCell>{formatDuration(recipient.call_duration_seconds)}</TableCell>
+                      <TableCell>{recipient.attempts}</TableCell>
+                      <TableCell>
+                        {isEditable && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(recipient)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remove
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <ImportRecipientsDialog
+        campaignId={campaignId}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+      />
+
+      <AddRecipientDialog
+        campaignId={campaignId}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+      />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Recipient</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {deleteTarget?.phone_number} from this campaign?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRecipient}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteRecipientMutation.isPending}
+            >
+              {deleteRecipientMutation.isPending ? "Removing..." : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
