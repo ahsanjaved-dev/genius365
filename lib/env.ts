@@ -23,9 +23,14 @@ export const env = {
   // App Configuration
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",
 
-  // Stripe (Optional)
+  // Stripe
   stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY", false),
   stripePublishableKey: getEnvVar("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", false),
+  stripeWebhookSecret: getEnvVar("STRIPE_WEBHOOK_SECRET", false),
+  // Stripe Price IDs (create in Stripe Dashboard first)
+  stripePriceStarter: getEnvVar("STRIPE_PRICE_STARTER", false),
+  stripePriceProfessional: getEnvVar("STRIPE_PRICE_PROFESSIONAL", false),
+  stripePriceEnterprise: getEnvVar("STRIPE_PRICE_ENTERPRISE", false),
 
   // Resend Email Service
   resendApiKey: getEnvVar("RESEND_API_KEY", false),
