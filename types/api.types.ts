@@ -169,7 +169,15 @@ export type IntegrationProvider =
   | "slack"
 
 export const createIntegrationSchema = z.object({
-  integration_type: z.enum(["make", "ghl", "twilio", "slack", "zapier", "calendar", "crm"] as const),
+  integration_type: z.enum([
+    "make",
+    "ghl",
+    "twilio",
+    "slack",
+    "zapier",
+    "calendar",
+    "crm",
+  ] as const),
   name: z.string().min(1).max(255),
   credentials: z.record(z.string(), z.string()).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
@@ -249,16 +257,18 @@ export {
 // ============================================================================
 
 export const conversationFiltersSchema = z.object({
-  status: z.enum([
-    "initiated",
-    "ringing",
-    "in_progress",
-    "completed",
-    "failed",
-    "no_answer",
-    "busy",
-    "canceled",
-  ]).optional(),
+  status: z
+    .enum([
+      "initiated",
+      "ringing",
+      "in_progress",
+      "completed",
+      "failed",
+      "no_answer",
+      "busy",
+      "canceled",
+    ])
+    .optional(),
   direction: z.enum(["inbound", "outbound"]).optional(),
   agent_id: z.string().uuid().optional(),
   date_from: z.string().datetime().optional(),
@@ -267,7 +277,10 @@ export const conversationFiltersSchema = z.object({
   search: z.string().optional(),
   page: z.number().min(1).optional().default(1),
   page_size: z.number().min(1).max(100).optional().default(20),
-  sort_by: z.enum(["created_at", "duration_seconds", "total_cost"]).optional().default("created_at"),
+  sort_by: z
+    .enum(["created_at", "duration_seconds", "total_cost"])
+    .optional()
+    .default("created_at"),
   sort_order: z.enum(["asc", "desc"]).optional().default("desc"),
 })
 
