@@ -58,6 +58,10 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Calendar,
+  Variable,
+  MessageSquare,
+  Settings2,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -67,7 +71,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { formatDistanceToNow } from "date-fns"
 import { toast } from "sonner"
-import type { CallRecipient, RecipientCallStatus } from "@/types/database.types"
+import type { CallRecipient, RecipientCallStatus, BusinessHoursConfig, VariableMapping, AgentPromptOverrides } from "@/types/database.types"
 
 const statusFilterOptions = [
   { value: "all", label: "All Status" },
@@ -255,6 +259,144 @@ export default function CampaignDetailPage() {
               <p className="text-xs text-muted-foreground">Progress</p>
               <Progress value={progress} className="h-2 mt-2" />
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Schedule & Settings Row */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Schedule Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Schedule
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Start</span>
+              <div>
+                {campaign.schedule_type === "immediate" ? (
+                  <Badge>Immediate</Badge>
+                ) : (
+                  <span className="text-sm font-medium">
+                    {campaign.scheduled_start_at
+                      ? new Date(campaign.scheduled_start_at).toLocaleString()
+                      : "Not set"}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* Enhanced Business Hours Display */}
+            {campaign.business_hours_config && (campaign.business_hours_config as BusinessHoursConfig).enabled ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Business Hours</span>
+                  <Badge variant="secondary">Enabled</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Timezone</span>
+                  <span className="text-sm">{(campaign.business_hours_config as BusinessHoursConfig).timezone}</span>
+                </div>
+                <div className="pt-2 border-t">
+                  <p className="text-xs text-muted-foreground mb-2">Active Days:</p>
+                  <div className="flex gap-1">
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, idx) => {
+                      const dayKey = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][idx]
+                      const schedule = (campaign.business_hours_config as BusinessHoursConfig)?.schedule
+                      const slots = schedule?.[dayKey as keyof typeof schedule] || []
+                      const isActive = slots.length > 0
+                      
+                      return (
+                        <div
+                          key={day}
+                          className={`text-xs px-2 py-1 rounded ${
+                            isActive
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                          title={isActive ? slots.map(s => `${s.start}-${s.end}`).join(", ") : "Off"}
+                        >
+                          {day}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : campaign.business_hours_only ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Business Hours</span>
+                  <span className="text-sm">
+                    {campaign.business_hours_start} - {campaign.business_hours_end}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Timezone</span>
+                  <span className="text-sm">{campaign.timezone}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Business Hours</span>
+                <span className="text-sm text-muted-foreground">24/7</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Variable Mappings & Settings Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Configuration
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Concurrent Calls</span>
+              <span className="text-sm font-medium">{campaign.concurrency_limit}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Max Retries</span>
+              <span className="text-sm font-medium">{campaign.max_attempts}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Retry Delay</span>
+              <span className="text-sm font-medium">{campaign.retry_delay_minutes} min</span>
+            </div>
+            
+            {/* Variable Mappings */}
+            {campaign.variable_mappings && (campaign.variable_mappings as VariableMapping[]).length > 0 && (
+              <div className="pt-3 border-t">
+                <div className="flex items-center gap-2 mb-2">
+                  <Variable className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Variables</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {(campaign.variable_mappings as VariableMapping[]).map((mapping) => (
+                    <Badge key={mapping.csv_column} variant="outline" className="text-xs">
+                      {mapping.prompt_placeholder}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom Greeting Indicator */}
+            {campaign.agent_prompt_overrides && (campaign.agent_prompt_overrides as AgentPromptOverrides).greeting_override && (
+              <div className="pt-3 border-t">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Custom Greeting</span>
+                  <Badge variant="secondary" className="text-xs">Active</Badge>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

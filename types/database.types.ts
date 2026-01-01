@@ -2031,6 +2031,12 @@ export interface CallCampaign {
   started_at: string | null
   completed_at: string | null
   deleted_at: string | null
+  // New wizard fields
+  business_hours_config: BusinessHoursConfig | null
+  variable_mappings: VariableMapping[]
+  agent_prompt_overrides: AgentPromptOverrides | null
+  wizard_completed: boolean
+  csv_column_headers: string[]
 }
 
 export interface CallCampaignWithAgent extends CallCampaign {
@@ -2065,7 +2071,102 @@ export interface CallRecipient {
   updated_at: string
 }
 
-// Create Campaign Schema
+// ============================================================================
+// ENHANCED CAMPAIGN TYPES FOR WIZARD FLOW
+// ============================================================================
+
+// Business hours time slot
+export interface BusinessHoursTimeSlot {
+  start: string  // "09:00"
+  end: string    // "18:00"
+}
+
+// Days of the week type
+export type DayOfWeek = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
+
+// Business hours schedule per day
+export interface BusinessHoursSchedule {
+  monday: BusinessHoursTimeSlot[]
+  tuesday: BusinessHoursTimeSlot[]
+  wednesday: BusinessHoursTimeSlot[]
+  thursday: BusinessHoursTimeSlot[]
+  friday: BusinessHoursTimeSlot[]
+  saturday: BusinessHoursTimeSlot[]
+  sunday: BusinessHoursTimeSlot[]
+}
+
+// Full business hours configuration
+export interface BusinessHoursConfig {
+  enabled: boolean
+  timezone: string
+  schedule: BusinessHoursSchedule
+}
+
+// Variable mapping from CSV to agent prompt
+export interface VariableMapping {
+  csv_column: string
+  prompt_placeholder: string
+  default_value?: string
+}
+
+// Agent prompt overrides for campaign
+export interface AgentPromptOverrides {
+  greeting_override?: string
+  system_prompt_additions?: string
+}
+
+// Zod schemas for new types
+export const businessHoursTimeSlotSchema = z.object({
+  start: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
+  end: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
+})
+
+export const businessHoursScheduleSchema = z.object({
+  monday: z.array(businessHoursTimeSlotSchema).default([]),
+  tuesday: z.array(businessHoursTimeSlotSchema).default([]),
+  wednesday: z.array(businessHoursTimeSlotSchema).default([]),
+  thursday: z.array(businessHoursTimeSlotSchema).default([]),
+  friday: z.array(businessHoursTimeSlotSchema).default([]),
+  saturday: z.array(businessHoursTimeSlotSchema).default([]),
+  sunday: z.array(businessHoursTimeSlotSchema).default([]),
+})
+
+export const businessHoursConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  timezone: z.string().default("UTC"),
+  schedule: businessHoursScheduleSchema.default({
+    monday: [],
+    tuesday: [],
+    wednesday: [],
+    thursday: [],
+    friday: [],
+    saturday: [],
+    sunday: [],
+  }),
+})
+
+export const variableMappingSchema = z.object({
+  csv_column: z.string().min(1),
+  prompt_placeholder: z.string().min(1),
+  default_value: z.string().optional().default(""),
+})
+
+export const agentPromptOverridesSchema = z.object({
+  greeting_override: z.string().optional(),
+  system_prompt_additions: z.string().optional(),
+}).nullable()
+
+// Create Recipient Schema (phone is required) - MUST be defined before wizard schema
+export const createRecipientSchema = z.object({
+  phone_number: z.string().min(1, "Phone number is required").max(50),
+  first_name: z.string().max(255).optional().nullable(),
+  last_name: z.string().max(255).optional().nullable(),
+  email: z.string().email().max(255).optional().nullable().or(z.literal("")),
+  company: z.string().max(255).optional().nullable(),
+  custom_variables: z.record(z.string(), z.unknown()).optional(),
+})
+
+// Create Campaign Schema (legacy - still works)
 export const createCampaignSchema = z.object({
   name: z.string().min(1, "Campaign name is required").max(255),
   description: z.string().max(2000).optional().nullable(),
@@ -2081,8 +2182,46 @@ export const createCampaignSchema = z.object({
   retry_delay_minutes: z.number().int().min(5).default(30),
 })
 
+// Enhanced Campaign Wizard Schema (new wizard flow)
+export const createCampaignWizardSchema = z.object({
+  // Step 1: Basic Details
+  name: z.string().min(1, "Campaign name is required").max(255),
+  description: z.string().max(2000).optional().nullable(),
+  agent_id: z.string().uuid("Please select an agent"),
+  
+  // Step 2: Recipients (optional - can be added separately)
+  recipients: z.array(createRecipientSchema).optional().default([]),
+  csv_column_headers: z.array(z.string()).optional().default([]),
+  
+  // Step 3: Variable Mappings
+  variable_mappings: z.array(variableMappingSchema).optional().default([]),
+  agent_prompt_overrides: agentPromptOverridesSchema.optional().nullable(),
+  
+  // Step 4: Schedule & Business Hours
+  schedule_type: campaignScheduleTypeSchema.default("immediate"),
+  scheduled_start_at: z.string().datetime().optional().nullable(),
+  business_hours_config: businessHoursConfigSchema.optional(),
+  
+  // Step 5: Advanced Settings (legacy fields still supported)
+  business_hours_only: z.boolean().default(false),
+  business_hours_start: z.string().optional().nullable(),
+  business_hours_end: z.string().optional().nullable(),
+  timezone: z.string().default("UTC"),
+  concurrency_limit: z.number().int().min(1).max(10).default(1),
+  max_attempts: z.number().int().min(1).max(5).default(3),
+  retry_delay_minutes: z.number().int().min(5).default(30),
+  
+  // Wizard metadata
+  wizard_completed: z.boolean().default(true),
+})
+
 export const updateCampaignSchema = createCampaignSchema.partial().extend({
   status: campaignStatusSchema.optional(),
+  // New wizard fields can be updated too
+  business_hours_config: businessHoursConfigSchema.optional(),
+  variable_mappings: z.array(variableMappingSchema).optional(),
+  agent_prompt_overrides: agentPromptOverridesSchema.optional(),
+  csv_column_headers: z.array(z.string()).optional(),
 })
 
 // Input types for form handling
@@ -2091,15 +2230,9 @@ export type CreateCampaignFormInput = z.input<typeof createCampaignSchema>
 export type CreateCampaignInput = z.output<typeof createCampaignSchema>
 export type UpdateCampaignInput = z.output<typeof updateCampaignSchema>
 
-// Create Recipient Schema (phone is required)
-export const createRecipientSchema = z.object({
-  phone_number: z.string().min(1, "Phone number is required").max(50),
-  first_name: z.string().max(255).optional().nullable(),
-  last_name: z.string().max(255).optional().nullable(),
-  email: z.string().email().max(255).optional().nullable().or(z.literal("")),
-  company: z.string().max(255).optional().nullable(),
-  custom_variables: z.record(z.string(), z.unknown()).optional(),
-})
+// Wizard types
+export type CreateCampaignWizardFormInput = z.input<typeof createCampaignWizardSchema>
+export type CreateCampaignWizardInput = z.output<typeof createCampaignWizardSchema>
 
 export const updateRecipientSchema = createRecipientSchema.partial().extend({
   call_status: recipientCallStatusSchema.optional(),

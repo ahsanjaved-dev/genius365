@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, getValidationError } from "@/lib/api/helpers"
-import { createCampaignSchema } from "@/types/database.types"
+import { createCampaignSchema, createCampaignWizardSchema } from "@/types/database.types"
 
 // GET /api/w/[workspaceSlug]/campaigns - List campaigns
 export async function GET(
@@ -66,13 +66,20 @@ export async function POST(
     if (!ctx) return unauthorized()
 
     const body = await request.json()
-    const parsed = createCampaignSchema.safeParse(body)
+    
+    // Check if this is a wizard flow creation
+    const isWizardFlow = body.wizard_flow === true
+    
+    // Parse with appropriate schema
+    const parsed = isWizardFlow 
+      ? createCampaignWizardSchema.safeParse(body)
+      : createCampaignSchema.safeParse(body)
 
     if (!parsed.success) {
       return apiError(getValidationError(parsed.error))
     }
 
-    const { agent_id, ...campaignData } = parsed.data
+    const { agent_id, ...rest } = parsed.data
 
     // Verify agent exists and belongs to this workspace
     const { data: agent, error: agentError } = await ctx.adminClient
@@ -92,6 +99,32 @@ export async function POST(
       return apiError("Selected agent is not active")
     }
 
+    // Extract wizard-specific fields if present
+    const recipients = isWizardFlow ? (rest as any).recipients || [] : []
+    const wizardFields = isWizardFlow ? {
+      business_hours_config: (rest as any).business_hours_config || null,
+      variable_mappings: (rest as any).variable_mappings || [],
+      agent_prompt_overrides: (rest as any).agent_prompt_overrides || null,
+      csv_column_headers: (rest as any).csv_column_headers || [],
+      wizard_completed: true,
+    } : {}
+
+    // Prepare campaign data
+    const campaignData = {
+      name: rest.name,
+      description: rest.description || null,
+      schedule_type: rest.schedule_type,
+      scheduled_start_at: rest.scheduled_start_at || null,
+      business_hours_only: rest.business_hours_only || false,
+      business_hours_start: rest.business_hours_start || null,
+      business_hours_end: rest.business_hours_end || null,
+      timezone: rest.timezone || "UTC",
+      concurrency_limit: rest.concurrency_limit || 1,
+      max_attempts: rest.max_attempts || 3,
+      retry_delay_minutes: rest.retry_delay_minutes || 30,
+      ...wizardFields,
+    }
+
     // Create campaign
     const { data: campaign, error } = await ctx.adminClient
       .from("call_campaigns")
@@ -101,6 +134,8 @@ export async function POST(
         workspace_id: ctx.workspace.id,
         created_by: ctx.user.id,
         status: "draft",
+        total_recipients: recipients.length,
+        pending_calls: recipients.length,
       })
       .select(`
         *,
@@ -113,10 +148,82 @@ export async function POST(
       return serverError("Failed to create campaign")
     }
 
+    // If wizard flow with recipients, insert them
+    if (isWizardFlow && recipients.length > 0) {
+      const recipientRows = recipients.map((r: any) => ({
+        campaign_id: campaign.id,
+        workspace_id: ctx.workspace.id,
+        phone_number: r.phone_number,
+        first_name: r.first_name || null,
+        last_name: r.last_name || null,
+        email: r.email || null,
+        company: r.company || null,
+        custom_variables: r.custom_variables || {},
+        call_status: "pending",
+        attempts: 0,
+      }))
+
+      // Insert recipients in batches of 500
+      const batchSize = 500
+      let insertedCount = 0
+      let duplicatesCount = 0
+
+      for (let i = 0; i < recipientRows.length; i += batchSize) {
+        const batch = recipientRows.slice(i, i + batchSize)
+        const { data: inserted, error: recipientError } = await ctx.adminClient
+          .from("call_recipients")
+          .upsert(batch, {
+            onConflict: "campaign_id,phone_number",
+            ignoreDuplicates: true,
+          })
+          .select()
+
+        if (recipientError) {
+          console.error("[CampaignsAPI] Error inserting recipients batch:", recipientError)
+          // Continue with other batches even if one fails
+        } else {
+          insertedCount += inserted?.length || 0
+        }
+      }
+
+      duplicatesCount = recipients.length - insertedCount
+
+      // Update campaign recipient counts
+      const { error: updateError } = await ctx.adminClient
+        .from("call_campaigns")
+        .update({
+          total_recipients: insertedCount,
+          pending_calls: insertedCount,
+        })
+        .eq("id", campaign.id)
+
+      if (updateError) {
+        console.error("[CampaignsAPI] Error updating campaign counts:", updateError)
+      }
+
+      // Re-fetch campaign with updated counts
+      const { data: updatedCampaign } = await ctx.adminClient
+        .from("call_campaigns")
+        .select(`
+          *,
+          agent:ai_agents!agent_id(id, name, provider, is_active)
+        `)
+        .eq("id", campaign.id)
+        .single()
+
+      return apiResponse({
+        ...updatedCampaign,
+        _import: {
+          imported: insertedCount,
+          duplicates: duplicatesCount,
+          total: recipients.length,
+        }
+      }, 201)
+    }
+
     return apiResponse(campaign, 201)
   } catch (error) {
     console.error("[CampaignsAPI] Exception:", error)
     return serverError("Internal server error")
   }
 }
-

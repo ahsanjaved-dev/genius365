@@ -6,6 +6,7 @@ import type {
   CallCampaignWithAgent, 
   CallRecipient, 
   CreateCampaignInput, 
+  CreateCampaignWizardInput,
   UpdateCampaignInput,
   CreateRecipientInput,
   CampaignStatus,
@@ -111,6 +112,34 @@ export function useCreateCampaign() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to create campaign")
+      }
+      return response.json() as Promise<CampaignResponse>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceSlug] })
+    },
+  })
+}
+
+// Create campaign using the wizard flow (includes recipients)
+export function useCreateCampaignWizard() {
+  const params = useParams()
+  const workspaceSlug = params.workspaceSlug as string
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: CreateCampaignWizardInput) => {
+      const response = await fetch(`/api/w/${workspaceSlug}/campaigns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          wizard_flow: true, // Flag to indicate wizard creation
+        }),
       })
       if (!response.ok) {
         const error = await response.json()
