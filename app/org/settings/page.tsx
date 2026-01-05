@@ -1,13 +1,14 @@
 "use client"
 
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useAuthContext } from "@/lib/hooks/use-auth"
-import { Building2, Shield, Clock, Settings } from "lucide-react"
+import { Building2, Shield, Settings, CreditCard, ArrowRight } from "lucide-react"
 
 export default function OrgSettingsPage() {
-  const { data: authContext, isLoading } = useAuthContext()
+  const { data: authContext } = useAuthContext()
 
   const partner = authContext?.partner
   const partnerRole = authContext?.partnerMembership?.role
@@ -104,6 +105,27 @@ export default function OrgSettingsPage() {
         </Card>
       )}
 
+      {/* Billing Link */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Billing & Subscription
+          </CardTitle>
+          <CardDescription>
+            Manage your subscription, view invoices, and update payment methods
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link href="/org/billing">
+              Go to Billing
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Coming Soon */}
       <Card className="border-dashed">
         <CardHeader>
@@ -120,7 +142,6 @@ export default function OrgSettingsPage() {
             <li>Custom branding editor</li>
             <li>Domain management</li>
             <li>Security settings (SSO, 2FA requirements)</li>
-            <li>Billing and subscription management</li>
             <li>API access configuration</li>
           </ul>
         </CardContent>
@@ -128,4 +149,3 @@ export default function OrgSettingsPage() {
     </div>
   )
 }
-

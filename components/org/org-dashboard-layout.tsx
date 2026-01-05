@@ -26,6 +26,8 @@ import {
   MoreVertical,
   ChevronLeft,
   LayoutGrid,
+  CreditCard,
+  Package,
 } from "lucide-react"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { PartnerAuthUser, AccessibleWorkspace, PartnerMemberRole } from "@/types/database.types"
@@ -55,6 +57,8 @@ export function OrgDashboardLayout({
   const navigation = [
     { title: "Team Members", href: "/org/team", icon: Users },
     { title: "Invitations", href: "/org/invitations", icon: UserPlus },
+    { title: "Billing", href: "/org/billing", icon: CreditCard },
+    { title: "Subscription Plans", href: "/org/plans", icon: Package },
     { title: "Settings", href: "/org/settings", icon: Settings },
   ]
 
