@@ -161,14 +161,19 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       },
     })
 
+    // Get billing period from subscription items (Stripe SDK v20+ type changes)
+    const subscriptionItem = subscription.items.data[0]
+    const currentPeriodStart = subscriptionItem?.current_period_start
+    const currentPeriodEnd = subscriptionItem?.current_period_end
+
     const baseData = {
       stripeSubscriptionId: subscription.id,
       stripeCustomerId: typeof subscription.customer === "string" 
         ? subscription.customer 
         : subscription.customer?.id,
       status: status as "active" | "past_due" | "canceled" | "incomplete" | "trialing" | "paused",
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodStart: currentPeriodStart ? new Date(currentPeriodStart * 1000) : null,
+      currentPeriodEnd: currentPeriodEnd ? new Date(currentPeriodEnd * 1000) : null,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: subscription.canceled_at 
         ? new Date(subscription.canceled_at * 1000) 
