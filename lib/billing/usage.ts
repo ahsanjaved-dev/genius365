@@ -147,7 +147,7 @@ export async function processCallCompletion(
     }
 
     // If totalCost is already set, this call was already billed
-    if (conversation.totalCost !== null && conversation.totalCost > 0) {
+    if (conversation.totalCost !== null && Number(conversation.totalCost) > 0) {
       return {
         success: true,
         reason: "Already processed (idempotent)",
