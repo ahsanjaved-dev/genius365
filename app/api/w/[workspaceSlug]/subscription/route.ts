@@ -227,7 +227,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Determine URLs
-    const baseUrl = env.nextPublicAppUrl || request.headers.get("origin") || ""
+    const baseUrl = env.appUrl || request.headers.get("origin") || ""
     const defaultSuccessUrl = `${baseUrl}/w/${workspaceSlug}/billing?subscription=success`
     const defaultCancelUrl = `${baseUrl}/w/${workspaceSlug}/billing?subscription=canceled`
 
