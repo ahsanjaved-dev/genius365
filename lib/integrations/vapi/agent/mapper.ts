@@ -12,6 +12,7 @@ import type {
 import { mapFunctionToolsToVapi } from "@/lib/integrations/function_tools/vapi/mapper"
 import { DEFAULT_END_CALL_TOOL } from "@/lib/integrations/function_tools/vapi/tools/call-control/end-call"
 import type { VapiTool as FunctionToolsVapiTool } from "@/lib/integrations/function_tools/vapi/types"
+import { env } from "@/lib/env"
 
 // ============================================================================
 // DEFAULT VOICE ID
