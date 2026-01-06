@@ -4,6 +4,7 @@
  */
 
 import type { AIAgent, AgentConfig, FunctionTool, FunctionToolParameters } from "@/types/database.types"
+import { env } from "@/lib/env"
 
 // ============================================================================
 // DEFAULT VOICE ID
@@ -384,10 +385,11 @@ export function mapToVapi(agent: AIAgent): VapiAssistantPayload {
     }
   }
 
-  // Set server URL for tool calls (used as fallback)
-  if (config.tools_server_url) {
-    payload.serverUrl = config.tools_server_url
-  }
+  // Set server URL for webhooks and tool calls
+  // Priority: 1. Custom tools_server_url from config, 2. App URL from env, 3. Hardcoded fallback
+  const baseUrl = env.appUrl || "https://genius365.vercel.app"
+  const defaultWebhookUrl = `${baseUrl}/api/webhooks/vapi`
+  payload.serverUrl = config.tools_server_url || defaultWebhookUrl
 
   // Transcriber configuration
   if (agent.transcriber_provider || config.transcriber_settings) {
