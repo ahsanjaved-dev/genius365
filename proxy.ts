@@ -33,9 +33,8 @@ function buildCSP(): string {
   const policies = [
     "default-src 'self'",
     // Scripts: permissive for VAPI/Retell/Daily/Krisp/LiveKit worklets + Stripe
-    process.env.NODE_ENV === "development"
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.daily.co https://*.vapi.ai https://*.krisp.ai https://*.retellai.com https://*.livekit.cloud https://js.stripe.com https://*.stripe.com blob: data:"
-      : "script-src 'self' 'unsafe-inline' https://*.daily.co https://*.vapi.ai https://*.krisp.ai https://*.retellai.com https://*.livekit.cloud https://js.stripe.com https://*.stripe.com blob: data:",
+    // Note: 'unsafe-eval' is required by Daily.co call machine bundle in both dev and prod
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.daily.co https://*.vapi.ai https://*.krisp.ai https://*.retellai.com https://*.livekit.cloud https://js.stripe.com https://*.stripe.com blob: data:",
     // Styles
     "style-src 'self' 'unsafe-inline'",
     // Images - Added Stripe for card brand icons
