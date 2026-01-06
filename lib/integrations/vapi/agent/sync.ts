@@ -7,7 +7,7 @@ import {
   deleteVapiAgentWithKey,
 } from "./config"
 import { processVapiResponse, processDeleteResponse } from "./response"
-import { syncVapiFunctionTools } from "@/lib/integrations/function_tools/vapi"
+import { syncVapiFunctionTools } from "@/lib/integrations/function_tools/vapi/api/sync"
 
 export type SyncOperation = "create" | "update" | "delete"
 

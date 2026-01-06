@@ -9,6 +9,9 @@ import type {
   FunctionTool,
   FunctionToolParameters,
 } from "@/types/database.types"
+import { mapFunctionToolsToVapi } from "@/lib/integrations/function_tools/vapi/mapper"
+import { DEFAULT_END_CALL_TOOL } from "@/lib/integrations/function_tools/vapi/tools/call-control/end-call"
+import type { VapiTool as FunctionToolsVapiTool } from "@/lib/integrations/function_tools/vapi/types"
 
 // ============================================================================
 // DEFAULT VOICE ID
@@ -224,9 +227,12 @@ function mapTranscriberProviderFromVapi(provider: string | null | undefined): st
 export {
   mapFunctionToolsToVapi as mapToolsToVapi,
   mapFunctionToolToVapi as mapToolToVapi,
+} from "@/lib/integrations/function_tools/vapi/mapper"
+
+export {
   createEndCallTool,
   DEFAULT_END_CALL_TOOL,
-} from "@/lib/integrations/function_tools/vapi"
+} from "@/lib/integrations/function_tools/vapi/tools/call-control/end-call"
 
 // ============================================================================
 // MAPPER: Internal Schema → VAPI
