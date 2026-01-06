@@ -17,5 +17,13 @@ export * from './tools'
 export * from './registry'
 
 // Mapper
-export * from './mapper'
+export {
+  mapFunctionToolToVapi,
+  mapFunctionToolsToVapi,
+  mapVapiToolToInternal,
+  mapVapiToolsToInternal,
+  validateToolForVapi,
+  getWebhookRequiredTools,
+  getNativeToolsFromList,
+} from './mapper'
 
