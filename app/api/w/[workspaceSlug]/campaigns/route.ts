@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getWorkspaceContext } from "@/lib/api/workspace-auth"
+import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, getValidationError } from "@/lib/api/helpers"
 import { createCampaignSchema, createCampaignWizardSchema } from "@/types/database.types"
 
@@ -64,6 +64,10 @@ export async function POST(
     const { workspaceSlug } = await params
     const ctx = await getWorkspaceContext(workspaceSlug)
     if (!ctx) return unauthorized()
+
+    // Check paywall - block campaign creation if credits exhausted
+    const paywallError = await checkWorkspacePaywall(ctx.workspace.id, workspaceSlug)
+    if (paywallError) return paywallError
 
     const body = await request.json()
     
