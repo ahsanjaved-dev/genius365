@@ -97,7 +97,7 @@ function extractSubdomain(hostname: string): string | null {
 
   // For local development with "subdomain.localhost" pattern
   if (parts.length === 2 && parts[1] === "localhost") {
-    return parts[0]
+    return parts[0]!
   }
 
   return null
