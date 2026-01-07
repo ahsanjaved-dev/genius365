@@ -12,9 +12,16 @@ import {
   TrendingUp,
   ArrowRight,
   Activity,
+  Clock,
+  DollarSign,
+  Users,
+  Building2,
+  Shield,
+  Crown,
+  MessageSquare,
 } from "lucide-react"
 import Link from "next/link"
-import { usePartnerDashboardStats } from "@/lib/hooks/use-partner-dashboard-stats"
+import { useDashboardData } from "@/lib/hooks/use-dashboard-data"
 import {
   Select,
   SelectContent,
@@ -23,21 +30,111 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
+
+// ============================================================================
+// ROLE BADGE COMPONENT
+// ============================================================================
+
+function RoleBadge({ role }: { role: string | null }) {
+  if (!role) return null
+  
+  const config = {
+    owner: { icon: Crown, label: "Owner", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+    admin: { icon: Shield, label: "Admin", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
+    member: { icon: Users, label: "Member", className: "bg-slate-500/10 text-slate-600 border-slate-500/20" },
+    viewer: { icon: Users, label: "Viewer", className: "bg-slate-500/10 text-slate-500 border-slate-500/20" },
+  }
+  
+  const roleConfig = config[role as keyof typeof config] || config.member
+  const Icon = roleConfig.icon
+  
+  return (
+    <Badge variant="outline" className={cn("gap-1", roleConfig.className)}>
+      <Icon className="h-3 w-3" />
+      {roleConfig.label}
+    </Badge>
+  )
+}
+
+// ============================================================================
+// STAT CARD COMPONENT
+// ============================================================================
+
+interface StatCardProps {
+  label: string
+  value: number | string
+  icon: React.ElementType
+  iconClassName?: string
+  trend?: string
+  isLoading?: boolean
+}
+
+function StatCard({ label, value, icon: Icon, iconClassName, trend, isLoading }: StatCardProps) {
+  return (
+    <Card className="stat-card">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="stat-label">{label}</p>
+          {isLoading ? (
+            <div className="flex items-center gap-2 mt-1">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <p className="stat-value">{value}</p>
+          )}
+        </div>
+        <div className={cn("w-12 h-12 rounded-full flex items-center justify-center", iconClassName || "bg-primary/10")}>
+          <Icon className="w-6 h-6 text-inherit" />
+        </div>
+      </div>
+      {trend && (
+        <div className="stat-trend positive">
+          <TrendingUp className="w-3 h-3" />
+          <span>{trend}</span>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ============================================================================
+// MAIN DASHBOARD PAGE
+// ============================================================================
 
 export default function WorkspaceDashboardPage() {
   const params = useParams()
   const workspaceSlug = params.workspaceSlug as string
   const baseUrl = `/w/${workspaceSlug}`
 
-  const { data: stats, isLoading, error } = usePartnerDashboardStats()
+  const { 
+    workspace: workspaceStats, 
+    partner: partnerStats, 
+    roles,
+    isLoading,
+    isLoadingWorkspace,
+    isLoadingPartner,
+    error 
+  } = useDashboardData()
+
+  const { workspaceRole, partnerRole, canViewPartnerStats, isWorkspaceAdmin, isPartnerAdmin } = roles
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Overview of your workspace performance</p>
+          <div className="flex items-center gap-3">
+            <h1 className="page-title">Dashboard</h1>
+            <RoleBadge role={workspaceRole} />
+          </div>
+          <p className="text-muted-foreground mt-1">
+            {canViewPartnerStats 
+              ? "Overview of your workspace and organization performance"
+              : "Overview of your workspace performance"
+            }
+          </p>
         </div>
         <Button asChild>
           <Link href={`${baseUrl}/agents/new`}>
@@ -66,77 +163,104 @@ export default function WorkspaceDashboardPage() {
         </Card>
       )}
 
-      {/* Stats Grid - 3 KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Total Workspaces */}
-        <Card className="stat-card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="stat-label">Total Workspaces</p>
-              {isLoading ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <p className="stat-value">{stats?.total_workspaces ?? 0}</p>
-              )}
-            </div>
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <LayoutGrid className="w-6 h-6 text-primary" />
-            </div>
-          </div>
-          <div className="stat-trend positive">
-            <TrendingUp className="w-3 h-3" />
-            <span>Across partner</span>
-          </div>
-        </Card>
+      {/* Workspace Stats - Always visible for workspace members */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold">Workspace Overview</h2>
+          <Badge variant="secondary" className="text-xs">This Workspace</Badge>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Agents in this workspace */}
+          <StatCard
+            label="Agents"
+            value={workspaceStats?.total_agents ?? 0}
+            icon={Bot}
+            iconClassName="bg-primary/10 text-primary"
+            trend="In this workspace"
+            isLoading={isLoadingWorkspace}
+          />
 
-        {/* Total Agents (All Workspaces) */}
-        <Card className="stat-card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="stat-label">Total Agents</p>
-              {isLoading ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <p className="stat-value">{stats?.total_agents_all_workspaces ?? 0}</p>
-              )}
-            </div>
-            <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-              <Bot className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-          <div className="stat-trend positive">
-            <TrendingUp className="w-3 h-3" />
-            <span>Across all workspaces</span>
-          </div>
-        </Card>
+          {/* Conversations */}
+          <StatCard
+            label="Total Conversations"
+            value={workspaceStats?.total_conversations ?? 0}
+            icon={MessageSquare}
+            iconClassName="bg-blue-500/10 text-blue-600"
+            trend="All time"
+            isLoading={isLoadingWorkspace}
+          />
 
-        {/* Total Calls Today */}
-        <Card className="stat-card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="stat-label">Total Calls Today</p>
-              {isLoading ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <p className="stat-value">{stats?.total_calls_today ?? 0}</p>
-              )}
-            </div>
-            <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Phone className="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-          <div className="stat-trend positive">
-            <TrendingUp className="w-3 h-3" />
-            <span>Across all workspaces</span>
-          </div>
-        </Card>
+          {/* Minutes this month */}
+          <StatCard
+            label="Minutes This Month"
+            value={Math.round(workspaceStats?.minutes_this_month ?? 0)}
+            icon={Clock}
+            iconClassName="bg-amber-500/10 text-amber-600"
+            trend="Current billing period"
+            isLoading={isLoadingWorkspace}
+          />
+
+          {/* Cost this month */}
+          <StatCard
+            label="Cost This Month"
+            value={`$${(workspaceStats?.cost_this_month ?? 0).toFixed(2)}`}
+            icon={DollarSign}
+            iconClassName="bg-green-500/10 text-green-600"
+            trend="Current billing period"
+            isLoading={isLoadingWorkspace}
+          />
+        </div>
       </div>
+
+      {/* Organization Stats - Only visible for partner admins/owners */}
+      {canViewPartnerStats && (
+        <>
+          <Separator className="my-6" />
+          
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Organization Overview</h2>
+              <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+                Admin View
+              </Badge>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Total Workspaces */}
+              <StatCard
+                label="Total Workspaces"
+                value={partnerStats?.total_workspaces ?? 0}
+                icon={LayoutGrid}
+                iconClassName="bg-violet-500/10 text-violet-600"
+                trend="Across organization"
+                isLoading={isLoadingPartner}
+              />
+
+              {/* Total Agents (All Workspaces) */}
+              <StatCard
+                label="Total Agents"
+                value={partnerStats?.total_agents_all_workspaces ?? 0}
+                icon={Bot}
+                iconClassName="bg-emerald-500/10 text-emerald-600"
+                trend="Across all workspaces"
+                isLoading={isLoadingPartner}
+              />
+
+              {/* Total Calls Today */}
+              <StatCard
+                label="Total Calls Today"
+                value={partnerStats?.total_calls_today ?? 0}
+                icon={Phone}
+                iconClassName="bg-orange-500/10 text-orange-600"
+                trend="Across all workspaces"
+                isLoading={isLoadingPartner}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -244,12 +368,20 @@ export default function WorkspaceDashboardPage() {
                 View Analytics
               </Link>
             </Button>
+            {isWorkspaceAdmin && (
+              <Button asChild variant="outline" className="w-full justify-start">
+                <Link href={`${baseUrl}/members`}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Manage Team
+                </Link>
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Empty State for Agents */}
-      {!isLoading && stats?.total_agents_all_workspaces === 0 && (
+      {!isLoading && workspaceStats?.total_agents === 0 && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="p-4 bg-primary/10 rounded-full mb-4">

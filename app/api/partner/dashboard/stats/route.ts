@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { getPartnerAuthContext } from "@/lib/api/auth"
-import { apiResponse, unauthorized, serverError } from "@/lib/api/helpers"
+import { apiResponse, unauthorized, serverError, forbidden } from "@/lib/api/helpers"
+import { hasPartnerPermission, type PartnerRole } from "@/lib/rbac/permissions"
 
 export interface PartnerDashboardStats {
   total_workspaces: number
@@ -14,6 +15,21 @@ export async function GET(request: NextRequest) {
 
     if (!auth) {
       return unauthorized()
+    }
+
+    // Check if user has partner.stats.read permission
+    // Only partner admins and owners can view organization-wide stats
+    const partnerRole = auth.partnerRole as PartnerRole | null
+    
+    if (!partnerRole) {
+      return forbidden("You must be a partner member to access organization stats")
+    }
+    
+    if (!hasPartnerPermission(partnerRole, "partner.stats.read")) {
+      return forbidden(
+        "You don't have permission to view organization-wide statistics. " +
+        "This requires admin or owner access."
+      )
     }
 
     // Total workspaces the user has access to
@@ -64,4 +80,3 @@ export async function GET(request: NextRequest) {
     return serverError()
   }
 }
-

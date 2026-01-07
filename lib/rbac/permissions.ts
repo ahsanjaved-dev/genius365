@@ -28,6 +28,10 @@ export const PERMISSIONS = {
   "workspace.settings.read": true,
   "workspace.settings.update": true,
 
+  // Dashboard permissions
+  "workspace.dashboard.read": true,
+  "workspace.dashboard.stats": true,
+
   // Agent permissions
   "workspace.agents.read": true,
   "workspace.agents.create": true,
@@ -84,6 +88,10 @@ export const PERMISSIONS = {
   "partner.settings.read": true,
   "partner.settings.update": true,
 
+  // Partner dashboard & stats permissions
+  "partner.dashboard.read": true,
+  "partner.stats.read": true, // Organization-wide statistics
+
   // Partner workspace management
   "partner.workspaces.read": true,
   "partner.workspaces.create": true,
@@ -117,6 +125,8 @@ export type Permission = keyof typeof PERMISSIONS
 export const WORKSPACE_ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
   viewer: [
     "workspace.read",
+    "workspace.dashboard.read",
+    "workspace.dashboard.stats",
     "workspace.agents.read",
     "workspace.conversations.read",
     "workspace.leads.read",
@@ -131,6 +141,8 @@ export const WORKSPACE_ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
   member: [
     // Inherits viewer permissions
     "workspace.read",
+    "workspace.dashboard.read",
+    "workspace.dashboard.stats",
     "workspace.settings.read",
     "workspace.agents.read",
     "workspace.conversations.read",
@@ -154,6 +166,8 @@ export const WORKSPACE_ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
   admin: [
     // Inherits member permissions
     "workspace.read",
+    "workspace.dashboard.read",
+    "workspace.dashboard.stats",
     "workspace.settings.read",
     "workspace.settings.update",
     "workspace.agents.read",
@@ -193,6 +207,8 @@ export const WORKSPACE_ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
   owner: [
     // Has ALL workspace permissions
     "workspace.read",
+    "workspace.dashboard.read",
+    "workspace.dashboard.stats",
     "workspace.update",
     "workspace.delete",
     "workspace.settings.read",
@@ -241,6 +257,8 @@ export const WORKSPACE_ROLE_PERMISSIONS: Record<WorkspaceRole, Permission[]> = {
 export const PARTNER_ROLE_PERMISSIONS: Record<PartnerRole, Permission[]> = {
   member: [
     "partner.read",
+    "partner.dashboard.read",
+    // NOTE: partner.stats.read is NOT included - members can't see org-wide stats
     "partner.settings.read",
     "partner.workspaces.read",
     "partner.members.read",
@@ -250,6 +268,8 @@ export const PARTNER_ROLE_PERMISSIONS: Record<PartnerRole, Permission[]> = {
   admin: [
     // Inherits member permissions
     "partner.read",
+    "partner.dashboard.read",
+    "partner.stats.read", // Can see organization-wide statistics
     "partner.settings.read",
     "partner.settings.update",
     "partner.workspaces.read",
@@ -268,6 +288,8 @@ export const PARTNER_ROLE_PERMISSIONS: Record<PartnerRole, Permission[]> = {
   owner: [
     // Has ALL partner permissions
     "partner.read",
+    "partner.dashboard.read",
+    "partner.stats.read", // Can see organization-wide statistics
     "partner.update",
     "partner.delete",
     "partner.settings.read",
@@ -419,6 +441,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "workspace.delete": "Delete workspace",
   "workspace.settings.read": "View workspace settings",
   "workspace.settings.update": "Update workspace settings",
+  "workspace.dashboard.read": "View workspace dashboard",
+  "workspace.dashboard.stats": "View workspace statistics",
   "workspace.agents.read": "View AI agents",
   "workspace.agents.create": "Create AI agents",
   "workspace.agents.update": "Update AI agents",
@@ -455,6 +479,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "partner.delete": "Delete partner",
   "partner.settings.read": "View partner settings",
   "partner.settings.update": "Update partner settings",
+  "partner.dashboard.read": "View organization dashboard",
+  "partner.stats.read": "View organization-wide statistics",
   "partner.workspaces.read": "View workspaces",
   "partner.workspaces.create": "Create workspaces",
   "partner.workspaces.delete": "Delete workspaces",
