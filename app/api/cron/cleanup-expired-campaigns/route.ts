@@ -4,12 +4,12 @@ import { logger } from "@/lib/logger"
 
 /**
  * Cron endpoint to cleanup expired campaigns
- * 
+ *
  * This should be called periodically (e.g., every hour) by a cron service
  * like Vercel Cron, GitHub Actions, or external cron service.
- * 
+ *
  * Security: Verify cron secret to prevent unauthorized access
- * 
+ *
  * Usage:
  * - Vercel Cron: Add to vercel.json
  * - Manual: POST /api/cron/cleanup-expired-campaigns with Authorization header
@@ -22,10 +22,7 @@ export async function POST(request: NextRequest) {
 
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       logger.warn("[CleanupCron] Unauthorized cleanup attempt")
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     logger.info("[CleanupCron] Starting expired campaigns cleanup")
@@ -33,9 +30,7 @@ export async function POST(request: NextRequest) {
     const result = await cleanupExpiredCampaigns()
 
     if (result.success) {
-      logger.info(
-        `[CleanupCron] Cleanup successful. Cancelled ${result.cancelledCount} campaigns`
-      )
+      logger.info(`[CleanupCron] Cleanup successful. Cancelled ${result.cancelledCount} campaigns`)
       return NextResponse.json({
         success: true,
         message: `Successfully cancelled ${result.cancelledCount} expired campaigns`,
@@ -56,11 +51,17 @@ export async function POST(request: NextRequest) {
       )
     }
   } catch (error) {
-    logger.error("[CleanupCron] Unexpected error:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    const errorContext =
+      error instanceof Error
+        ? { error: error.message, stack: error.stack }
+        : { error: String(error) }
+
+    logger.error("[CleanupCron] Unexpected error", errorContext)
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       },
       { status: 500 }
     )
@@ -75,4 +76,3 @@ export async function GET() {
     description: "POST to trigger cleanup of expired campaigns",
   })
 }
-
