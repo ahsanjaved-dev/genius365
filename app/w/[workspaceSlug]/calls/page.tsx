@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,8 @@ import {
 import { ConversationDetailModal } from "@/components/workspace/conversations/conversation-detail-modal"
 import { useWorkspaceCalls, useWorkspaceCallsStats } from "@/lib/hooks/use-workspace-calls"
 import { useWorkspaceAgents } from "@/lib/hooks/use-workspace-agents"
+import { exportCallsToPDF, exportCallsToCSV } from "@/lib/utils/export-calls-pdf"
+import { toast } from "sonner"
 import {
   Phone,
   Search,
@@ -51,6 +53,7 @@ import {
   FileText,
   // PlayCircle,
   Monitor,
+  FileJson,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import type { ConversationWithAgent } from "@/types/database.types"
@@ -75,11 +78,14 @@ const statusColors: Record<string, string> = {
 
 export default function CallsPage() {
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [directionFilter, setDirectionFilter] = useState<string>("all")
   const [agentFilter, setAgentFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCall, setSelectedCall] = useState<ConversationWithAgent | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportFormat, setExportFormat] = useState<"pdf" | "csv">("pdf")
 
   const getCallTypeLabel = (call: ConversationWithAgent): "web" | "inbound" | "outbound" => {
     const meta = call.metadata as Record<string, unknown> | null
@@ -91,7 +97,7 @@ export default function CallsPage() {
   // Fetch calls
   const { data, isLoading, error } = useWorkspaceCalls({
     page,
-    pageSize: 20,
+    pageSize,
     status: statusFilter !== "all" ? statusFilter : undefined,
     direction:
       directionFilter !== "all" && directionFilter !== "web" ? directionFilter : undefined,
@@ -109,6 +115,37 @@ export default function CallsPage() {
 
   const calls = data?.data || []
   const totalPages = data?.totalPages || 1
+
+  // Export handler
+  const handleExportCalls = useCallback(async () => {
+    try {
+      if (calls.length === 0) {
+        toast.error("No calls to export on this page")
+        return
+      }
+
+      setIsExporting(true)
+
+      if (exportFormat === "pdf") {
+        await exportCallsToPDF({
+          calls,
+          fileName: `call-logs-${format(new Date(), "yyyy-MM-dd")}.pdf`,
+        })
+        toast.success(`Exported ${calls.length} calls to PDF`)
+      } else {
+        exportCallsToCSV({
+          calls,
+          fileName: `call-logs-${format(new Date(), "yyyy-MM-dd")}.csv`,
+        })
+        toast.success(`Exported ${calls.length} calls to CSV`)
+      }
+    } catch (error) {
+      console.error("Export error:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to export calls")
+    } finally {
+      setIsExporting(false)
+    }
+  }, [calls, exportFormat])
 
   // Format duration
   const formatDuration = (seconds: number) => {
@@ -135,10 +172,40 @@ export default function CallsPage() {
             View and analyze all calls handled by your voice agents.
           </p>
         </div>
-        <Button variant="outline" disabled>
-          <Download className="mr-2 h-4 w-4" />
-          Export Calls
-        </Button>
+        <div className="flex gap-2">
+          <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as "pdf" | "csv")}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pdf">
+                <div className="flex items-center gap-2">
+                  <Download className="h-4 w-4" />
+                  PDF
+                </div>
+              </SelectItem>
+              <SelectItem value="csv">
+                <div className="flex items-center gap-2">
+                  <FileJson className="h-4 w-4" />
+                  CSV
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={handleExportCalls} disabled={isExporting || calls.length === 0}>
+            {isExporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Export Calls
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -267,7 +334,7 @@ export default function CallsPage() {
                 <SelectItem value="all">All Directions</SelectItem>
                 <SelectItem value="inbound">Inbound</SelectItem>
                 <SelectItem value="outbound">Outbound</SelectItem>
-              <SelectItem value="web">Web Calls</SelectItem>
+                <SelectItem value="web">Web Calls</SelectItem>
               </SelectContent>
             </Select>
 
@@ -288,6 +355,24 @@ export default function CallsPage() {
                     {agent.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+
+            <Select 
+              value={pageSize.toString()} 
+              onValueChange={(value) => {
+                setPageSize(parseInt(value))
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="Page Size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10 per page</SelectItem>
+                <SelectItem value="20">20 per page</SelectItem>
+                <SelectItem value="50">50 per page</SelectItem>
+                <SelectItem value="100">100 per page</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -432,16 +517,23 @@ export default function CallsPage() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <p className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </p>
+                <div className="flex items-center justify-between mt-6 pt-6 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    <p>
+                      Showing <span className="font-semibold">{calls.length}</span> of{" "}
+                      <span className="font-semibold">{data?.total || 0}</span> calls
+                    </p>
+                    <p className="mt-1">
+                      Page <span className="font-semibold">{page}</span> of{" "}
+                      <span className="font-semibold">{totalPages}</span>
+                    </p>
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
+                      disabled={page === 1 || isLoading}
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Previous
@@ -450,7 +542,7 @@ export default function CallsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
+                      disabled={page === totalPages || isLoading}
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />
