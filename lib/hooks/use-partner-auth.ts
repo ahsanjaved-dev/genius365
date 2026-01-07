@@ -7,10 +7,19 @@ import type { ResolvedPartner } from "@/lib/api/partner"
 interface PartnerAuthResponse {
   user: PartnerAuthUser
   partner: ResolvedPartner
+  partnerRole: "owner" | "admin" | "member" | null
+  partnerMembership: {
+    id: string
+    partner_id: string
+    partner_name: string
+    partner_slug: string
+    role: string
+    is_platform_partner: boolean
+  } | null
   workspaces: AccessibleWorkspace[]
   summary: {
     workspace_count: number
-    roles: string[]
+    roles: string[] // Note: these are workspace roles, not partner roles
   }
 }
 

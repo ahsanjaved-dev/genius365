@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams } from "next/navigation"
 import { usePartnerAuth } from "./use-partner-auth"
-import { hasPartnerPermission, hasWorkspacePermission, type PartnerRole, type WorkspaceRole } from "@/lib/rbac/permissions"
+import { type PartnerRole, type WorkspaceRole } from "@/lib/rbac/permissions"
 import type { DashboardStats } from "@/types/database.types"
 
 // ============================================================================
@@ -72,19 +72,16 @@ export function useDashboardData(): DashboardData {
   const workspaceRole = (currentWorkspace?.role as WorkspaceRole) || null
   const partnerRole = getPartnerRole(authData)
   
-  // Determine permissions
-  const canViewWorkspaceStats = workspaceRole 
-    ? hasWorkspacePermission(workspaceRole, "workspace.dashboard.stats")
-    : false
-    
-  const canViewPartnerStats = partnerRole 
-    ? hasPartnerPermission(partnerRole, "partner.stats.read")
-    : false
+  // Determine permissions - all workspace members can view workspace stats
+  // Partner members can view org stats only if they are admin/owner
+  const canViewWorkspaceStats = workspaceRole !== null
+  const canViewPartnerStats = partnerRole === "owner" || partnerRole === "admin"
   
   const isWorkspaceAdmin = workspaceRole === "owner" || workspaceRole === "admin"
   const isPartnerAdmin = partnerRole === "owner" || partnerRole === "admin"
   
-  // Fetch workspace stats (for workspace members)
+  // Fetch workspace stats - enabled when we have a workspace slug and auth is loaded
+  // The API will handle permission checking
   const {
     data: workspaceStats,
     isLoading: isLoadingWorkspace,
@@ -100,12 +97,14 @@ export function useDashboardData(): DashboardData {
       const json = await res.json()
       return json.data
     },
-    enabled: !!workspaceSlug && !isAuthLoading && canViewWorkspaceStats,
+    // Enable as soon as we have a workspaceSlug - API will verify permissions
+    enabled: !!workspaceSlug,
     staleTime: 2 * 60 * 1000, // 2 minutes
     refetchInterval: 5 * 60 * 1000, // 5 minutes
   })
   
   // Fetch partner stats (only for partner admins/owners)
+  // The API will return 403 for non-admins, which we handle gracefully
   const {
     data: partnerStats,
     isLoading: isLoadingPartner,
@@ -125,6 +124,7 @@ export function useDashboardData(): DashboardData {
       const json = await res.json()
       return json.data
     },
+    // Only fetch partner stats if auth is loaded and user is partner admin/owner
     enabled: !isAuthLoading && canViewPartnerStats,
     staleTime: 2 * 60 * 1000, // 2 minutes
     refetchInterval: 5 * 60 * 1000, // 5 minutes
@@ -155,22 +155,27 @@ export function useDashboardData(): DashboardData {
 // ============================================================================
 
 /**
- * Extract partner role from auth response - handles various response shapes
+ * Extract partner role from auth response
+ * IMPORTANT: partnerRole is the user's role in the partner organization,
+ * NOT their workspace role. summary.roles contains workspace roles.
  */
 function getPartnerRole(authData: any): PartnerRole | null {
   if (!authData) return null
   
-  // Check for partnerRole in summary
-  if (authData.summary?.roles?.length > 0) {
-    const role = authData.summary.roles[0]
+  // Check for direct partnerRole field (this is the correct field)
+  if (authData.partnerRole) {
+    const role = authData.partnerRole
     if (role === "owner" || role === "admin" || role === "member") {
       return role as PartnerRole
     }
   }
   
-  // Check for direct partnerRole field
-  if (authData.partnerRole) {
-    return authData.partnerRole as PartnerRole
+  // Fallback: Check partnerMembership.role
+  if (authData.partnerMembership?.role) {
+    const role = authData.partnerMembership.role
+    if (role === "owner" || role === "admin" || role === "member") {
+      return role as PartnerRole
+    }
   }
   
   return null
