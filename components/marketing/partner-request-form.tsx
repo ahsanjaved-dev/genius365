@@ -117,6 +117,7 @@ export function PartnerRequestForm({
     } else {
       setSubdomainAvailable(null)
       setSubdomainMessage(null)
+      return
     }
   }, [formData.desired_subdomain])
 
