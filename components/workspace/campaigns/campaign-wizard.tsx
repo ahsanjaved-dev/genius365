@@ -275,7 +275,12 @@ export function CampaignWizard({
       scheduled_expires_at: scheduledExpiresAt,
       business_hours_config: formData.businessHoursConfig,
       business_hours_only: formData.businessHoursConfig.enabled,
+      business_hours_start: null,
+      business_hours_end: null,
       timezone: formData.businessHoursConfig.timezone,
+      concurrency_limit: 1,
+      max_attempts: 3,
+      retry_delay_minutes: 30,
       wizard_completed: true,
     }
 

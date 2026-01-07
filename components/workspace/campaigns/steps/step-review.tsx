@@ -196,29 +196,7 @@ export function StepReview({ formData, updateFormData, errors, goToStep }: StepR
         </CardContent>
       </Card>
 
-      {/* Variable Mapping / Greeting */}
-      {formData.agentPromptOverrides && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Variable className="h-4 w-4" />
-              Custom Greeting
-            </CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => goToStep(3)}>
-              <Edit2 className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="p-3 bg-muted/50 rounded-lg border">
-              <p className="text-sm italic">"{formData.agentPromptOverrides.greeting_override}"</p>
-            </div>
-            {formData.agentPromptOverrides.system_prompt_additions && (
-              <p className="text-xs text-muted-foreground mt-2">+ Additional context configured</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Variable Mapping / Greeting - Removed as it's configured at agent level */}
 
       {/* Schedule */}
       <Card>

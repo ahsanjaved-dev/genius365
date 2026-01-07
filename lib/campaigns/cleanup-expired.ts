@@ -40,7 +40,10 @@ export async function cleanupExpiredCampaigns(): Promise<CleanupResult> {
       .is("deleted_at", null)
 
     if (fetchError) {
-      logger.error("[CleanupExpired] Error fetching expired campaigns:", fetchError)
+      logger.error("[CleanupExpired] Error fetching expired campaigns:", {
+        message: fetchError.message,
+        code: fetchError.code,
+      })
       errors.push(`Failed to fetch expired campaigns: ${fetchError.message}`)
       return { success: false, cancelledCount: 0, errors }
     }
@@ -66,7 +69,10 @@ export async function cleanupExpiredCampaigns(): Promise<CleanupResult> {
         if (updateError) {
           logger.error(
             `[CleanupExpired] Failed to cancel campaign ${campaign.id}:`,
-            updateError
+            {
+              message: updateError.message,
+              code: updateError.code,
+            }
           )
           errors.push(`Campaign ${campaign.name} (${campaign.id}): ${updateError.message}`)
         } else {
@@ -77,7 +83,10 @@ export async function cleanupExpiredCampaigns(): Promise<CleanupResult> {
         }
       } catch (err) {
         const error = err as Error
-        logger.error(`[CleanupExpired] Exception cancelling campaign ${campaign.id}:`, error)
+        logger.error(`[CleanupExpired] Exception cancelling campaign ${campaign.id}:`, {
+          message: error.message,
+          name: error.name,
+        })
         errors.push(`Campaign ${campaign.name} (${campaign.id}): ${error.message}`)
       }
     }
@@ -90,7 +99,10 @@ export async function cleanupExpiredCampaigns(): Promise<CleanupResult> {
     return { success, cancelledCount, errors }
   } catch (err) {
     const error = err as Error
-    logger.error("[CleanupExpired] Unexpected error during cleanup:", error)
+    logger.error("[CleanupExpired] Unexpected error during cleanup:", {
+      message: error.message,
+      name: error.name,
+    })
     errors.push(`Unexpected error: ${error.message}`)
     return { success: false, cancelledCount, errors }
   }
@@ -127,13 +139,19 @@ export async function getCampaignsExpiringSoon() {
       .is("deleted_at", null)
 
     if (error) {
-      logger.error("[CleanupExpired] Error fetching campaigns expiring soon:", error)
+      logger.error("[CleanupExpired] Error fetching campaigns expiring soon:", {
+        message: error.message,
+        code: error.code,
+      })
       return []
     }
 
     return campaigns || []
   } catch (err) {
-    logger.error("[CleanupExpired] Exception getting campaigns expiring soon:", err)
+    logger.error("[CleanupExpired] Exception getting campaigns expiring soon:", {
+      message: err instanceof Error ? err.message : String(err),
+      error: String(err),
+    })
     return []
   }
 }
