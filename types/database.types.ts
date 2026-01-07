@@ -2109,7 +2109,9 @@ export const createPartnerRequestSchema = z.object({
     ),
   // Custom domain is now OPTIONAL - configured during onboarding after approval
   custom_domain: z.string().optional().nullable(),
-  selected_plan: z.enum(["starter", "professional", "enterprise"]).default("starter"),
+  // Partner tier selection - all white-label partners default to "partner" tier
+  // Legacy values (starter, professional, enterprise) are mapped to "partner" tier
+  selected_plan: z.string().default("partner"),
   expected_users: z.number().optional(),
   branding_data: z
     .object({

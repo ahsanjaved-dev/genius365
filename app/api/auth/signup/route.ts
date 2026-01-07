@@ -187,14 +187,16 @@ export async function POST(request: NextRequest) {
           console.error("Failed to grant free tier credits:", creditsError)
           // Continue - user can still use workspace, just without initial credits
         }
-      } else if (planKey === "starter" || planKey === "professional") {
+      } else if (planKey === "pro" || planKey === "starter" || planKey === "professional") {
         // Start Stripe checkout for paid plans
+        // Map legacy plan names to Pro
+        const mappedPlanKey = planKey === "pro" ? "pro" : planKey
         try {
           checkoutUrl = await createPlanCheckoutSession(
             defaultWorkspace.id,
             defaultWorkspace.slug,
             partner.id,
-            planKey,
+            mappedPlanKey,
             email
           )
         } catch (checkoutError) {
@@ -253,39 +255,36 @@ async function createPlanCheckoutSession(
     return null
   }
 
-  // Map marketing plan key to display name for matching
-  const planNameMap: Record<string, string> = {
-    starter: "Starter",
-    professional: "Professional",
+  // Map marketing plan key to plan slug for matching
+  const planSlugMap: Record<string, string> = {
+    pro: "pro",
+    starter: "pro", // Legacy - maps to Pro
+    professional: "pro", // Legacy - maps to Pro
   }
 
-  const planName = planNameMap[planKey]
-  if (!planName) {
+  const planSlug = planSlugMap[planKey]
+  if (!planSlug) {
     console.error(`[Signup Checkout] Unknown plan key: ${planKey}`)
     return null
   }
 
-  // Find the subscription plan in the database
-  // Match by name (case-insensitive) for the partner
+  // Find the subscription plan in the database by slug
   const subscriptionPlan = await prisma.workspaceSubscriptionPlan.findFirst({
     where: {
       partnerId,
       isActive: true,
       isPublic: true,
-      name: {
-        equals: planName,
-        mode: "insensitive",
-      },
+      slug: planSlug,
     },
   })
 
   if (!subscriptionPlan) {
-    console.error(`[Signup Checkout] No subscription plan found for "${planName}" (partner: ${partnerId})`)
+    console.error(`[Signup Checkout] No subscription plan found for slug "${planSlug}" (partner: ${partnerId})`)
     return null
   }
 
   if (!subscriptionPlan.stripePriceId) {
-    console.error(`[Signup Checkout] Plan "${planName}" has no Stripe price ID configured`)
+    console.error(`[Signup Checkout] Plan "${subscriptionPlan.name}" has no Stripe price ID configured`)
     return null
   }
 
@@ -367,7 +366,7 @@ async function createPlanCheckoutSession(
     { stripeAccount: connectAccountId }
   )
 
-  console.log(`[Signup Checkout] Created checkout session for workspace ${workspaceId}, plan: ${planName}`)
+  console.log(`[Signup Checkout] Created checkout session for workspace ${workspaceId}, plan: ${subscriptionPlan.name}`)
 
   return session.url
 }

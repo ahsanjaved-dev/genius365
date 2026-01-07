@@ -39,14 +39,30 @@ export const stripe = new Proxy({} as Stripe, {
 // PRICE ID HELPERS
 // =============================================================================
 
-export type PlanTier = "starter" | "professional" | "enterprise"
+// New simplified plan tiers
+export type PlanSlug = "free" | "pro" | "agency"
 
-export function getPriceIdForPlan(tier: PlanTier): string | null {
-  switch (tier) {
+// Legacy tier type for backwards compatibility
+export type PlanTier = "starter" | "professional" | "enterprise" | "pro"
+
+/**
+ * Get Stripe Price ID for a plan
+ * Supports both new (free, pro, agency) and legacy (starter, professional, enterprise) plan names
+ */
+export function getPriceIdForPlan(plan: string): string | null {
+  switch (plan) {
+    // New plan structure
+    case "pro":
+      return env.stripePricePro || env.stripePriceProfessional || null
+    case "free":
+      return null // Free plan doesn't need a Stripe price
+    case "agency":
+      return null // Agency is custom/request-only
+    // Legacy plan names (map to new structure)
     case "starter":
-      return env.stripePriceStarter || null
+      return env.stripePriceStarter || env.stripePricePro || null
     case "professional":
-      return env.stripePriceProfessional || null
+      return env.stripePriceProfessional || env.stripePricePro || null
     case "enterprise":
       return env.stripePriceEnterprise || null
     default:
@@ -54,11 +70,24 @@ export function getPriceIdForPlan(tier: PlanTier): string | null {
   }
 }
 
-export function getPlanFromPriceId(priceId: string): PlanTier | null {
-  if (priceId === env.stripePriceStarter) return "starter"
-  if (priceId === env.stripePriceProfessional) return "professional"
-  if (priceId === env.stripePriceEnterprise) return "enterprise"
+/**
+ * Get plan slug from Stripe Price ID
+ */
+export function getPlanFromPriceId(priceId: string): PlanSlug | null {
+  // Check new Pro price first
+  if (priceId === env.stripePricePro) return "pro"
+  // Legacy mappings
+  if (priceId === env.stripePriceStarter) return "pro" // Map starter to pro
+  if (priceId === env.stripePriceProfessional) return "pro" // Map professional to pro
+  if (priceId === env.stripePriceEnterprise) return "agency"
   return null
+}
+
+/**
+ * Check if a plan requires Stripe checkout
+ */
+export function isPaidPlan(plan: string): boolean {
+  return plan === "pro" || plan === "starter" || plan === "professional"
 }
 
 // =============================================================================

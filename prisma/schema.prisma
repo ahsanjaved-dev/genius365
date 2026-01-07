@@ -162,7 +162,8 @@ model Partner {
   name                   String
   slug                   String    @unique
   branding               Json      @default("{}")
-  planTier               String    @default("starter") @map("plan_tier")
+  // Partner tier: "platform" for main platform (billing exempt), "partner" for white-label agencies
+  planTier               String    @default("partner") @map("plan_tier")
   features               Json      @default("{\"api_access\": true, \"white_label\": true, \"custom_domain\": true}")
   resourceLimits         Json      @default("{\"max_workspaces\": 10, \"max_users_per_workspace\": 50, \"max_agents_per_workspace\": 20}") @map("resource_limits")
   stripeCustomerId       String?   @unique @map("stripe_customer_id")
@@ -170,6 +171,8 @@ model Partner {
   subscriptionStatus     String    @default("active") @map("subscription_status")
   settings               Json      @default("{}")
   isPlatformPartner      Boolean   @default(false) @map("is_platform_partner")
+  // If true, partner is exempt from platform billing (platform partner, custom arrangements)
+  isBillingExempt        Boolean   @default(false) @map("is_billing_exempt")
   onboardingStatus       String?   @default("active") @map("onboarding_status")
   requestId              String?   @unique @map("request_id") @db.Uuid
   deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
@@ -891,6 +894,7 @@ model WorkspaceSubscriptionPlan {
   id                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   partnerId                String      @map("partner_id") @db.Uuid
   name                     String      @db.VarChar(100)
+  slug                     String?     @db.VarChar(50) // URL-friendly identifier (e.g., "free", "starter")
   description              String?
   stripeProductId          String?     @map("stripe_product_id") @db.VarChar(100)
   stripePriceId            String?     @map("stripe_price_id") @db.VarChar(100)
@@ -905,6 +909,8 @@ model WorkspaceSubscriptionPlan {
   postpaidMinutesLimit     Int?        @map("postpaid_minutes_limit") // Max minutes before blocking (postpaid only)
   isActive                 Boolean     @default(true) @map("is_active")
   isPublic                 Boolean     @default(true) @map("is_public")
+  // If true, this is a default platform plan (available to all partners as template)
+  isDefault                Boolean     @default(false) @map("is_default")
   sortOrder                Int         @default(0) @map("sort_order")
   createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -913,8 +919,10 @@ model WorkspaceSubscriptionPlan {
   partner       Partner                 @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   subscriptions WorkspaceSubscription[]
 
+  @@unique([partnerId, slug])
   @@index([partnerId])
   @@index([partnerId, isActive])
+  @@index([isDefault])
   @@map("workspace_subscription_plans")
   @@schema("public")
 }
