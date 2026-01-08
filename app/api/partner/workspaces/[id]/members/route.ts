@@ -11,11 +11,11 @@ import { z } from "zod"
 import { getPartnerAuthContext, isPartnerAdmin } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, forbidden, notFound, serverError } from "@/lib/api/helpers"
 
+const WORKSPACE_MEMBER_ROLES = ["admin", "member", "viewer"] as const
+
 const addMemberSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
-  role: z.enum(["admin", "member", "viewer"], {
-    errorMap: () => ({ message: "Role must be admin, member, or viewer" }),
-  }),
+  role: z.enum(WORKSPACE_MEMBER_ROLES, { message: "Role must be admin, member, or viewer" }),
 })
 
 export async function GET(

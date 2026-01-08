@@ -42,7 +42,7 @@ function SignupForm() {
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect")
   const planParam = searchParams.get("plan")
-  
+
   // Map plan parameter to valid plan slug (handle legacy plan names)
   const selectedPlan = useMemo((): PlanSlug | null => {
     if (!planParam) return null
@@ -214,7 +214,9 @@ function SignupForm() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <CheckCircle2 className="h-4 w-4 text-blue-600" />
-              <span className="font-semibold text-blue-900 dark:text-blue-100">You've been invited!</span>
+              <span className="font-semibold text-blue-900 dark:text-blue-100">
+                You've been invited!
+              </span>
             </div>
             <p className="text-sm text-blue-700 dark:text-blue-300">
               Create an account with <strong>{prefilledEmail}</strong> to accept the invitation.
@@ -225,7 +227,9 @@ function SignupForm() {
 
       {/* Selected Plan Banner */}
       {planInfo && !isInvitation && (
-        <Card className={`border-primary/50 ${isPaidPlan ? "bg-gradient-to-r from-primary/10 to-primary/5" : "bg-primary/5"}`}>
+        <Card
+          className={`border-primary/50 ${isPaidPlan ? "bg-linear-to-r from-primary/10 to-primary/5" : "bg-primary/5"}`}
+        >
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -255,7 +259,10 @@ function SignupForm() {
                 <p className="text-xs text-muted-foreground mb-2">{planBenefitInfo.highlight}</p>
                 <div className="grid grid-cols-2 gap-1">
                   {planBenefitInfo.benefits.map((benefit, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
                       <Check className="h-3 w-3 text-primary shrink-0" />
                       <span>{benefit}</span>
                     </div>
@@ -382,7 +389,7 @@ function SignupForm() {
             </div>
           </CardContent>
 
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="mt-4 flex flex-col space-y-4">
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
                 <>
