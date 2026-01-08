@@ -99,7 +99,7 @@ export function OrgDashboardLayout({
   }, [branding])
 
   const navigation = [
-    { title: "Team Members", href: "/org/team", icon: Users },
+    { title: "Overview", href: "/org", icon: LayoutGrid },
     { title: "Invitations", href: "/org/invitations", icon: UserPlus },
     { title: "Billing", href: "/org/billing", icon: CreditCard },
     { title: "Subscription Plans", href: "/org/plans", icon: Package },

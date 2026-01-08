@@ -144,9 +144,9 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
   ]
   
   // Organization-level navigation (for partner admins/owners)
+  // Single entry point to org management
   const orgNavigation = isPartnerAdmin ? [
-    { title: "Organization Team", href: `/org/team`, icon: Building2 },
-    { title: "Invite Members", href: `/org/invitations`, icon: UserPlus },
+    { title: "Organization", href: `/org`, icon: Building2 },
   ] : []
 
   // Reset search when dropdown closes
