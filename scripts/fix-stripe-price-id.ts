@@ -6,6 +6,11 @@
 import { prisma } from '../lib/prisma'
 
 async function main() {
+  if (!prisma) {
+    console.error('❌ Prisma client is not initialized')
+    process.exit(1)
+  }
+
   console.log('🔍 Finding platform partner...')
 
   // Find the platform partner

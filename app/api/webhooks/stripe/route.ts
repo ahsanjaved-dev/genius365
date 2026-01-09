@@ -367,12 +367,13 @@ async function updateWorkspaceSubscription(workspaceId: string, planId: string, 
 
   const status = statusMap[subscription.status] || "incomplete"
 
-  // Get billing period from subscription
-  const currentPeriodStart = subscription.current_period_start
-    ? new Date(subscription.current_period_start * 1000)
+  // Get billing period from subscription items (Stripe SDK v20+ type changes)
+  const subscriptionItem = subscription.items.data[0]
+  const currentPeriodStart = subscriptionItem?.current_period_start
+    ? new Date(subscriptionItem.current_period_start * 1000)
     : null
-  const currentPeriodEnd = subscription.current_period_end
-    ? new Date(subscription.current_period_end * 1000)
+  const currentPeriodEnd = subscriptionItem?.current_period_end
+    ? new Date(subscriptionItem.current_period_end * 1000)
     : null
 
   const customerId = typeof subscription.customer === "string"
