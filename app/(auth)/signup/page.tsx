@@ -16,24 +16,44 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Loader2, CheckCircle2, Check, Sparkles } from "lucide-react"
-import { plans } from "@/config/plans"
+import { Loader2, CheckCircle2, Check, Sparkles, CreditCard, Gift } from "lucide-react"
+import { workspacePlans, type PlanSlug } from "@/config/plans"
 import { PasswordStrengthIndicator } from "@/components/auth/password-strength"
 import { validatePassword } from "@/lib/auth/password"
 
-type PlanKey = keyof typeof plans
-
-const planBenefits: Record<PlanKey, string[]> = {
-  starter: ["5 AI agents", "1,000 minutes/month", "Email support"],
-  professional: ["25 AI agents", "5,000 minutes/month", "Priority support", "Custom branding"],
-  enterprise: ["Unlimited agents", "Custom minutes", "Dedicated support", "White-label"],
+// Plan benefits for display on signup page
+const planBenefits: Record<PlanSlug, { benefits: string[]; highlight: string }> = {
+  free: {
+    benefits: ["$10 free credits", "2 AI agents", "No credit card required"],
+    highlight: "Start building today",
+  },
+  pro: {
+    benefits: ["25 AI agents", "3,000 min/month", "Priority support"],
+    highlight: "Best for growing teams",
+  },
+  agency: {
+    benefits: ["Unlimited agents", "White-label", "Custom pricing"],
+    highlight: "For resellers",
+  },
 }
 
 function SignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect")
-  const selectedPlan = (searchParams.get("plan") as PlanKey) || null
+  const planParam = searchParams.get("plan")
+
+  // Map plan parameter to valid plan slug (handle legacy plan names)
+  const selectedPlan = useMemo((): PlanSlug | null => {
+    if (!planParam) return null
+    const normalized = planParam.toLowerCase()
+    // Map legacy plan names
+    if (normalized === "starter" || normalized === "professional") return "pro"
+    if (normalized === "enterprise") return "agency"
+    if (normalized in workspacePlans) return normalized as PlanSlug
+    return null
+  }, [planParam])
+
   const prefilledEmail = searchParams.get("email") || ""
   const isInvitation = redirectTo?.includes("invitation")
 
@@ -47,8 +67,9 @@ function SignupForm() {
   const [success, setSuccess] = useState(false)
 
   // Get plan info if selected
-  const planInfo = selectedPlan && plans[selectedPlan] ? plans[selectedPlan] : null
-  const planFeatures = selectedPlan ? planBenefits[selectedPlan] || [] : []
+  const planInfo = selectedPlan ? workspacePlans[selectedPlan] : null
+  const planBenefitInfo = selectedPlan ? planBenefits[selectedPlan] : null
+  const isPaidPlan = planInfo && planInfo.monthlyPriceCents > 0
 
   // Password validation
   const passwordValidation = useMemo(
@@ -86,7 +107,7 @@ function SignupForm() {
           data: {
             first_name: firstName,
             last_name: lastName,
-            selected_plan: selectedPlan || "starter",
+            selected_plan: selectedPlan || "free",
             signup_source: "pricing_page",
           },
         },
@@ -113,7 +134,7 @@ function SignupForm() {
             email: authData.user.email,
             firstName,
             lastName,
-            selectedPlan: selectedPlan || "starter",
+            selectedPlan: selectedPlan || "free",
             signupSource: redirectTo ? "invitation" : selectedPlan ? "pricing_page" : "direct",
             isInvitation: isInvitation, // Don't create default workspace for invited users
           }),
@@ -128,6 +149,12 @@ function SignupForm() {
           // Continue anyway - user is authenticated
         }
 
+        // If the API returned a checkoutUrl (for paid plans), redirect to Stripe checkout
+        if (setupData?.checkoutUrl) {
+          window.location.href = setupData.checkoutUrl
+          return
+        }
+
         // Redirect to invitation, workspace (if auto-created), or workspace selector
         if (redirectTo) {
           router.push(redirectTo)
@@ -139,8 +166,9 @@ function SignupForm() {
         }
         router.refresh()
       }
-    } catch (error: any) {
-      setError(error.message || "Failed to create account")
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create account"
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -164,7 +192,8 @@ function SignupForm() {
           </p>
           {planInfo && (
             <p className="text-sm text-muted-foreground mt-2">
-              Your selected plan: <strong className="capitalize">{planInfo.name}</strong>
+              Your selected plan: <strong>{planInfo.name}</strong>
+              {isPaidPlan && " - You'll complete payment after verification"}
             </p>
           )}
         </CardContent>
@@ -185,7 +214,9 @@ function SignupForm() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <CheckCircle2 className="h-4 w-4 text-blue-600" />
-              <span className="font-semibold text-blue-900 dark:text-blue-100">You've been invited!</span>
+              <span className="font-semibold text-blue-900 dark:text-blue-100">
+                You've been invited!
+              </span>
             </div>
             <p className="text-sm text-blue-700 dark:text-blue-300">
               Create an account with <strong>{prefilledEmail}</strong> to accept the invitation.
@@ -196,16 +227,26 @@ function SignupForm() {
 
       {/* Selected Plan Banner */}
       {planInfo && !isInvitation && (
-        <Card className="border-primary/50 bg-primary/5">
+        <Card
+          className={`border-primary/50 ${isPaidPlan ? "bg-linear-to-r from-primary/10 to-primary/5" : "bg-primary/5"}`}
+        >
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
+                {isPaidPlan ? (
+                  <CreditCard className="h-4 w-4 text-primary" />
+                ) : (
+                  <Gift className="h-4 w-4 text-primary" />
+                )}
                 <span className="font-semibold text-foreground">{planInfo.name} Plan</span>
               </div>
-              {planInfo.price ? (
-                <Badge variant="outline" className="bg-background">
-                  ${planInfo.price}/mo
+              {planInfo.monthlyPriceCents === 0 ? (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  Free
+                </Badge>
+              ) : planInfo.monthlyPriceCents > 0 ? (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                  ${planInfo.monthlyPriceCents / 100}/mo
                 </Badge>
               ) : (
                 <Badge variant="outline" className="bg-background">
@@ -213,14 +254,28 @@ function SignupForm() {
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-1">
-              {planFeatures.map((feature, idx) => (
-                <div key={idx} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Check className="h-3 w-3 text-primary shrink-0" />
-                  <span>{feature}</span>
+            {planBenefitInfo && (
+              <>
+                <p className="text-xs text-muted-foreground mb-2">{planBenefitInfo.highlight}</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {planBenefitInfo.benefits.map((benefit, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <Check className="h-3 w-3 text-primary shrink-0" />
+                      <span>{benefit}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+            {isPaidPlan && (
+              <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                <CreditCard className="h-3 w-3" />
+                You'll complete payment via Stripe after creating your account
+              </p>
+            )}
             <Link
               href="/pricing"
               className="text-xs text-primary hover:underline mt-2 inline-block"
@@ -237,7 +292,9 @@ function SignupForm() {
           <CardTitle className="text-2xl">Create your account</CardTitle>
           <CardDescription>
             {planInfo
-              ? `Sign up to get started with the ${planInfo.name} plan`
+              ? isPaidPlan
+                ? `Sign up for ${planInfo.name} ($${planInfo.monthlyPriceCents / 100}/mo)`
+                : `Get started with ${planInfo.name} - no credit card required`
               : "Enter your details to get started"}
           </CardDescription>
         </CardHeader>
@@ -332,15 +389,23 @@ function SignupForm() {
             </div>
           </CardContent>
 
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="mt-4 flex flex-col space-y-4">
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating account...
                 </>
+              ) : isPaidPlan ? (
+                <>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Continue to Payment
+                </>
               ) : planInfo ? (
-                `Get Started with ${planInfo.name}`
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Start with {planInfo.name}
+                </>
               ) : (
                 "Create Account"
               )}

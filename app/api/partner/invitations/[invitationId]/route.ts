@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server"
 import { getPartnerAuthContext, isPartnerAdmin } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { sendPartnerInvitation } from "@/lib/email/send"
+import { headers } from "next/headers"
 
 interface RouteContext {
   params: Promise<{ invitationId: string }>
@@ -103,10 +105,55 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return serverError()
     }
 
-    // TODO: Send email with new link
-    console.log(`[Partner Invitation Resent] Email: ${invitation.email}`)
+    // Build invite link
+    const headersList = await headers()
+    const host = headersList.get("host") || "localhost:3000"
+    const protocol = host.includes("localhost") ? "http" : "https"
+    const inviteLink = `${protocol}://${host}/accept-partner-invitation?token=${newToken}`
 
-    return apiResponse({ success: true })
+    // Get workspace names for assignments (if any)
+    const workspaceAssignments = invitation.metadata?.workspace_assignments || []
+    let workspaceAssignmentDetails: { name: string; role: string }[] = []
+    if (workspaceAssignments.length > 0) {
+      const workspaceIds = workspaceAssignments.map((wa: any) => wa.workspace_id)
+      const { data: workspacesData } = await ctx.adminClient
+        .from("workspaces")
+        .select("id, name")
+        .in("id", workspaceIds)
+
+      const wsMap = new Map(workspacesData?.map((w) => [w.id, w.name]) || [])
+      workspaceAssignmentDetails = workspaceAssignments.map((wa: any) => ({
+        name: wsMap.get(wa.workspace_id) || wa.workspace_id,
+        role: wa.role,
+      }))
+    }
+
+    // Send email
+    try {
+      const inviterName = ctx.user.first_name
+        ? `${ctx.user.first_name} ${ctx.user.last_name || ""}`.trim()
+        : ctx.user.email
+
+      await sendPartnerInvitation(
+        invitation.email,
+        ctx.partner.name,
+        inviterName,
+        inviteLink,
+        invitation.role,
+        newExpiry.toISOString(),
+        workspaceAssignmentDetails.length > 0 ? workspaceAssignmentDetails : undefined,
+        invitation.message || undefined,
+        ctx.partner.branding?.primary_color,
+        ctx.partner.branding?.logo_url
+      )
+
+      console.log(`[Partner Invitation Resent] Email: ${invitation.email}`)
+    } catch (emailError) {
+      console.error("Failed to send partner invitation email:", emailError)
+      // Don't fail the request if email fails
+    }
+
+    return apiResponse({ success: true, invite_link: inviteLink })
   } catch (error) {
     console.error("POST /api/partner/invitations/[id] error:", error)
     return serverError()

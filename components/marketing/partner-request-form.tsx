@@ -266,7 +266,8 @@ export function PartnerRequestForm({
           secondary_color: formData.secondary_color,
           company_name: formData.company_name,
         },
-        selected_plan: "enterprise",
+        // All white-label partners get "partner" tier
+        selected_plan: "partner",
       }
 
       // Validate with Zod

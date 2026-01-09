@@ -2,6 +2,13 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
+export interface WorkspaceAccess {
+  workspace_id: string
+  workspace_name: string
+  workspace_slug: string
+  role: string
+}
+
 export interface PartnerTeamMember {
   id: string
   role: "owner" | "admin" | "member"
@@ -12,6 +19,17 @@ export interface PartnerTeamMember {
   last_name: string | null
   avatar_url: string | null
   status: string
+  /** List of workspaces this member has access to */
+  workspace_access: WorkspaceAccess[]
+  /** Number of workspaces this member has access to */
+  workspace_count: number
+  /** True if member owns at least one workspace */
+  is_workspace_owner: boolean
+}
+
+export interface WorkspaceAssignment {
+  workspace_id: string
+  role: "admin" | "member" | "viewer"
 }
 
 export interface PartnerInvitation {
@@ -20,8 +38,12 @@ export interface PartnerInvitation {
   role: "owner" | "admin" | "member"
   message: string | null
   status: string
+  token: string
   expires_at: string
   created_at: string
+  metadata?: {
+    workspace_assignments?: WorkspaceAssignment[]
+  }
   inviter: {
     id: string
     email: string
@@ -64,6 +86,13 @@ export function usePartnerInvitations() {
   })
 }
 
+export interface InvitePartnerMemberInput {
+  email: string
+  role: string
+  message?: string
+  workspace_assignments?: WorkspaceAssignment[]
+}
+
 /**
  * Hook to invite a team member
  */
@@ -71,7 +100,7 @@ export function useInvitePartnerMember() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (data: { email: string; role: string; message?: string }) => {
+    mutationFn: async (data: InvitePartnerMemberInput) => {
       const res = await fetch("/api/partner/invitations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

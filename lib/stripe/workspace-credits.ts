@@ -22,6 +22,9 @@ export const WORKSPACE_TOPUP_AMOUNTS_CENTS = [
   { label: "$50", value: 5000 },
 ] as const
 
+// Free tier credits grant amount (in cents)
+export const FREE_TIER_CREDITS_CENTS = 1000 // $10
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -114,6 +117,65 @@ export async function getOrCreateWorkspaceCredits(workspaceId: string) {
 }
 
 /**
+ * Grant initial free tier credits to a workspace (idempotent)
+ * This is called when a workspace is created with the "free" plan.
+ * It checks for an existing grant transaction before applying.
+ * 
+ * @param workspaceId - The workspace to grant credits to
+ * @param amountCents - Amount to grant (default: $10 = 1000 cents)
+ * @returns Object with success status and whether already granted
+ */
+export async function grantInitialFreeTierCredits(
+  workspaceId: string,
+  amountCents: number = FREE_TIER_CREDITS_CENTS
+): Promise<{ success: boolean; alreadyGranted: boolean; newBalanceCents?: number }> {
+  if (!prisma) throw new Error("Database not configured")
+
+  // Get or create the workspace credits record
+  const credits = await getOrCreateWorkspaceCredits(workspaceId)
+
+  // Check if we've already granted free tier credits (idempotency)
+  const existingGrant = await prisma.workspaceCreditTransaction.findFirst({
+    where: {
+      workspaceCreditsId: credits.id,
+      type: "adjustment",
+      metadata: {
+        path: ["reason"],
+        equals: "free_tier_grant",
+      },
+    },
+  })
+
+  if (existingGrant) {
+    return { success: true, alreadyGranted: true, newBalanceCents: credits.balanceCents }
+  }
+
+  // Apply the free tier grant in a transaction
+  const newBalance = credits.balanceCents + amountCents
+
+  await prisma.$transaction([
+    prisma.workspaceCredits.update({
+      where: { id: credits.id },
+      data: { balanceCents: newBalance },
+    }),
+    prisma.workspaceCreditTransaction.create({
+      data: {
+        workspaceCreditsId: credits.id,
+        type: "adjustment",
+        amountCents: amountCents,
+        balanceAfterCents: newBalance,
+        description: `Free tier credits: $${(amountCents / 100).toFixed(2)}`,
+        metadata: { reason: "free_tier_grant" },
+      },
+    }),
+  ])
+
+  console.log(`[Workspace Credits] Granted $${(amountCents / 100).toFixed(2)} free tier credits to workspace ${workspaceId}`)
+
+  return { success: true, alreadyGranted: false, newBalanceCents: newBalance }
+}
+
+/**
  * Get workspace credits info with computed fields
  */
 export async function getWorkspaceCreditsInfo(workspaceId: string): Promise<WorkspaceCreditsInfo> {
@@ -196,11 +258,12 @@ export async function getWorkspaceTransactions(
 /**
  * Create a PaymentIntent for topping up workspace credits
  * Payment goes to partner's Stripe Connect account
+ * Platform takes a % cut from each payment via application_fee_amount
  */
 export async function createWorkspaceTopupPaymentIntent(
   workspaceId: string,
   amountCents: number,
-  platformFeePercent = 10 // 10% platform fee by default
+  platformFeePercent?: number
 ): Promise<{ clientSecret: string; paymentIntentId: string }> {
   const stripe = getStripe()
 
@@ -215,8 +278,9 @@ export async function createWorkspaceTopupPaymentIntent(
     throw new Error("Partner has not completed Stripe Connect onboarding")
   }
 
-  // Calculate platform fee
-  const applicationFeeAmount = Math.round(amountCents * (platformFeePercent / 100))
+  // Calculate platform fee using env var (default 10%)
+  const feePercent = platformFeePercent ?? env.stripeConnectPlatformFeePercent ?? 10
+  const applicationFeeAmount = Math.round(amountCents * (feePercent / 100))
 
   const paymentIntent = await stripe.paymentIntents.create(
     {

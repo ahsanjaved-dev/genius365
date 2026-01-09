@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
+import { hasWorkspacePermission, type WorkspaceRole } from "@/lib/rbac/permissions"
 import type { DashboardStats } from "@/types/database.types"
 
 interface RouteContext {
@@ -14,6 +15,16 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     if (!ctx) {
       return unauthorized()
+    }
+
+    // Check if user has workspace.dashboard.stats permission
+    const workspaceRole = ctx.workspace.role as WorkspaceRole
+    
+    if (!hasWorkspacePermission(workspaceRole, "workspace.dashboard.stats")) {
+      return forbidden(
+        "You don't have permission to view workspace statistics. " +
+        `Your role: ${workspaceRole}`
+      )
     }
 
     const workspaceId = ctx.workspace.id

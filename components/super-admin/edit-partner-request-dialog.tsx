@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useEditPartnerRequest, type EditPartnerRequestData } from "@/lib/hooks/use-partner-requests"
+import { useWhiteLabelVariants } from "@/lib/hooks/use-white-label-variants"
 import { Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { HexColorPicker } from "react-colorful"
@@ -40,6 +41,7 @@ export function EditPartnerRequestDialog({
   onSuccess,
 }: EditPartnerRequestDialogProps) {
   const editMutation = useEditPartnerRequest()
+  const { data: variants } = useWhiteLabelVariants()
   const [uploadingLogo, setUploadingLogo] = useState(false)
 
   // Helper to get branding data safely
@@ -64,7 +66,8 @@ export function EditPartnerRequestDialog({
     business_description: request.business_description || "",
     expected_users: request.expected_users || null,
     use_case: request.use_case || "",
-    selected_plan: (request.selected_plan as "starter" | "professional" | "enterprise") || "enterprise",
+    selected_plan: request.selected_plan || "partner",
+    assigned_white_label_variant_id: (request as { assigned_white_label_variant_id?: string | null }).assigned_white_label_variant_id || null,
     branding_data: getBrandingData(),
   })
 
@@ -80,7 +83,8 @@ export function EditPartnerRequestDialog({
       business_description: request.business_description || "",
       expected_users: request.expected_users || null,
       use_case: request.use_case || "",
-      selected_plan: (request.selected_plan as "starter" | "professional" | "enterprise") || "enterprise",
+      selected_plan: request.selected_plan || "partner",
+      assigned_white_label_variant_id: (request as { assigned_white_label_variant_id?: string | null }).assigned_white_label_variant_id || null,
       branding_data: getBrandingData(),
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,22 +245,50 @@ export function EditPartnerRequestDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="selected_plan">Plan</Label>
+                <Label htmlFor="selected_plan">Partner Tier</Label>
                 <Select
                   value={formData.selected_plan}
-                  onValueChange={(value: "starter" | "professional" | "enterprise") =>
+                  onValueChange={(value: string) =>
                     setFormData({ ...formData, selected_plan: value })
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select plan" />
+                    <SelectValue placeholder="Select tier" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="starter">Starter</SelectItem>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                    <SelectItem value="partner">White-Label Partner</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  All white-label partners receive "partner" tier
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="white_label_variant">Plan Variant</Label>
+                <Select
+                  value={formData.assigned_white_label_variant_id || "none"}
+                  onValueChange={(value: string) =>
+                    setFormData({ 
+                      ...formData, 
+                      assigned_white_label_variant_id: value === "none" ? null : value 
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select variant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No variant assigned</SelectItem>
+                    {variants?.map((variant) => (
+                      <SelectItem key={variant.id} value={variant.id}>
+                        {variant.name} - ${(variant.monthly_price_cents / 100).toFixed(0)}/mo ({variant.max_workspaces === -1 ? "Unlimited" : variant.max_workspaces} workspaces)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Assign a pricing variant before provisioning
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="expected_users">Expected Users</Label>

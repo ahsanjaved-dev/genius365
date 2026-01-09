@@ -21,7 +21,10 @@ export interface EditPartnerRequestData {
   business_description?: string
   expected_users?: number | null
   use_case?: string
-  selected_plan?: "starter" | "professional" | "enterprise"
+  // Partner tier - all white-label partners are "partner" tier
+  selected_plan?: string
+  // White-label variant assignment (determines pricing + workspace limits)
+  assigned_white_label_variant_id?: string | null
   branding_data?: {
     logo_url?: string
     primary_color?: string

@@ -1,6 +1,7 @@
 import { Resend } from "resend"
 import { env } from "@/lib/env"
 import { WorkspaceInvitationEmail } from "./templates/workspace-invitation"
+import { PartnerInvitationEmail } from "./templates/partner-invitation"
 import { PartnerRequestNotificationEmail } from "./templates/partner-request-notification"
 import { PartnerRequestApprovedEmail } from "./templates/partner-request-approved"
 import { PartnerRequestRejectedEmail } from "./templates/partner-request-rejected"
@@ -44,7 +45,40 @@ async function sendEmail({ to, subject, react }: SendEmailOptions) {
   }
 }
 
-// Existing function
+// Partner organization invitation
+export async function sendPartnerInvitation(
+  recipientEmail: string,
+  partnerName: string,
+  inviterName: string,
+  inviteLink: string,
+  role: string,
+  expiresAt: string,
+  workspaceAssignments?: { name: string; role: string }[],
+  message?: string,
+  primaryColor?: string,
+  logoUrl?: string
+) {
+  // Use test email in development, real email in production
+  const to = env.isDev ? TEST_EMAIL : recipientEmail
+
+  return sendEmail({
+    to,
+    subject: `You've been invited to join ${partnerName}`,
+    react: PartnerInvitationEmail({
+      partnerName,
+      inviterName,
+      inviteLink,
+      role,
+      message,
+      expiresAt,
+      workspaceAssignments,
+      primaryColor,
+      logoUrl,
+    }),
+  })
+}
+
+// Workspace invitation
 export async function sendWorkspaceInvitation(
   recipientEmail: string,
   workspaceName: string,

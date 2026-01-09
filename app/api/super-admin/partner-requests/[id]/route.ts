@@ -20,7 +20,10 @@ const editPartnerRequestSchema = z.object({
   business_description: z.string().optional(),
   expected_users: z.number().optional().nullable(),
   use_case: z.string().optional(),
-  selected_plan: z.enum(["starter", "professional", "enterprise"]).optional(),
+  // Partner tier - all white-label partners are "partner" tier
+  selected_plan: z.string().optional(),
+  // White-label variant assignment (determines pricing + workspace limits)
+  assigned_white_label_variant_id: z.string().uuid().optional().nullable(),
   branding_data: z
     .object({
       logo_url: z.string().optional(),

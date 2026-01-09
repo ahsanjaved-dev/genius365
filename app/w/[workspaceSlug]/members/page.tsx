@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Input } from "@/components/ui/input"
 import {
   Table,
   TableBody,
@@ -61,9 +62,12 @@ import {
   Trash2,
   RefreshCw,
   Crown,
+  Search,
+  Filter,
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatDistanceToNow } from "date-fns"
+import { cn } from "@/lib/utils"
 
 const roleColors: Record<string, string> = {
   owner: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
@@ -86,12 +90,16 @@ const roleLabels: Record<string, string> = {
   viewer: "Viewer",
 }
 
+type RoleFilter = "all" | "owner" | "admin" | "member" | "viewer"
+
 export default function WorkspaceMembersPage() {
   const params = useParams()
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [editMember, setEditMember] = useState<{ id: string; role: string; name: string } | null>(null)
   const [deleteMember, setDeleteMember] = useState<{ id: string; name: string } | null>(null)
   const [selectedRole, setSelectedRole] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all")
 
   const { data: authContext } = useAuthContext()
   const { data: members, isLoading: membersLoading, refetch } = useWorkspaceMembers()
@@ -107,6 +115,43 @@ export default function WorkspaceMembersPage() {
   
   const isAdmin = currentWorkspaceRole === "owner" || currentWorkspaceRole === "admin"
   const isOwner = currentWorkspaceRole === "owner"
+
+  // Filter members by search query and role
+  const filteredMembers = useMemo(() => {
+    if (!members) return []
+
+    let filtered = members
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (m) =>
+          m.user?.email?.toLowerCase().includes(query) ||
+          m.user?.first_name?.toLowerCase().includes(query) ||
+          m.user?.last_name?.toLowerCase().includes(query)
+      )
+    }
+
+    // Apply role filter
+    if (roleFilter !== "all") {
+      filtered = filtered.filter((m) => m.role === roleFilter)
+    }
+
+    return filtered
+  }, [members, searchQuery, roleFilter])
+
+  // Stats
+  const stats = useMemo(() => {
+    if (!members) return { total: 0, owners: 0, admins: 0, members: 0, viewers: 0 }
+    return {
+      total: members.length,
+      owners: members.filter((m) => m.role === "owner").length,
+      admins: members.filter((m) => m.role === "admin").length,
+      members: members.filter((m) => m.role === "member").length,
+      viewers: members.filter((m) => m.role === "viewer").length,
+    }
+  }, [members])
 
   const handleCancelInvitation = async (id: string) => {
     try {
@@ -165,47 +210,104 @@ export default function WorkspaceMembersPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+        <Card 
+          className={cn(
+            "cursor-pointer transition-colors",
+            roleFilter === "all" && "ring-2 ring-primary"
+          )}
+          onClick={() => setRoleFilter("all")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Members
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{members?.length || 0}</div>
+            <div className="text-2xl font-bold">{stats.total}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={cn(
+            "cursor-pointer transition-colors",
+            roleFilter === "owner" && "ring-2 ring-purple-500"
+          )}
+          onClick={() => setRoleFilter(roleFilter === "owner" ? "all" : "owner")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Owners</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {members?.filter((m) => m.role === "owner").length || 0}
-            </div>
+            <div className="text-2xl font-bold text-purple-600">{stats.owners}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={cn(
+            "cursor-pointer transition-colors",
+            roleFilter === "admin" && "ring-2 ring-blue-500"
+          )}
+          onClick={() => setRoleFilter(roleFilter === "admin" ? "all" : "admin")}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Admins</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {members?.filter((m) => m.role === "admin").length || 0}
-            </div>
+            <div className="text-2xl font-bold text-blue-600">{stats.admins}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={cn(
+            "cursor-pointer transition-colors",
+            roleFilter === "member" && "ring-2 ring-green-500"
+          )}
+          onClick={() => setRoleFilter(roleFilter === "member" ? "all" : "member")}
+        >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pending Invitations
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Members</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{invitations?.length || 0}</div>
+            <div className="text-2xl font-bold text-green-600">{stats.members}</div>
           </CardContent>
         </Card>
+        <Card 
+          className={cn(
+            "cursor-pointer transition-colors",
+            roleFilter === "viewer" && "ring-2 ring-gray-500"
+          )}
+          onClick={() => setRoleFilter(roleFilter === "viewer" ? "all" : "viewer")}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Viewers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-600">{stats.viewers}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {roleFilter !== "all" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRoleFilter("all")}
+            className="gap-2"
+          >
+            <Filter className="h-4 w-4" />
+            Clear filter: {roleLabels[roleFilter]}
+            <X className="h-3 w-3" />
+          </Button>
+        )}
       </div>
 
       {/* Members List */}
@@ -214,6 +316,11 @@ export default function WorkspaceMembersPage() {
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             Members
+            {(searchQuery || roleFilter !== "all") && (
+              <Badge variant="secondary" className="ml-2">
+                {filteredMembers.length} of {members?.length || 0}
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription>People who have access to this workspace</CardDescription>
         </CardHeader>
@@ -222,7 +329,7 @@ export default function WorkspaceMembersPage() {
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : members && members.length > 0 ? (
+          ) : filteredMembers && filteredMembers.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -233,7 +340,7 @@ export default function WorkspaceMembersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members.map((member) => {
+                {filteredMembers.map((member) => {
                   const RoleIcon = roleIcons[member.role] || UserCheck
                   const isCurrentUser = member.user_id === authContext?.user?.id
                   const canModify = isAdmin && !isCurrentUser && (isOwner || member.role !== "owner")
@@ -319,7 +426,11 @@ export default function WorkspaceMembersPage() {
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No members yet</p>
+              <p>
+                {searchQuery || roleFilter !== "all"
+                  ? "No members match your search"
+                  : "No members yet"}
+              </p>
             </div>
           )}
         </CardContent>
