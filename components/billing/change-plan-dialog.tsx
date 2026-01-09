@@ -45,8 +45,8 @@ export function ChangePlanDialog({
   const handleConfirm = async () => {
     setConfirming(true)
     try {
-      const result = await changePlan.mutateAsync(newPlan)
-      toast.success(result.message)
+      await changePlan.mutateAsync(newPlan)
+      toast.success("Plan change submitted")
       onOpenChange(false)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to change plan")

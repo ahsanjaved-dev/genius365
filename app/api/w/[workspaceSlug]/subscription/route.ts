@@ -7,6 +7,7 @@
 
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import type Stripe from "stripe"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, forbidden, notFound, serverError } from "@/lib/api/helpers"
 import { prisma } from "@/lib/prisma"
@@ -479,12 +480,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     
     // For upgrades: charge immediately
     // For downgrades: credit on next invoice
-    const prorationBehavior = immediate 
+    const prorationBehavior: Stripe.SubscriptionUpdateParams.ProrationBehavior = immediate
       ? (isUpgrade ? "always_invoice" : "create_prorations")
       : "none"
 
     // Update the subscription with proration
-    const updateParams = {
+    const updateParams: Stripe.SubscriptionUpdateParams = {
       items: [
         {
           id: subscriptionItemId,
