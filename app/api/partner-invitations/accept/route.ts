@@ -62,29 +62,6 @@ export async function POST(request: NextRequest) {
       return apiError("This invitation was sent to a different email address")
     }
 
-    // Check if already a member
-    const { data: existingMember } = await adminClient
-      .from("partner_members")
-      .select("id")
-      .eq("partner_id", invitation.partner_id)
-      .eq("user_id", user.id)
-      .is("removed_at", null)
-      .maybeSingle()
-
-    if (existingMember) {
-      // Mark invitation as accepted anyway
-      await adminClient
-        .from("partner_invitations")
-        .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("id", invitation.id)
-      
-      return apiResponse({ 
-        success: true, 
-        partner_slug: (invitation.partner as any).slug,
-        message: "You are already a member of this organization"
-      })
-    }
-
     // Ensure user exists in public.users
     const { error: upsertError } = await adminClient
       .from("users")
@@ -103,21 +80,37 @@ export async function POST(request: NextRequest) {
       console.error("Upsert user error:", upsertError)
     }
 
-    // Add user as partner member
-    const { error: memberError } = await adminClient
+    // Check if already a partner member (might be created by signup flow)
+    const { data: existingMember } = await adminClient
       .from("partner_members")
-      .insert({
-        partner_id: invitation.partner_id,
-        user_id: user.id,
-        role: invitation.role,
-        invited_by: invitation.invited_by,
-        joined_at: new Date().toISOString(),
-      })
+      .select("id")
+      .eq("partner_id", invitation.partner_id)
+      .eq("user_id", user.id)
+      .is("removed_at", null)
+      .maybeSingle()
 
-    if (memberError) {
-      console.error("Create partner member error:", memberError)
-      return serverError("Failed to add you to the organization")
+    // Add user as partner member if not already
+    if (!existingMember) {
+      const { error: memberError } = await adminClient
+        .from("partner_members")
+        .insert({
+          partner_id: invitation.partner_id,
+          user_id: user.id,
+          role: invitation.role,
+          invited_by: invitation.invited_by,
+          joined_at: new Date().toISOString(),
+        })
+
+      if (memberError) {
+        console.error("Create partner member error:", memberError)
+        return serverError("Failed to add you to the organization")
+      }
+    } else {
+      console.log(`[Partner Invitation Accept] User ${user.email} is already a partner member, skipping partner_members insert`)
     }
+
+    // IMPORTANT: Always process workspace assignments from invitation metadata
+    // This ensures workspace access is granted even if user was already a partner member (e.g., from signup flow)
 
     // Process workspace assignments from metadata
     const workspaceAssignments = invitation.metadata?.workspace_assignments as WorkspaceAssignment[] | undefined
@@ -177,6 +170,7 @@ export async function POST(request: NextRequest) {
             user_id: user.id,
             role: assignment.role,
             invited_by: invitation.invited_by,
+            invited_at: invitation.created_at,
             joined_at: new Date().toISOString(),
           })
           .select()
@@ -202,13 +196,33 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", invitation.id)
 
+    // Get the first assigned workspace slug for direct redirect
+    let firstWorkspaceSlug: string | null = null
+    if (workspaceAssignments && workspaceAssignments.length > 0) {
+      const firstAssignment = workspaceAssignments[0]
+      if (firstAssignment) {
+        const { data: firstWorkspace } = await adminClient
+          .from("workspaces")
+          .select("slug")
+          .eq("id", firstAssignment.workspace_id)
+          .single()
+        
+        if (firstWorkspace) {
+          firstWorkspaceSlug = firstWorkspace.slug
+        }
+      }
+    }
+
     return apiResponse({ 
       success: true, 
       partner_slug: (invitation.partner as any).slug,
       partner_name: (invitation.partner as any).name,
       role: invitation.role,
       workspaces_assigned: assignedWorkspaces.length,
-      workspace_names: assignedWorkspaces
+      workspace_names: assignedWorkspaces,
+      redirect: firstWorkspaceSlug 
+        ? `/w/${firstWorkspaceSlug}/dashboard` 
+        : "/select-workspace"
     })
   } catch (error) {
     console.error("POST /api/partner-invitations/accept error:", error)

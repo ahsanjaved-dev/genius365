@@ -29,7 +29,7 @@ const updateIntegrationSchema = z.object({
   default_secret_key: z.string().optional(),
   default_public_key: z.string().optional(),
   additional_keys: z.array(additionalKeySchema).optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   is_active: z.boolean().optional(),
   is_default: z.boolean().optional(),
 })

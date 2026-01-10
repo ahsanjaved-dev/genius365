@@ -42,7 +42,7 @@ const createIntegrationSchema = z.object({
   name: z.string().min(1).max(255),
   default_secret_key: z.string().min(1, "Secret key is required"),
   default_public_key: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   is_default: z.boolean().default(false),
 })
 
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build config based on provider
-    let config = data.config || {}
+    let config: any = data.config || {}
     if (data.provider === "algolia" && data.config) {
       config = {
         app_id: (data.config as any).app_id,

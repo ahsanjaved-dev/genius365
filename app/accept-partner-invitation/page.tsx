@@ -122,9 +122,13 @@ function AcceptPartnerInvitationContent() {
       setAssignedWorkspaces(result.data.workspace_names || [])
       toast.success(`Welcome to ${result.data.partner_name}!`)
 
-      // Redirect to workspace selector after a short delay
+      // Redirect to the appropriate page after a short delay
+      // If workspaces were assigned, go directly to the first workspace
+      // Otherwise, go to workspace selector
       setTimeout(() => {
-        router.push("/select-workspace")
+        const redirectUrl = result.data.redirect || "/select-workspace"
+        router.push(redirectUrl)
+        router.refresh()
       }, 2500)
     } catch (err) {
       toast.error("Failed to accept invitation")
