@@ -19,6 +19,7 @@ export function useWorkspaceSettings() {
 interface UpdateSettingsInput {
   name?: string
   description?: string | null
+  timezone?: string
 }
 
 export function useUpdateWorkspaceSettings() {

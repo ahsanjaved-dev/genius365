@@ -124,6 +124,7 @@ export function WorkspaceDashboardLayout({
             workspaces={workspaces}
             isCollapsed={isCollapsed}
             onToggleSidebar={toggleSidebar}
+            partnerRole={partnerRole}
           />
           <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
             <div className="max-w-[1400px] mx-auto space-y-6">

@@ -7,9 +7,41 @@ interface RouteContext {
   params: Promise<{ workspaceSlug: string }>
 }
 
+// Common timezones for the settings dropdown
+const validTimezones = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Toronto",
+  "America/Vancouver",
+  "America/Sao_Paulo",
+  "America/Mexico_City",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Amsterdam",
+  "Europe/Madrid",
+  "Europe/Rome",
+  "Europe/Stockholm",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Hong_Kong",
+  "Asia/Seoul",
+  "Australia/Sydney",
+  "Australia/Melbourne",
+  "Australia/Perth",
+  "Pacific/Auckland",
+]
+
 const updateSettingsSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(1000).optional().nullable(),
+  timezone: z.string().optional(),
 })
 
 // GET workspace settings
@@ -67,6 +99,22 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
     if (validation.data.description !== undefined) {
       updates.description = validation.data.description
+    }
+
+    // Handle timezone update in settings JSON
+    if (validation.data.timezone !== undefined) {
+      // First get current settings
+      const { data: currentWorkspace } = await ctx.adminClient
+        .from("workspaces")
+        .select("settings")
+        .eq("id", ctx.workspace.id)
+        .single()
+
+      const currentSettings = (currentWorkspace?.settings as Record<string, unknown>) || {}
+      updates.settings = {
+        ...currentSettings,
+        timezone: validation.data.timezone,
+      }
     }
 
     const { data: workspace, error } = await ctx.adminClient

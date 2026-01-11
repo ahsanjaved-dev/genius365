@@ -20,15 +20,14 @@ import {
   Phone,
   ChevronDown,
   Check,
-  Building2,
-  UserPlus,
-  Plus,
   Crown,
   Shield,
   User,
   Megaphone,
   Search,
   ExternalLink,
+  Building2,
+  Settings,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -139,6 +138,7 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
     { title: "Analytics", href: `${baseUrl}/analytics`, icon: BarChart3 },
     { title: "Calls", href: `${baseUrl}/calls`, icon: Phone },
     ...(isWorkspaceAdmin ? [{ title: "Workspace Team", href: `${baseUrl}/members`, icon: Users }] : []),
+    ...(isWorkspaceAdmin ? [{ title: "Settings", href: `${baseUrl}/settings`, icon: Settings }] : []),
   ]
   
   // Organization-level navigation (for partner admins/owners)
@@ -351,35 +351,25 @@ export function WorkspaceSidebar({ partner, currentWorkspace, workspaces, isColl
               </div>
             </ScrollArea>
 
-            <DropdownMenuSeparator className="my-0" />
-
-            {/* Actions */}
-            <div className="p-1.5 space-y-0.5">
-              {isPartnerAdmin && (
-                <DropdownMenuItem asChild>
-                  <Link
-                    href="/workspace-onboarding"
-                    className="flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-lg"
-                  >
-                    <div className="h-7 w-7 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
-                      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <span className="text-sm font-medium">Create workspace</span>
-                  </Link>
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/select-workspace"
-                  className="flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-lg"
-                >
-                  <div className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center">
-                    <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <span className="text-sm font-medium">View all workspaces</span>
-                </Link>
-              </DropdownMenuItem>
-            </div>
+            {/* Actions - Only show for partner admins/owners who may have multiple workspaces */}
+            {isPartnerAdmin && (
+              <>
+                <DropdownMenuSeparator className="my-0" />
+                <div className="p-1.5 space-y-0.5">
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href="/select-workspace"
+                      className="flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-lg"
+                    >
+                      <div className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center">
+                        <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
+                      <span className="text-sm font-medium">View all workspaces</span>
+                    </Link>
+                  </DropdownMenuItem>
+                </div>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

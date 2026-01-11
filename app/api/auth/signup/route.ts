@@ -116,15 +116,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 5: Create a default workspace ONLY for self-signup users (NOT for invitations)
+    // Step 5: Create a default workspace for self-signup users (NOT for invitations)
+    // This applies to ALL partners (platform and white-label alike)
     let defaultWorkspace = null
     let workspaceRedirect: string | null = null
 
-    // Only create default workspace if:
-    // 1. This is the platform partner
-    // 2. This is NOT an invitation-based signup
-    if (partner.is_platform_partner && !isInvitation) {
-      // For platform partner self-signup: create a personal workspace for the user
+    // Only create default workspace if this is NOT an invitation-based signup
+    // Both platform partner and white-label partner users get their own workspace
+    if (!isInvitation) {
+      // Create a personal workspace for the user
       const workspaceName = `${firstName || email.split("@")[0]}'s Workspace`
       const workspaceSlug = generateSlug(workspaceName) + "-" + Date.now().toString(36)
 
@@ -134,7 +134,9 @@ export async function POST(request: NextRequest) {
           partner_id: partner.id,
           name: workspaceName,
           slug: workspaceSlug,
-          description: "Your personal AI voice agent workspace",
+          description: partner.is_platform_partner 
+            ? "Your personal AI voice agent workspace"
+            : `Workspace for ${partner.name}`,
           resource_limits: {
             max_users: 5,
             max_agents: 3,
@@ -174,13 +176,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 6: Handle plan-specific logic
+    // This works for both platform partner and white-label partners
+    // - Platform partner: Uses main Stripe account
+    // - White-label partners: Uses their Stripe Connect account
     let checkoutUrl: string | null = null
 
     if (defaultWorkspace && !isInvitation) {
       const planKey = selectedPlan?.toLowerCase() || "free"
 
       if (planKey === "free") {
-        // Grant $10 free tier credits
+        // Grant initial free tier credits
         try {
           await grantInitialFreeTierCredits(defaultWorkspace.id)
         } catch (creditsError) {
@@ -189,7 +194,7 @@ export async function POST(request: NextRequest) {
         }
       } else if (planKey === "pro" || planKey === "starter" || planKey === "professional") {
         // Start Stripe checkout for paid plans
-        // Map legacy plan names to Pro
+        // The createPlanCheckoutSession function handles both platform and Connect accounts
         const mappedPlanKey = planKey === "pro" ? "pro" : planKey
         try {
           checkoutUrl = await createPlanCheckoutSession(

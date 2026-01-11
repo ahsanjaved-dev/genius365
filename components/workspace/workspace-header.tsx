@@ -28,7 +28,7 @@ import {
 import { useAuth } from "@/lib/hooks/use-auth"
 import { useTheme } from "@/context/theme-context"
 import { cn } from "@/lib/utils"
-import type { PartnerAuthUser, AccessibleWorkspace } from "@/types/database.types"
+import type { PartnerAuthUser, AccessibleWorkspace, PartnerMemberRole } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
 
 interface Props {
@@ -38,6 +38,7 @@ interface Props {
   workspaces: AccessibleWorkspace[]
   isCollapsed: boolean
   onToggleSidebar: () => void
+  partnerRole?: PartnerMemberRole | null
 }
 
 // Page name mapping for breadcrumbs
@@ -63,7 +64,10 @@ export function WorkspaceHeader({
   workspaces,
   isCollapsed,
   onToggleSidebar,
+  partnerRole,
 }: Props) {
+  // Check if user is a partner admin/owner
+  const isPartnerAdmin = partnerRole === "owner" || partnerRole === "admin"
   const { logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -251,10 +255,12 @@ export function WorkspaceHeader({
               <CreditCard className="w-4 h-4 mr-2" />
               Billing
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/select-workspace")}>
-              <Building2 className="w-4 h-4 mr-2" />
-              Switch Workspace
-            </DropdownMenuItem>
+            {isPartnerAdmin && (
+              <DropdownMenuItem onClick={() => router.push("/select-workspace")}>
+                <Building2 className="w-4 h-4 mr-2" />
+                Switch Workspace
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
