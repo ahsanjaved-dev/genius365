@@ -103,15 +103,20 @@ export default async function PricingPage() {
           </Card>
 
           {/* Agency Plan */}
-          <Card className="relative hover:shadow-lg transition-all">
+          <Card className="relative hover:shadow-lg transition-all border-2 border-dashed border-primary/30">
             <div className="absolute -top-3 left-6">
-              <Badge variant="secondary" className="gap-1">
+              <Badge variant="secondary" className="gap-1 bg-gradient-to-r from-primary/20 to-primary/10">
                 <Building2 className="h-3 w-3" />
                 White-Label
               </Badge>
             </div>
             <CardHeader>
-              <CardTitle>{agency.name}</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                {agency.name}
+                <Badge variant="outline" className="text-xs font-normal">
+                  30 Workspaces
+                </Badge>
+              </CardTitle>
               <CardDescription>{agency.description}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -120,7 +125,7 @@ export default async function PricingPage() {
                 <span className="text-muted-foreground ml-2">pricing</span>
               </div>
 
-              <Button asChild variant="outline" className="w-full">
+              <Button asChild variant="outline" className="w-full border-primary/50 hover:bg-primary/5">
                 <Link href="/request-partner">
                   Request Access
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -162,6 +167,7 @@ export default async function PricingPage() {
                     {[
                       { feature: "Monthly Price", free: "Free", pro: "$99/mo", agency: "Custom" },
                       { feature: "Starting Credits", free: `$${free.features.freeCredits}`, pro: "—", agency: "—" },
+                      { feature: "Workspaces", free: "1", pro: "1", agency: `${agency.features.maxWorkspaces} included` },
                       { feature: "AI Agents", free: formatLimit(free.features.maxAgents), pro: formatLimit(pro.features.maxAgents), agency: formatLimit(agency.features.maxAgents) },
                       { feature: "Minutes per Month", free: "Pay-as-you-go", pro: `${pro.features.maxMinutesPerMonth.toLocaleString()} included`, agency: "Custom" },
                       { feature: "Provider Integrations", free: formatLimit(free.features.maxIntegrations), pro: formatLimit(pro.features.maxIntegrations), agency: formatLimit(agency.features.maxIntegrations) },
@@ -231,7 +237,7 @@ export default async function PricingPage() {
               },
               {
                 question: "What's the Agency plan?",
-                answer: "Agency is for businesses who want to resell or white-label our platform. You get your own branded domain, can create custom pricing plans for your customers, and earn revenue share. Contact us to learn more."
+                answer: "Agency is for businesses who want to resell or white-label our platform. You get 30 workspaces included, your own branded domain, can create custom pricing plans for your customers, and earn revenue share. Perfect for agencies managing multiple client accounts."
               }
             ].map((faq, i) => (
               <Card key={i} className="hover:shadow-md transition-all">

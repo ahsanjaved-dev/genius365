@@ -3,18 +3,44 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import type { WhiteLabelVariant, CreateWhiteLabelVariantInput, UpdateWhiteLabelVariantInput } from "@/types/database.types"
+import type { CreateWhiteLabelVariantInput, UpdateWhiteLabelVariantInput } from "@/types/database.types"
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-export interface WhiteLabelVariantWithUsage extends WhiteLabelVariant {
+/**
+ * API response format for white-label variants (camelCase)
+ * This matches what the API actually returns
+ */
+export interface WhiteLabelVariantResponse {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  monthlyPriceCents: number
+  stripePriceId: string | null
+  maxWorkspaces: number
+  isActive: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  // Also support snake_case for backwards compatibility
+  monthly_price_cents?: number
+  stripe_price_id?: string | null
+  max_workspaces?: number
+  is_active?: boolean
+  sort_order?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface WhiteLabelVariantWithUsage extends WhiteLabelVariantResponse {
   partnerCount: number
 }
 
 export interface WhiteLabelVariantDetail {
-  variant: WhiteLabelVariant
+  variant: WhiteLabelVariantResponse
   usage: {
     partnerCount: number
     partners: Array<{
@@ -104,7 +130,7 @@ export function useCreateWhiteLabelVariant() {
       }
 
       const result = await response.json()
-      return result.data.variant as WhiteLabelVariant
+      return result.data.variant as WhiteLabelVariantResponse
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: whiteLabelVariantKeys.all })
@@ -132,7 +158,7 @@ export function useUpdateWhiteLabelVariant() {
       }
 
       const result = await response.json()
-      return result.data.variant as WhiteLabelVariant
+      return result.data.variant as WhiteLabelVariantResponse
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: whiteLabelVariantKeys.all })

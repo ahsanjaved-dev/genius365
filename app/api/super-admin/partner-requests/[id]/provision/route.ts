@@ -231,6 +231,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     // Step 6: Create a default workspace for the partner
+    // Note: We set is_billing_exempt = true so the workspace uses partner-level credits
+    // until the partner sets up their own billing/Stripe Connect
     const { data: defaultWorkspace, error: wsError } = await adminClient
       .from("workspaces")
       .insert({
@@ -244,6 +246,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           max_minutes_per_month: 10000,
         },
         status: "active",
+        is_billing_exempt: true, // Uses partner credits during onboarding
       })
       .select()
       .single()
@@ -260,7 +263,38 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       })
     }
 
-    // Step 7: Update partner request status
+    // Step 7: Grant initial partner credits ($10 = 1000 cents)
+    // This allows the partner to start using the platform while setting up billing
+    const INITIAL_PARTNER_CREDITS_CENTS = 1000 // $10
+    try {
+      // Create billing_credits record
+      const { data: billingCredits, error: creditsError } = await adminClient
+        .from("billing_credits")
+        .insert({
+          partner_id: partner.id,
+          balance_cents: INITIAL_PARTNER_CREDITS_CENTS,
+          low_balance_threshold_cents: 500, // Alert at $5
+        })
+        .select()
+        .single()
+      
+      if (!creditsError && billingCredits) {
+        // Record the initial credit transaction
+        await adminClient.from("credit_transactions").insert({
+          billing_credits_id: billingCredits.id,
+          type: "adjustment",
+          amount_cents: INITIAL_PARTNER_CREDITS_CENTS,
+          balance_after_cents: INITIAL_PARTNER_CREDITS_CENTS,
+          description: "Initial partner credits - welcome bonus",
+          metadata: { reason: "provisioning_grant" },
+        })
+      }
+    } catch (creditError) {
+      console.error("Failed to grant initial credits:", creditError)
+      // Non-fatal - partner can still use the platform
+    }
+
+    // Step 8: Update partner request status
     const { error: updateError } = await adminClient
       .from("partner_requests")
       .update({
@@ -273,10 +307,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       console.error("Update partner request error:", updateError)
     }
 
-    // Step 8: Update partner onboarding status
+    // Step 9: Update partner onboarding status
     await adminClient.from("partners").update({ onboarding_status: "active" }).eq("id", partner.id)
 
-    // Step 9: Send welcome email with platform subdomain URL
+    // Step 10: Send welcome email with platform subdomain URL
     try {
       await sendPartnerApprovalEmail(partnerRequest.contact_email, {
         company_name: partnerRequest.company_name,

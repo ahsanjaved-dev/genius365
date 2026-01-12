@@ -49,7 +49,7 @@ interface VariantFormData {
   slug: string
   name: string
   description: string
-  monthly_price_cents: number
+  monthly_price_cents: number // Form uses snake_case for API submission
   stripe_price_id: string
   max_workspaces: number
   is_active: boolean
@@ -62,7 +62,7 @@ const defaultFormData: VariantFormData = {
   description: "",
   monthly_price_cents: 0,
   stripe_price_id: "",
-  max_workspaces: 10,
+  max_workspaces: 30, // Default to 30 workspaces for agency plans
   is_active: true,
   sort_order: 0,
 }
@@ -124,11 +124,11 @@ export default function SuperAdminVariantsPage() {
       slug: variant.slug,
       name: variant.name,
       description: variant.description || "",
-      monthly_price_cents: variant.monthly_price_cents,
-      stripe_price_id: variant.stripe_price_id || "",
-      max_workspaces: variant.max_workspaces,
-      is_active: variant.is_active,
-      sort_order: variant.sort_order,
+      monthly_price_cents: variant.monthlyPriceCents ?? variant.monthly_price_cents ?? 0,
+      stripe_price_id: variant.stripePriceId ?? variant.stripe_price_id ?? "",
+      max_workspaces: variant.maxWorkspaces ?? variant.max_workspaces ?? 30,
+      is_active: variant.isActive ?? variant.is_active ?? true,
+      sort_order: variant.sortOrder ?? variant.sort_order ?? 0,
     })
     setEditDialogOpen(true)
   }
@@ -283,27 +283,27 @@ export default function SuperAdminVariantsPage() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1">
                           <DollarSign className="h-4 w-4 text-muted-foreground" />
-                          <span>{(variant.monthly_price_cents / 100).toFixed(0)}/mo</span>
+                          <span>{((variant.monthlyPriceCents ?? variant.monthly_price_cents ?? 0) / 100).toFixed(0)}/mo</span>
                         </div>
-                        {variant.stripe_price_id && (
+                        {(variant.stripePriceId || variant.stripe_price_id) && (
                           <p className="text-xs text-muted-foreground truncate max-w-[120px]">
-                            {variant.stripe_price_id}
+                            {variant.stripePriceId || variant.stripe_price_id}
                           </p>
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {variant.max_workspaces === -1 ? (
+                        {(variant.maxWorkspaces ?? variant.max_workspaces) === -1 ? (
                           <Badge variant="secondary">Unlimited</Badge>
                         ) : (
-                          <span>{variant.max_workspaces}</span>
+                          <span>{variant.maxWorkspaces ?? variant.max_workspaces ?? 30}</span>
                         )}
                       </td>
                       <td className="py-3 px-4">
                         <Badge variant="outline">{variant.partnerCount}</Badge>
                       </td>
                       <td className="py-3 px-4">
-                        <Badge variant={variant.is_active ? "default" : "secondary"}>
-                          {variant.is_active ? "Active" : "Inactive"}
+                        <Badge variant={(variant.isActive ?? variant.is_active) ? "default" : "secondary"}>
+                          {(variant.isActive ?? variant.is_active) ? "Active" : "Inactive"}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-right">

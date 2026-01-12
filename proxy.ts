@@ -94,9 +94,13 @@ function isApiBlockedForPartner(pathname: string): boolean {
 /**
  * Resolve partner from hostname using Supabase directly
  * (Can't use the normal partner resolution as it uses server-only headers)
+ * 
+ * @param hostname - The cleaned hostname (without port)
+ * @param fullHostname - The original hostname (may include port)
  */
 async function resolvePartnerFromHostname(
-  hostname: string
+  hostname: string,
+  fullHostname?: string
 ): Promise<{ is_platform_partner: boolean } | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -108,21 +112,38 @@ async function resolvePartnerFromHostname(
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  // Try to find partner by hostname in partner_domains
-  const { data: domainMatch } = await supabase
-    .from("partner_domains")
-    .select(
-      `
-      partner:partners!inner(
-        is_platform_partner
-      )
-    `
-    )
-    .eq("hostname", hostname)
-    .single()
+  // Build list of hostnames to try (handles both with and without port)
+  const hostnamesToTry = [hostname]
+  if (fullHostname && fullHostname !== hostname) {
+    hostnamesToTry.push(fullHostname)
+  }
+  // Also try with common dev ports if not already included
+  const platformDomain = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "localhost:3000"
+  if (platformDomain.includes(":")) {
+    const port = platformDomain.split(":")[1]
+    const hostnameWithPort = `${hostname}:${port}`
+    if (!hostnamesToTry.includes(hostnameWithPort)) {
+      hostnamesToTry.push(hostnameWithPort)
+    }
+  }
 
-  if (domainMatch?.partner) {
-    return (domainMatch.partner as { is_platform_partner: boolean }[])?.[0] ?? null
+  // Try to find partner by hostname in partner_domains (try multiple variations)
+  for (const hostnameVariant of hostnamesToTry) {
+    const { data: domainMatch } = await supabase
+      .from("partner_domains")
+      .select(
+        `
+        partner:partners!inner(
+          is_platform_partner
+        )
+      `
+      )
+      .eq("hostname", hostnameVariant)
+      .single()
+
+    if (domainMatch?.partner) {
+      return (domainMatch.partner as { is_platform_partner: boolean }[])?.[0] ?? null
+    }
   }
 
   // Check if it's a subdomain pattern (for dev mode)
@@ -177,8 +198,8 @@ export async function proxy(request: NextRequest) {
   // Update Supabase session
   const { supabaseResponse, user } = await updateSession(request)
 
-  // Resolve partner from hostname
-  const partner = await resolvePartnerFromHostname(cleanHostname)
+  // Resolve partner from hostname (pass both clean and full hostname for port handling)
+  const partner = await resolvePartnerFromHostname(cleanHostname, hostname)
 
   // If we couldn't resolve partner, allow request (fail open for safety)
   if (!partner) {

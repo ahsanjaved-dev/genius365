@@ -49,8 +49,10 @@ export async function clearPartnerCache(hostname?: string): Promise<void> {
 /**
  * Extracts the hostname from request headers
  * Handles various deployment scenarios (Vercel, custom domains, local dev)
+ * 
+ * @param includePort - If true, returns hostname with port (for domain lookups)
  */
-export async function getHostname(): Promise<string> {
+export async function getHostname(includePort = false): Promise<string> {
   const headersList = await headers()
 
   // Try various headers in order of preference
@@ -58,6 +60,10 @@ export async function getHostname(): Promise<string> {
     headersList.get("x-forwarded-host") || // Behind proxy (Vercel, etc.)
     headersList.get("host") || // Direct access
     "localhost" // Fallback
+
+  if (includePort) {
+    return host.toLowerCase()
+  }
 
   // Strip port number for local development (localhost:3000 → localhost)
   const hostname = host.split(":")[0]
@@ -133,6 +139,7 @@ function toResolvedPartner(partner: Partner): ResolvedPartner {
  */
 export async function getPartnerFromHost(): Promise<ResolvedPartner> {
   const hostname = await getHostname()
+  const hostnameWithPort = await getHostname(true)
   const adminClient = createAdminClient()
 
   // ============================================================================
@@ -180,32 +187,48 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
   console.log(`[Partner] Resolving partner for hostname: ${hostname}`)
 
   // Step 1: Try to find partner by exact hostname match in partner_domains
-  const { data: domainMatch, error: domainError } = await adminClient
-    .from("partner_domains")
-    .select(
-      `
-      hostname,
-      is_primary,
-      partner:partners!inner(
-        id,
-        name,
-        slug,
-        branding,
-        plan_tier,
-        features,
-        resource_limits,
-        is_platform_partner
-      )
-    `
-    )
-    .eq("hostname", hostname)
-    .single()
+  // Try multiple hostname variations (with/without port) for dev compatibility
+  const hostnamesToTry = [hostname]
+  if (hostnameWithPort !== hostname) {
+    hostnamesToTry.push(hostnameWithPort)
+  }
+  // Also try with platform domain port if different
+  if (env.platformDomain.includes(":")) {
+    const port = env.platformDomain.split(":")[1]
+    const hostnameWithPlatformPort = `${hostname}:${port}`
+    if (!hostnamesToTry.includes(hostnameWithPlatformPort)) {
+      hostnamesToTry.push(hostnameWithPlatformPort)
+    }
+  }
 
-  if (domainMatch?.partner && !domainError) {
-    const resolved = toResolvedPartner(domainMatch.partner as unknown as Partner)
-    await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
-    console.log(`[Partner] Resolved by hostname: ${resolved.name} (${resolved.slug})`)
-    return resolved
+  for (const hostnameVariant of hostnamesToTry) {
+    const { data: domainMatch, error: domainError } = await adminClient
+      .from("partner_domains")
+      .select(
+        `
+        hostname,
+        is_primary,
+        partner:partners!inner(
+          id,
+          name,
+          slug,
+          branding,
+          plan_tier,
+          features,
+          resource_limits,
+          is_platform_partner
+        )
+      `
+      )
+      .eq("hostname", hostnameVariant)
+      .single()
+
+    if (domainMatch?.partner && !domainError) {
+      const resolved = toResolvedPartner(domainMatch.partner as unknown as Partner)
+      await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
+      console.log(`[Partner] Resolved by hostname (${hostnameVariant}): ${resolved.name} (${resolved.slug})`)
+      return resolved
+    }
   }
 
   // Step 2: [DEV MODE] Try to extract subdomain and match by partner slug

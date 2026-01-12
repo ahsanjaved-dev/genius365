@@ -36,10 +36,6 @@ export async function getWorkspacePaywallStatus(workspaceId: string): Promise<Pa
     throw new Error("Database not configured")
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/e7abe0ce-adad-4c04-8933-7a7770164db8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'workspace-paywall.ts:34',message:'getWorkspacePaywallStatus called',data:{workspaceId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-
   // Fetch workspace with credits and subscription in one query
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
@@ -58,10 +54,6 @@ export async function getWorkspacePaywallStatus(workspaceId: string): Promise<Pa
       },
     },
   })
-
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/e7abe0ce-adad-4c04-8933-7a7770164db8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'workspace-paywall.ts:55',message:'Workspace fetched with subscription',data:{found:!!workspace,subscription:workspace?.subscription,isBillingExempt:workspace?.isBillingExempt,creditsBalance:workspace?.workspaceCredits?.balanceCents},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
   if (!workspace) {
     return {

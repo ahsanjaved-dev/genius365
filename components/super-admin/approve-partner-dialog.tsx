@@ -93,10 +93,10 @@ export function ApprovePartnerDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
         {step === "confirm" && (
           <>
-            <DialogHeader>
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
                 Approve Partner Request
@@ -106,7 +106,7 @@ export function ApprovePartnerDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
               {/* Partner info summary */}
               <div className="bg-muted rounded-lg p-4 space-y-2">
                 <div className="flex justify-between">
@@ -144,10 +144,10 @@ export function ApprovePartnerDialog({
                         <div className="flex items-center gap-2">
                           <span>{variant.name}</span>
                           <span className="text-muted-foreground">
-                            - ${(variant.monthly_price_cents / 100).toFixed(0)}/mo
+                            - ${((variant.monthlyPriceCents ?? variant.monthly_price_cents ?? 0) / 100).toFixed(0)}/mo
                           </span>
                           <span className="text-muted-foreground">
-                            ({variant.max_workspaces === -1 ? "∞" : variant.max_workspaces} workspaces)
+                            ({(variant.maxWorkspaces ?? variant.max_workspaces ?? 0) === -1 ? "∞" : (variant.maxWorkspaces ?? variant.max_workspaces ?? 0)} workspaces)
                           </span>
                         </div>
                       </SelectItem>
@@ -174,14 +174,14 @@ export function ApprovePartnerDialog({
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span>${(selectedVariant.monthly_price_cents / 100).toFixed(0)}/month</span>
+                      <span>${((selectedVariant.monthlyPriceCents ?? selectedVariant.monthly_price_cents ?? 0) / 100).toFixed(0)}/month</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Package className="h-4 w-4 text-muted-foreground" />
                       <span>
-                        {selectedVariant.max_workspaces === -1
+                        {(selectedVariant.maxWorkspaces ?? selectedVariant.max_workspaces ?? 0) === -1
                           ? "Unlimited workspaces"
-                          : `${selectedVariant.max_workspaces} workspaces`}
+                          : `${selectedVariant.maxWorkspaces ?? selectedVariant.max_workspaces ?? 0} workspaces`}
                       </span>
                     </div>
                   </div>
@@ -203,7 +203,7 @@ export function ApprovePartnerDialog({
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 border-t pt-4">
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
@@ -253,7 +253,7 @@ export function ApprovePartnerDialog({
 
         {step === "success" && provisionResult && (
           <>
-            <DialogHeader>
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
                 Partner Provisioned Successfully!
@@ -263,7 +263,7 @@ export function ApprovePartnerDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm text-green-800 dark:text-green-200">Partner</span>
@@ -305,7 +305,7 @@ export function ApprovePartnerDialog({
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 border-t pt-4">
               <Button onClick={handleClose}>Done</Button>
             </DialogFooter>
           </>

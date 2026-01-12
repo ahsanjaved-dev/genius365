@@ -281,7 +281,7 @@ export function EditPartnerRequestDialog({
                     <SelectItem value="none">No variant assigned</SelectItem>
                     {variants?.map((variant) => (
                       <SelectItem key={variant.id} value={variant.id}>
-                        {variant.name} - ${(variant.monthly_price_cents / 100).toFixed(0)}/mo ({variant.max_workspaces === -1 ? "Unlimited" : variant.max_workspaces} workspaces)
+                        {variant.name} - ${((variant.monthlyPriceCents ?? variant.monthly_price_cents ?? 0) / 100).toFixed(0)}/mo ({(variant.maxWorkspaces ?? variant.max_workspaces ?? 0) === -1 ? "Unlimited" : (variant.maxWorkspaces ?? variant.max_workspaces ?? 0)} workspaces)
                       </SelectItem>
                     ))}
                   </SelectContent>

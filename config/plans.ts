@@ -16,6 +16,7 @@ export interface WorkspacePlanFeatures {
   maxMinutesPerMonth: number // 0 = pay-as-you-go with credits
   maxIntegrations: number // -1 = unlimited
   storageGB: number // -1 = unlimited
+  maxWorkspaces?: number // For agency plans: number of workspaces included (-1 = unlimited)
   freeCredits?: number // Initial credits in dollars (Free plan only)
   hasApiAccess: boolean
   hasPrioritySupport: boolean
@@ -108,20 +109,20 @@ export const workspacePlans = {
       maxMinutesPerMonth: -1, // Custom
       maxIntegrations: -1, // Unlimited
       storageGB: -1, // Unlimited
+      maxWorkspaces: 30, // 30 workspaces included (including default workspace)
       hasApiAccess: true,
       hasPrioritySupport: true,
       hasCustomBranding: true,
       hasAdvancedAnalytics: true,
     },
     featuresList: [
-      "Unlimited AI agents",
-      "Custom minute pools",
+      "30 workspaces included",
+      "Unlimited AI agents per workspace",
       "White-label platform",
-      "Custom domain",
+      "Custom domain & branding",
       "Create your own pricing plans",
       "Dedicated account manager",
       "24/7 priority support",
-      "SLA guarantees",
       "Revenue sharing model",
     ],
     ctaText: "Request Access",
