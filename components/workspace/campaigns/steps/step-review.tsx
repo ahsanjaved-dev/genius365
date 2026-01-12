@@ -30,7 +30,10 @@ export function StepReview({ formData, updateFormData, errors, goToStep }: StepR
     warnings.push("No recipients imported - you'll need to add them after creation")
   }
 
-  if (!formData.selectedAgent?.external_phone_number) {
+  // Check if agent has a phone number (either external or assigned through our system)
+  const hasPhoneNumber = formData.selectedAgent?.external_phone_number || 
+                         formData.selectedAgent?.assigned_phone_number_id
+  if (!hasPhoneNumber) {
     warnings.push("Selected agent doesn't have a phone number assigned")
   }
 
@@ -138,9 +141,11 @@ export function StepReview({ formData, updateFormData, errors, goToStep }: StepR
                 <p className="font-medium">{formData.selectedAgent.name}</p>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Badge variant="secondary">{formData.selectedAgent.provider}</Badge>
-                  {formData.selectedAgent.external_phone_number && (
+                  {formData.selectedAgent.external_phone_number ? (
                     <span>{formData.selectedAgent.external_phone_number}</span>
-                  )}
+                  ) : formData.selectedAgent.assigned_phone_number_id ? (
+                    <span className="text-green-600 dark:text-green-400">Phone assigned</span>
+                  ) : null}
                 </div>
               </div>
             </div>

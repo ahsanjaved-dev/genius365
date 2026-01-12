@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
+// Import error suppression module FIRST - it sets up global handlers as a side effect
+import "./suppress-sdk-errors"
+
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Dispatch, MutableRefObject, SetStateAction } from "react"
 import { useParams } from "next/navigation"
@@ -43,9 +46,97 @@ function createLogger() {
   }
 }
 
+// Check if a message/error indicates a normal call end (not a real error)
+function isNormalCallEndMessage(input: any): boolean {
+  // Handle various input types
+  let message = ""
+  if (typeof input === "string") {
+    message = input
+  } else if (input?.message) {
+    message = input.message
+  } else if (input?.reason) {
+    message = input.reason
+  } else if (input?.toString) {
+    message = input.toString()
+  }
+  
+  const lowerMessage = message.toLowerCase()
+  return (
+    lowerMessage.includes("meeting has ended") ||
+    lowerMessage.includes("ejection") ||
+    lowerMessage.includes("call has ended") ||
+    lowerMessage.includes("meeting ended") ||
+    lowerMessage.includes("ended due to ejection")
+  )
+}
+
+// Track if error suppression is active
+let errorSuppressionActive = false
+let globalErrorHandler: ((event: ErrorEvent) => void) | null = null
+let globalRejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null
+let originalConsoleError: typeof console.error | null = null
+
+// Setup all error suppression mechanisms
+function setupErrorSuppression() {
+  if (typeof window === "undefined" || errorSuppressionActive) return
+  errorSuppressionActive = true
+  
+  // 1. Window error event handler (catches errors before Next.js overlay)
+  globalErrorHandler = (event: ErrorEvent): void => {
+    if (isNormalCallEndMessage(event.message) || isNormalCallEndMessage(event.error)) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      return
+    }
+  }
+  window.addEventListener("error", globalErrorHandler, true) // Use capture phase
+  
+  // 2. Unhandled rejection handler
+  globalRejectionHandler = (event: PromiseRejectionEvent): void => {
+    if (isNormalCallEndMessage(event.reason)) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+  }
+  window.addEventListener("unhandledrejection", globalRejectionHandler, true) // Use capture phase
+  
+  // 3. Console.error interceptor
+  originalConsoleError = console.error
+  console.error = (...args: any[]) => {
+    const shouldSuppress = args.some(arg => isNormalCallEndMessage(arg))
+    if (shouldSuppress) {
+      return // Silently suppress
+    }
+    originalConsoleError?.apply(console, args)
+  }
+}
+
+function cleanupErrorSuppression() {
+  if (typeof window === "undefined" || !errorSuppressionActive) return
+  
+  // Delay cleanup to catch any async errors after call ends
+  setTimeout(() => {
+    if (globalErrorHandler) {
+      window.removeEventListener("error", globalErrorHandler, true)
+      globalErrorHandler = null
+    }
+    if (globalRejectionHandler) {
+      window.removeEventListener("unhandledrejection", globalRejectionHandler, true)
+      globalRejectionHandler = null
+    }
+    if (originalConsoleError) {
+      console.error = originalConsoleError
+      originalConsoleError = null
+    }
+    errorSuppressionActive = false
+  }, 5000) // 5 second delay to catch all async errors
+}
+
 function formatVapiError(error: any): string {
   const message = error?.message || error?.reason || error?.toString?.() || ""
-  if (message.toLowerCase().includes("meeting has ended") || message.toLowerCase().includes("ejection")) {
+  if (isNormalCallEndMessage(error)) {
     return "The call session ended. Please start a new test call."
   }
   if (message.toLowerCase().includes("token") || message.toLowerCase().includes("auth")) {
@@ -294,6 +385,12 @@ export function useVapiWebCall() {
         })
 
         vapiRef.current.on("error", (error: any) => {
+          if (isNormalCallEndMessage(error)) {
+            // This is a normal call termination (e.g., agent ended the call), not an actual error
+            // Don't set error state - let the call-end handler process this
+            return
+          }
+          
           log.warn("SDK error event", error)
           setState((prev) => ({ ...prev, status: "error", error: formatVapiError(error) }))
           stopDurationTimer()
@@ -441,7 +538,10 @@ export function useVapiWebCall() {
     })
   }, [endCall, state.status, stopDurationTimer])
 
+  // Setup error suppression on mount (console interceptor + rejection handler)
   useEffect(() => {
+    setupErrorSuppression()
+    
     return () => {
       // Cleanup on unmount
       if (vapiRef.current) {
@@ -452,6 +552,9 @@ export function useVapiWebCall() {
         }
       }
       if (durationIntervalRef.current) clearInterval(durationIntervalRef.current)
+      
+      // Delayed cleanup to catch any async errors after unmount
+      cleanupErrorSuppression()
     }
   }, [])
 

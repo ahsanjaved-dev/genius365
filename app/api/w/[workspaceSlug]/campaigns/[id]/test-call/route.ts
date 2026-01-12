@@ -41,7 +41,8 @@ export async function POST(
         agent:ai_agents!agent_id(
           id, 
           external_agent_id,
-          external_phone_number
+          external_phone_number,
+          assigned_phone_number_id
         )
       `)
       .eq("id", id)
@@ -58,7 +59,24 @@ export async function POST(
       return apiError("Agent has not been synced with the voice provider")
     }
 
-    const cli = agent.external_phone_number
+    // Get CLI (caller ID) from agent's phone number
+    // First try external_phone_number, then look up from assigned_phone_number_id
+    let cli = agent.external_phone_number
+    
+    if (!cli && agent.assigned_phone_number_id) {
+      // Look up the phone number from the assignment
+      const { data: phoneNumber } = await ctx.adminClient
+        .from("phone_numbers")
+        .select("phone_number, phone_number_e164")
+        .eq("id", agent.assigned_phone_number_id)
+        .single()
+      
+      if (phoneNumber) {
+        // Prefer E.164 format, fall back to regular phone number
+        cli = phoneNumber.phone_number_e164 || phoneNumber.phone_number
+      }
+    }
+    
     if (!cli) {
       return apiError("Agent does not have a phone number assigned")
     }

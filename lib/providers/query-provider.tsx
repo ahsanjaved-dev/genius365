@@ -1,5 +1,8 @@
 "use client"
 
+// Import SDK error suppression EARLY to catch errors before Next.js overlay
+import "@/lib/hooks/use-web-call/suppress-sdk-errors"
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import { useState } from "react"

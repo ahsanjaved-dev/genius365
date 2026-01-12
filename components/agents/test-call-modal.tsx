@@ -1,5 +1,8 @@
 "use client"
 
+// Import SDK error suppression FIRST
+import "@/lib/hooks/use-web-call/suppress-sdk-errors"
+
 import { useEffect, useRef } from "react"
 import {
   Dialog,

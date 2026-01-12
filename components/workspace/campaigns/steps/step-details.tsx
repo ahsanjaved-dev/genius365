@@ -140,12 +140,18 @@ export function StepDetails({
                     {formData.selectedAgent.description}
                   </p>
                 )}
-                {formData.selectedAgent.external_phone_number && (
+                {/* Show phone number - either external or assigned */}
+                {formData.selectedAgent.external_phone_number ? (
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <Phone className="h-3.5 w-3.5" />
                     <span>{formData.selectedAgent.external_phone_number}</span>
                   </div>
-                )}
+                ) : formData.selectedAgent.assigned_phone_number_id ? (
+                  <div className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span>Phone number assigned</span>
+                  </div>
+                ) : null}
                 
                 {/* Show a preview of the agent's greeting if available */}
                 {(formData.selectedAgent.config as { greeting?: string })?.greeting && (

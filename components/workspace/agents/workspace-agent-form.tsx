@@ -469,7 +469,7 @@ export function WorkspaceAgentForm({
                             <span className="font-mono">
                               {number.friendly_name || number.phone_number}
                             </span>
-                            {number.external_id ? (
+                            {number.is_assigned_to_this_workspace ? (
                               <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                 Synced
                               </Badge>
