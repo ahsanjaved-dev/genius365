@@ -29,6 +29,8 @@ import {
   PhoneOutgoing,
   Copy,
   Wrench,
+  X,
+  Plus,
 } from "lucide-react"
 import type { AIAgent, FunctionTool, AgentDirection } from "@/types/database.types"
 import type { CreateWorkspaceAgentInput } from "@/types/api.types"
@@ -103,6 +105,9 @@ export function WorkspaceAgentForm({
   const [assignedPhoneNumberId, setAssignedPhoneNumberId] = useState<string | null>(
     initialData?.assigned_phone_number_id || null
   )
+
+  // Voice list state
+  const [isVoiceListOpen, setIsVoiceListOpen] = useState(false)
 
   // Fetch available phone numbers for assignment (only for outbound agents)
   const {
@@ -259,7 +264,7 @@ export function WorkspaceAgentForm({
         </div>
       ) : (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
           <div className="flex-1">
             <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
               No {getProviderDisplayName(selectedProvider)} API key assigned
@@ -640,7 +645,7 @@ export function WorkspaceAgentForm({
                             <>
                               <div
                                 className={cn(
-                                  "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                                  "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
                                   colors.bg
                                 )}
                               >
@@ -725,7 +730,7 @@ export function WorkspaceAgentForm({
                                 <div className="flex items-start gap-3">
                                   <div
                                     className={cn(
-                                      "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                                      "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
                                       colors.bg
                                     )}
                                   >
