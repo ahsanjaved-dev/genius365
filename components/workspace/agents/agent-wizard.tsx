@@ -48,7 +48,12 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { functionToolsArraySchema, type CreateWorkspaceAgentInput } from "@/types/api.types"
-import type { FunctionTool, KnowledgeDocument, KnowledgeDocumentType, AgentDirection } from "@/types/database.types"
+import type {
+  FunctionTool,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
+  AgentDirection,
+} from "@/types/database.types"
 import { FunctionToolEditor } from "./function-tool-editor"
 import { useActiveKnowledgeDocuments } from "@/lib/hooks/use-workspace-knowledge-base"
 import { useAvailablePhoneNumbers } from "@/lib/hooks/use-workspace-agents"
@@ -85,11 +90,11 @@ interface WizardFormData {
   // Knowledge Base
   enableKnowledgeBase: boolean
   knowledgeDocumentIds: string[]
-  // Step 2: Voice
+  // Voice Configuration
+  enableVoice: boolean
   voice: string
   voiceSpeed: number
-  voicePitch: number
-  // Step 3: Prompts & Tools
+  // Step 2: Prompts & Tools
   systemPrompt: string
   greeting: string
   style: "formal" | "friendly" | "casual"
@@ -100,7 +105,10 @@ interface WizardFormData {
 }
 
 // Knowledge document type icons
-const documentTypeIcons: Record<KnowledgeDocumentType, React.ComponentType<{ className?: string }>> = {
+const documentTypeIcons: Record<
+  KnowledgeDocumentType,
+  React.ComponentType<{ className?: string }>
+> = {
   document: FileText,
   faq: HelpCircle,
   product_info: ShoppingBag,
@@ -143,15 +151,6 @@ const LANGUAGES = [
   { value: "pt-BR", label: "Portuguese (Brazil)" },
   { value: "ja-JP", label: "Japanese" },
   { value: "zh-CN", label: "Chinese (Simplified)" },
-]
-
-const VOICES = [
-  { id: "aria", name: "Aria", gender: "Female", style: "Warm", color: "bg-pink-100", textColor: "text-pink-600" },
-  { id: "jason", name: "Jason", gender: "Male", style: "Professional", color: "bg-blue-100", textColor: "text-blue-600" },
-  { id: "luna", name: "Luna", gender: "Female", style: "Friendly", color: "bg-purple-100", textColor: "text-purple-600" },
-  { id: "marcus", name: "Marcus", gender: "Male", style: "Deep", color: "bg-green-100", textColor: "text-green-600" },
-  { id: "sophia", name: "Sophia", gender: "Female", style: "Calm", color: "bg-amber-100", textColor: "text-amber-600" },
-  { id: "ethan", name: "Ethan", gender: "Male", style: "Energetic", color: "bg-cyan-100", textColor: "text-cyan-600" },
 ]
 
 const PROMPT_TEMPLATES = {
@@ -197,7 +196,10 @@ Always verify the customer's identity and confirm appointment details before fin
 
 export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardProps) {
   const [currentStep, setCurrentStep] = useState(1)
-  const totalSteps = 3
+  const totalSteps = 2
+
+  // Get initial default voice for VAPI
+  const initialDefaultVoice = getDefaultVoice("vapi")
 
   const [formData, setFormData] = useState<WizardFormData>({
     name: "",
@@ -210,9 +212,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     phoneNumberId: null,
     enableKnowledgeBase: false,
     knowledgeDocumentIds: [],
-    voice: "aria",
+    enableVoice: false, // Voice is required, user must enable and select
+    voice: "", // Empty until user selects
     voiceSpeed: 1,
-    voicePitch: 1,
     systemPrompt: "",
     greeting: "Hello! Thank you for calling. How can I help you today?",
     style: "friendly",
@@ -221,13 +223,22 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     customVariables: [],
   })
 
+  // Get available voices based on selected provider
+  const availableVoices = getVoicesForProvider(formData.provider)
+
   // Fetch knowledge documents for selection
-  const { data: knowledgeDocsData, isLoading: isLoadingDocs, error: docsError } = useActiveKnowledgeDocuments()
-  
+  const {
+    data: knowledgeDocsData,
+    isLoading: isLoadingDocs,
+    error: docsError,
+  } = useActiveKnowledgeDocuments()
+
   // Fetch available phone numbers for assignment
-  const { data: availablePhoneNumbers, isLoading: isLoadingPhoneNumbers } = useAvailablePhoneNumbers()
+  const { data: availablePhoneNumbers, isLoading: isLoadingPhoneNumbers } =
+    useAvailablePhoneNumbers()
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isVoiceListOpen, setIsVoiceListOpen] = useState(false)
 
   // ============================================================================
   // VALIDATION
@@ -240,9 +251,15 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
       if (!formData.name.trim()) {
         newErrors.name = "Agent name is required"
       }
+      // Voice is required
+      if (!formData.enableVoice) {
+        newErrors.voice = "Voice configuration is required"
+      } else if (!formData.voice) {
+        newErrors.voice = "Please select a voice for your agent"
+      }
     }
 
-    if (step === 3) {
+    if (step === 2) {
       if (!formData.systemPrompt.trim()) {
         newErrors.systemPrompt = "System prompt is required"
       }
@@ -277,7 +294,22 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
   // ============================================================================
 
   const updateFormData = <K extends keyof WizardFormData>(key: K, value: WizardFormData[K]) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+    setFormData((prev) => {
+      const updated = { ...prev, [key]: value }
+
+      // When provider changes, reset voice selection and open voice list
+      if (key === "provider") {
+        updated.voice = "" // Reset voice, user must select again
+        setIsVoiceListOpen(false) // Reset list state
+      }
+
+      // When voice toggle is disabled, reset voice
+      if (key === "enableVoice" && value === false) {
+        updated.voice = ""
+      }
+
+      return updated
+    })
     if (errors[key]) {
       setErrors((prev) => {
         const next = { ...prev }
@@ -367,48 +399,39 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               >
                 {currentStep > 1 ? <Check className="w-3 h-3" /> : "1"}
               </div>
-              <span className={cn("text-sm font-medium", currentStep === 1 ? "text-foreground" : "text-muted-foreground")}>
-                Basic Info
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  currentStep === 1 ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                Setup & Voice
               </span>
             </div>
 
-            <div className={cn("flex-1 h-0.5 mx-4", currentStep > 1 ? "bg-green-500" : "bg-border")} />
+            <div
+              className={cn("flex-1 h-0.5 mx-4", currentStep > 1 ? "bg-green-500" : "bg-border")}
+            />
 
             {/* Step 2 */}
             <div className="flex items-center gap-2">
               <div
                 className={cn(
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
-                  currentStep > 2
-                    ? "bg-green-500 text-white"
-                    : currentStep === 2
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                )}
-              >
-                {currentStep > 2 ? <Check className="w-3 h-3" /> : "2"}
-              </div>
-              <span className={cn("text-sm font-medium", currentStep === 2 ? "text-foreground" : "text-muted-foreground")}>
-                Voice
-              </span>
-            </div>
-
-            <div className={cn("flex-1 h-0.5 mx-4", currentStep > 2 ? "bg-green-500" : "bg-border")} />
-
-            {/* Step 3 */}
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
-                  currentStep === 3
+                  currentStep === 2
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground"
                 )}
               >
-                3
+                2
               </div>
-              <span className={cn("text-sm font-medium", currentStep === 3 ? "text-foreground" : "text-muted-foreground")}>
-                Prompts
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  currentStep === 2 ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                Prompts & Tools
               </span>
             </div>
           </div>
@@ -420,10 +443,14 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2 mb-1">
-              <Badge variant="secondary" className="text-xs">Step 1 of 3</Badge>
+              <Badge variant="secondary" className="text-xs">
+                Step 1 of 2
+              </Badge>
             </div>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Set up your agent's identity and configuration</CardDescription>
+            <CardTitle>Basic Information & Voice</CardTitle>
+            <CardDescription>
+              Set up your agent's identity, configuration, and voice
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Agent Name */}
@@ -452,7 +479,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background resize-y"
                 rows={3}
               />
-              <p className="text-xs text-muted-foreground">Brief description of the agent's purpose and capabilities</p>
+              <p className="text-xs text-muted-foreground">
+                Brief description of the agent's purpose and capabilities
+              </p>
             </div>
 
             {/* Provider Selection */}
@@ -464,7 +493,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 {PROVIDERS.map((provider) => (
                   <div
                     key={provider.id}
-                    onClick={() => updateFormData("provider", provider.id as WizardFormData["provider"])}
+                    onClick={() =>
+                      updateFormData("provider", provider.id as WizardFormData["provider"])
+                    }
                     className={cn(
                       "relative p-4 rounded-lg border-2 cursor-pointer transition-all",
                       formData.provider === provider.id
@@ -476,8 +507,15 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                       {provider.badge}
                     </Badge>
                     <div className="flex items-center gap-3 mb-2">
-                      <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", provider.color)}>
-                        <span className={cn("font-bold", provider.textColor)}>{provider.name[0]}</span>
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-lg flex items-center justify-center",
+                          provider.color
+                        )}
+                      >
+                        <span className={cn("font-bold", provider.textColor)}>
+                          {provider.name[0]}
+                        </span>
                       </div>
                       <div>
                         <h4 className="font-semibold">{provider.name}</h4>
@@ -494,7 +532,10 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               <Label>
                 Language <span className="text-destructive">*</span>
               </Label>
-              <Select value={formData.language} onValueChange={(v) => updateFormData("language", v)}>
+              <Select
+                value={formData.language}
+                onValueChange={(v) => updateFormData("language", v)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -557,7 +598,12 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                       )}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", direction.color)}>
+                        <div
+                          className={cn(
+                            "w-10 h-10 rounded-lg flex items-center justify-center",
+                            direction.color
+                          )}
+                        >
                           <Icon className={cn("w-5 h-5", direction.iconColor)} />
                         </div>
                         <h4 className="font-semibold">{direction.label}</h4>
@@ -600,7 +646,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                     <div>
                       <Label className="mb-0">Phone Number</Label>
                       <p className="text-xs text-muted-foreground">
-                        {formData.agentDirection === "outbound" 
+                        {formData.agentDirection === "outbound"
                           ? "Select caller ID for outbound calls"
                           : "Assign a phone number for inbound calls"}
                       </p>
@@ -625,7 +671,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                     ) : availablePhoneNumbers && availablePhoneNumbers.length > 0 ? (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">
-                          {formData.agentDirection === "outbound" ? "Select Caller ID" : "Select Phone Number"}
+                          {formData.agentDirection === "outbound"
+                            ? "Select Caller ID"
+                            : "Select Phone Number"}
                         </Label>
                         <Select
                           value={formData.phoneNumberId || ""}
@@ -652,7 +700,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                          {availablePhoneNumbers.length} number{availablePhoneNumbers.length !== 1 ? "s" : ""} available
+                          {availablePhoneNumbers.length} number
+                          {availablePhoneNumbers.length !== 1 ? "s" : ""} available
                         </p>
                       </div>
                     ) : (
@@ -680,7 +729,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   </div>
                   <div>
                     <Label className="mb-0">Knowledge Base</Label>
-                    <p className="text-xs text-muted-foreground">Connect documents to give your agent context</p>
+                    <p className="text-xs text-muted-foreground">
+                      Connect documents to give your agent context
+                    </p>
                   </div>
                 </div>
                 <Switch
@@ -716,7 +767,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                           {knowledgeDocsData.data.map((doc: KnowledgeDocument) => {
                             const DocIcon = documentTypeIcons[doc.document_type] || FileText
                             const isSelected = formData.knowledgeDocumentIds.includes(doc.id)
-                            
+
                             return (
                               <div
                                 key={doc.id}
@@ -765,7 +816,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                         </div>
                       </ScrollArea>
                       <p className="text-xs text-muted-foreground">
-                        {formData.knowledgeDocumentIds.length} document{formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} selected
+                        {formData.knowledgeDocumentIds.length} document
+                        {formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} selected
                       </p>
                     </div>
                   ) : (
@@ -781,115 +833,238 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               )}
             </div>
 
+            <Separator />
+
+            {/* Voice Configuration */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                    <Volume2 className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <div>
+                    <Label className="mb-0">
+                      Voice Configuration <span className="text-destructive">*</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground">Choose the voice for your agent</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={formData.enableVoice}
+                  onCheckedChange={(checked) => {
+                    updateFormData("enableVoice", checked)
+                    if (!checked) {
+                      setIsVoiceListOpen(false)
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Voice Selection */}
+              {formData.enableVoice && (
+                <div className="ml-13 pl-4 border-l-2 border-violet-500/20 space-y-4">
+                  {errors.voice && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      {errors.voice}
+                    </div>
+                  )}
+
+                  {/* Selected Voice Display */}
+                  {formData.voice && !isVoiceListOpen && (
+                    <div className="space-y-3">
+                      {(() => {
+                        const selectedVoice = availableVoices.find((v) => v.id === formData.voice)
+                        if (!selectedVoice) return null
+                        const colors = getVoiceCardColor(selectedVoice.gender)
+                        return (
+                          <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={cn(
+                                  "w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0",
+                                  colors.bg
+                                )}
+                              >
+                                <span className={cn("font-semibold text-lg", colors.text)}>
+                                  {selectedVoice.name[0]}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold">{selectedVoice.name}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {selectedVoice.gender}
+                                  </Badge>
+                                  <Check className="h-4 w-4 text-green-600 ml-auto" />
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {selectedVoice.accent} • Age {selectedVoice.age}
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {selectedVoice.characteristics}
+                                </p>
+                                {formData.provider === "retell" && (
+                                  <p className="text-xs text-muted-foreground mt-2">
+                                    Voice ID:{" "}
+                                    <code className="bg-muted px-1 rounded">
+                                      {selectedVoice.id}
+                                    </code>{" "}
+                                    • Provider: ElevenLabs
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsVoiceListOpen(true)}
+                              >
+                                Change Voice
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Voice Speed */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Voice Speed</Label>
+                        <Select
+                          value={String(formData.voiceSpeed)}
+                          onValueChange={(v) => updateFormData("voiceSpeed", parseFloat(v))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0.8">Slow</SelectItem>
+                            <SelectItem value="1">Balanced</SelectItem>
+                            <SelectItem value="1.2">Fast</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Controls how fast the agent speaks
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Voice List (shown when no voice selected or editing) */}
+                  {(!formData.voice || isVoiceListOpen) && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">
+                          Select Voice ({formData.provider === "vapi" ? "Vapi" : "Retell"})
+                        </Label>
+                        {isVoiceListOpen && formData.voice && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsVoiceListOpen(false)}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
+                      <ScrollArea
+                        className={cn(
+                          "rounded-lg border p-2",
+                          availableVoices.length <= 3 ? "h-auto" : "h-[320px]"
+                        )}
+                      >
+                        <div className="space-y-2">
+                          {availableVoices.map((voice) => {
+                            const colors = getVoiceCardColor(voice.gender)
+                            return (
+                              <div
+                                key={voice.id}
+                                className="p-3 rounded-lg hover:bg-muted border border-transparent hover:border-border transition-all"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div
+                                    className={cn(
+                                      "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                                      colors.bg
+                                    )}
+                                  >
+                                    <span className={cn("font-semibold", colors.text)}>
+                                      {voice.name[0]}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-sm">{voice.name}</p>
+                                      <Badge variant="outline" className="text-xs">
+                                        {voice.gender}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {voice.accent} • Age {voice.age}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                      {voice.characteristics}
+                                    </p>
+                                    {formData.provider === "retell" && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Voice ID:{" "}
+                                        <code className="bg-muted px-1 rounded text-xs">
+                                          {voice.id}
+                                        </code>
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      updateFormData("voice", voice.id)
+                                      setIsVoiceListOpen(false)
+                                    }}
+                                  >
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <p className="text-xs text-muted-foreground">
+                        {availableVoices.length} voice{availableVoices.length !== 1 ? "s" : ""}{" "}
+                        available for {formData.provider === "vapi" ? "Vapi" : "Retell"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!formData.enableVoice && (
+                <div className="ml-13 pl-4 border-l-2 border-violet-500/20">
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    Voice configuration is required. Please enable and select a voice.
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
 
       {currentStep === 2 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2 mb-1">
-              <Badge variant="secondary" className="text-xs">Step 2 of 3</Badge>
-            </div>
-            <CardTitle>Voice Configuration</CardTitle>
-            <CardDescription>Choose and customize the voice for your agent</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Voice Selection */}
-            <div className="space-y-3">
-              <Label>
-                Voice <span className="text-destructive">*</span>
-              </Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {VOICES.map((voice) => (
-                  <div
-                    key={voice.id}
-                    onClick={() => updateFormData("voice", voice.id)}
-                    className={cn(
-                      "p-3 rounded-lg border-2 cursor-pointer transition-all",
-                      formData.voice === voice.id
-                        ? "border-primary bg-primary/5"
-                        : "border-transparent hover:border-primary/50 bg-card"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", voice.color)}>
-                        <span className={cn("font-semibold", voice.textColor)}>{voice.name[0]}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">{voice.name}</p>
-                        <p className="text-xs text-muted-foreground">{voice.gender} • {voice.style}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Voice Speed */}
-            <div className="space-y-2">
-              <Label>Voice Speed</Label>
-              <Select
-                value={String(formData.voiceSpeed)}
-                onValueChange={(v) => updateFormData("voiceSpeed", parseFloat(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0.8">Slow</SelectItem>
-                  <SelectItem value="1">Balanced</SelectItem>
-                  <SelectItem value="1.2">Fast</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">Controls how fast the agent speaks</p>
-            </div>
-
-            {/* Voice Pitch */}
-            <div className="space-y-2">
-              <Label>Voice Pitch</Label>
-              <Select
-                value={String(formData.voicePitch)}
-                onValueChange={(v) => updateFormData("voicePitch", parseFloat(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0.8">Low</SelectItem>
-                  <SelectItem value="1">Normal</SelectItem>
-                  <SelectItem value="1.2">High</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">Adjusts the tone of the voice</p>
-            </div>
-
-            {/* Voice Preview */}
-            <div className="p-4 rounded-lg bg-muted/50 border border-border">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Volume2 className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Voice Preview</p>
-                  <p className="text-sm text-muted-foreground">Click to hear a sample of the selected voice</p>
-                </div>
-                <Button type="button" variant="default">
-                  <Play className="w-4 h-4 mr-2" />
-                  Test Voice
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {currentStep === 3 && (
         <>
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2 mb-1">
-                <Badge variant="secondary" className="text-xs">Step 3 of 3</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  Step 2 of 2
+                </Badge>
               </div>
               <CardTitle>System Prompt</CardTitle>
               <CardDescription>Define how your agent should behave and respond</CardDescription>
@@ -901,7 +1076,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   <Label>
                     System Prompt <span className="text-destructive">*</span>
                   </Label>
-                  <span className="text-xs text-muted-foreground">{formData.systemPrompt.length} characters</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formData.systemPrompt.length} characters
+                  </span>
                 </div>
                 <textarea
                   value={formData.systemPrompt}
@@ -912,15 +1089,32 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                     errors.systemPrompt ? "border-destructive" : "border-input"
                   )}
                 />
-                {errors.systemPrompt && <p className="text-sm text-destructive">{errors.systemPrompt}</p>}
+                {errors.systemPrompt && (
+                  <p className="text-sm text-destructive">{errors.systemPrompt}</p>
+                )}
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("support")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTemplate("support")}
+                  >
                     Support Template
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("sales")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTemplate("sales")}
+                  >
                     Sales Template
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => applyTemplate("booking")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTemplate("booking")}
+                  >
                     Booking Template
                   </Button>
                 </div>
@@ -957,7 +1151,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                     return (
                       <div
                         key={style.value}
-                        onClick={() => updateFormData("style", style.value as WizardFormData["style"])}
+                        onClick={() =>
+                          updateFormData("style", style.value as WizardFormData["style"])
+                        }
                         className={cn(
                           "p-3 rounded-lg border cursor-pointer transition-all text-center",
                           formData.style === style.value
@@ -975,8 +1171,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
             </CardContent>
           </Card>
 
-          {/* Webhook URL - Only for Retell */}
-          {formData.provider === "retell" && (
+          {/* Webhook URL - For Retell and VAPI */}
+          {(formData.provider === "retell" || formData.provider === "vapi") && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -984,7 +1180,11 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   Webhook URL
                 </CardTitle>
                 <CardDescription>
-                  Your server endpoint that receives tool execution requests and call data.
+                  Your server endpoint that receives{" "}
+                  {formData.provider === "retell"
+                    ? "tool execution requests and call data"
+                    : "function tool calls and call events"}
+                  .
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1004,9 +1204,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 <Wrench className="w-5 h-5" />
                 Function Tools
               </CardTitle>
-              <CardDescription>
-                Add tools to extend your agent's capabilities.
-              </CardDescription>
+              <CardDescription>Add tools to extend your agent's capabilities.</CardDescription>
             </CardHeader>
             <CardContent>
               <FunctionToolEditor
@@ -1036,7 +1234,11 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div className="text-sm text-blue-700 dark:text-blue-300">
                   <p className="font-medium mb-1">How Custom Variables Work</p>
-                  <p>When running campaigns, these variables will be replaced with recipient-specific data from your CSV import. For example, {"{{first_name}}"} becomes "John" for each recipient.</p>
+                  <p>
+                    When running campaigns, these variables will be replaced with recipient-specific
+                    data from your CSV import. For example, {"{{first_name}}"} becomes "John" for
+                    each recipient.
+                  </p>
                 </div>
               </div>
 
@@ -1053,7 +1255,10 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                               value={variable.name}
                               onChange={(e) => {
                                 const updated = [...formData.customVariables]
-                                updated[index] = { ...variable, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }
+                                updated[index] = {
+                                  ...variable,
+                                  name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+                                }
                                 updateFormData("customVariables", updated)
                               }}
                               placeholder="e.g., product_interest"
@@ -1102,7 +1307,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                       </div>
                       <div className="mt-2 pt-2 border-t">
                         <p className="text-xs text-muted-foreground">
-                          Use in prompt: <code className="bg-muted px-1 py-0.5 rounded">{`{{${variable.name || "variable_name"}}}`}</code>
+                          Use in prompt:{" "}
+                          <code className="bg-muted px-1 py-0.5 rounded">{`{{${variable.name || "variable_name"}}}`}</code>
                         </p>
                       </div>
                     </div>
@@ -1146,7 +1352,11 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                         onClick={() => {
                           updateFormData("customVariables", [
                             ...formData.customVariables,
-                            { name: suggestion.name, description: suggestion.desc, defaultValue: "" },
+                            {
+                              name: suggestion.name,
+                              description: suggestion.desc,
+                              defaultValue: "",
+                            },
                           ])
                         }}
                       >
@@ -1180,22 +1390,29 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   <p className="text-muted-foreground">Direction</p>
                   <p className="font-medium capitalize">
                     {formData.agentDirection}
-                    {formData.agentDirection === "inbound" && formData.allowOutbound && " (+outbound)"}
+                    {formData.agentDirection === "inbound" &&
+                      formData.allowOutbound &&
+                      " (+outbound)"}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Language</p>
-                  <p className="font-medium">{LANGUAGES.find((l) => l.value === formData.language)?.label || "-"}</p>
+                  <p className="font-medium">
+                    {LANGUAGES.find((l) => l.value === formData.language)?.label || "-"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Voice</p>
-                  <p className="font-medium">{VOICES.find((v) => v.id === formData.voice)?.name || "-"}</p>
+                  <p className="font-medium">
+                    {availableVoices.find((v) => v.id === formData.voice)?.name || "-"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Phone Number</p>
                   <p className="font-medium">
                     {formData.enablePhoneNumber && formData.phoneNumberId
-                      ? availablePhoneNumbers?.find(p => p.id === formData.phoneNumberId)?.phone_number || "Selected"
+                      ? availablePhoneNumbers?.find((p) => p.id === formData.phoneNumberId)
+                          ?.phone_number || "Selected"
                       : formData.agentDirection === "outbound"
                         ? "N/A (Outbound)"
                         : "Not assigned"}
@@ -1211,11 +1428,19 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 </div>
                 <div>
                   <p className="text-muted-foreground">Tools</p>
-                  <p className="font-medium">{formData.tools.length === 0 ? "No tools" : `${formData.tools.length} tool${formData.tools.length > 1 ? "s" : ""}`}</p>
+                  <p className="font-medium">
+                    {formData.tools.length === 0
+                      ? "No tools"
+                      : `${formData.tools.length} tool${formData.tools.length > 1 ? "s" : ""}`}
+                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Custom Variables</p>
-                  <p className="font-medium">{formData.customVariables.length === 0 ? "None" : `${formData.customVariables.length} variable${formData.customVariables.length > 1 ? "s" : ""}`}</p>
+                  <p className="font-medium">
+                    {formData.customVariables.length === 0
+                      ? "None"
+                      : `${formData.customVariables.length} variable${formData.customVariables.length > 1 ? "s" : ""}`}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -1262,4 +1487,3 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     </div>
   )
 }
-
