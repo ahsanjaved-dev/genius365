@@ -13,20 +13,25 @@ import { mapFunctionToolsToVapi } from "@/lib/integrations/function_tools/vapi/m
 import { DEFAULT_END_CALL_TOOL } from "@/lib/integrations/function_tools/vapi/tools/call-control/end-call"
 import type { VapiTool as FunctionToolsVapiTool } from "@/lib/integrations/function_tools/vapi/types"
 import { env } from "@/lib/env"
+import { getVapiVoices, getDefaultVoice, findVoiceById } from "@/lib/voice"
 
 // ============================================================================
-// DEFAULT VOICE ID
+// DEFAULT VOICE
 // ============================================================================
 
-// Default ElevenLabs voice ID (Rachel - female, American)
-const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+// Get available VAPI voices for validation
+const VAPI_VOICE_IDS = getVapiVoices().map((v) => v.id)
 
-// Validates if a string looks like a valid ElevenLabs voice ID
-// ElevenLabs IDs are 20-character alphanumeric strings
-function isValidElevenLabsVoiceId(voiceId: string | undefined): boolean {
+// Default VAPI voice (Harry - clear, energetic, professional)
+const DEFAULT_VAPI_VOICE_ID = getDefaultVoice("vapi").id
+
+/**
+ * Validates if a voice ID is a valid VAPI built-in voice
+ * IMPORTANT: VAPI voice IDs are case-sensitive (e.g., "Rohan" not "rohan")
+ */
+function isValidVapiVoiceId(voiceId: string | undefined): boolean {
   if (!voiceId) return false
-  // ElevenLabs voice IDs are exactly 20 characters, alphanumeric
-  return /^[a-zA-Z0-9]{20,}$/.test(voiceId)
+  return VAPI_VOICE_IDS.includes(voiceId)
 }
 
 // ============================================================================
@@ -201,15 +206,18 @@ function mapTranscriberProviderToVapi(provider: string | null | undefined): stri
 }
 
 // Reverse mapping: VAPI values to internal values
+// NOTE: VAPI's built-in voice provider maps to "elevenlabs" in our database
+// since "vapi" is not a valid voice_provider enum value in the database
 function mapVoiceProviderFromVapi(provider: string | null | undefined): string {
   const mapping: Record<string, string> = {
     "11labs": "elevenlabs",
+    vapi: "elevenlabs", // VAPI's built-in voices map to elevenlabs in DB
     deepgram: "deepgram",
     azure: "azure",
     openai: "openai",
     cartesia: "cartesia",
   }
-  return mapping[provider || ""] || provider || "elevenlabs"
+  return mapping[provider || ""] || "elevenlabs"
 }
 
 function mapTranscriberProviderFromVapi(provider: string | null | undefined): string {
@@ -258,19 +266,23 @@ export function mapToVapi(agent: AIAgent): VapiAssistantPayload {
   }
 
   // Voice configuration - ALWAYS include with validated voice ID
-  // Use the provided voice_id only if it looks like a valid ElevenLabs ID
-  const voiceId = isValidElevenLabsVoiceId(config.voice_id) ? config.voice_id! : DEFAULT_VOICE_ID
-
-  payload.voice = {
-    provider: mapVoiceProviderToVapi(agent.voice_provider),
-    voiceId: voiceId,
+  // Check if it's a valid VAPI built-in voice first
+  // IMPORTANT: VAPI expects capitalized voice IDs (e.g., "Rohan" not "rohan")
+  // NOTE: VAPI's built-in voices don't support additional settings like speed
+  if (isValidVapiVoiceId(config.voice_id)) {
+    // Use VAPI's built-in voice provider - no additional settings supported
+    payload.voice = {
+      provider: "vapi",
+      voiceId: config.voice_id!, // Keep original capitalization
+    }
+  } else {
+    // Fall back to default VAPI voice
+    payload.voice = {
+      provider: "vapi",
+      voiceId: DEFAULT_VAPI_VOICE_ID,
+    }
   }
-
-  if (config.voice_settings) {
-    payload.voice.stability = config.voice_settings.stability
-    payload.voice.similarityBoost = config.voice_settings.similarity_boost
-    payload.voice.speed = config.voice_settings.speed
-  }
+  // Note: Speed and other voice settings are not supported for VAPI's built-in voices
 
   // Model configuration
   // NOTE: We create a model block if any model-related settings OR tools are present,

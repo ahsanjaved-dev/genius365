@@ -6,6 +6,7 @@
 import type { AIAgent, AgentConfig, FunctionTool } from "@/types/database.types"
 import { mapFunctionToolsToRetell } from "@/lib/integrations/function_tools/retell"
 import type { RetellGeneralTool } from "@/lib/integrations/function_tools/retell/types"
+import { getRetellVoices, getDefaultVoice } from "@/lib/voice"
 
 // Re-export for backwards compatibility
 export type { RetellGeneralTool }
@@ -111,7 +112,19 @@ export interface RetellAgentUpdate {
 // DEFAULT VOICE
 // ============================================================================
 
-const RETELL_DEFAULT_VOICE_ID = "11labs-Adrian"
+// Get available Retell voices for validation
+const RETELL_VOICE_IDS = getRetellVoices().map((v) => v.id)
+
+// Default Retell voice (Adrian - professional, clear, confident)
+const RETELL_DEFAULT_VOICE_ID = getDefaultVoice("retell").id
+
+/**
+ * Validates if a voice ID is a valid Retell voice
+ */
+function isValidRetellVoiceId(voiceId: string | undefined): boolean {
+  if (!voiceId) return false
+  return RETELL_VOICE_IDS.includes(voiceId)
+}
 
 // ============================================================================
 // TOOL MAPPING: Internal FunctionTool → Retell General Tool
@@ -206,14 +219,18 @@ export function mapToRetellLLM(agent: AIAgent): RetellLLMPayload {
 export function mapToRetellAgent(agent: AIAgent, llmId: string): RetellAgentPayload {
   const config = agent.config || {}
 
+  // Determine voice_id: use from config if valid, otherwise use default
+  const voiceId = isValidRetellVoiceId(config.voice_id)
+    ? config.voice_id!
+    : RETELL_DEFAULT_VOICE_ID
+
   const payload: RetellAgentPayload = {
     agent_name: agent.name,
     response_engine: {
       type: "retell-llm",
       llm_id: llmId,
     },
-    // Always use 11labs-Adrian as voice_id
-    voice_id: RETELL_DEFAULT_VOICE_ID,
+    voice_id: voiceId,
   }
 
   // Voice settings

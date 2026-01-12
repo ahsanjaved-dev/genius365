@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Loader2, Lock, Globe, AlertCircle, Check, AlertTriangle, CloudOff, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, Copy, Wrench } from "lucide-react"
+import { Loader2, Lock, Globe, AlertCircle, Check, AlertTriangle, CloudOff, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, Copy, Wrench, Volume2, Plus, X } from "lucide-react"
 import type { AIAgent, FunctionTool, AgentDirection } from "@/types/database.types"
 import type { CreateWorkspaceAgentInput } from "@/types/api.types"
 import Link from "next/link"
@@ -27,6 +27,10 @@ import { useState } from "react"
 import { FunctionToolEditor } from "./function-tool-editor"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
+import { getVoicesForProvider, getVoiceCardColor, type VoiceOption } from "@/lib/voice"
 
 interface WorkspaceAgentFormProps {
   initialData?: AIAgent
@@ -90,6 +94,9 @@ export function WorkspaceAgentForm({
   const [assignedPhoneNumberId, setAssignedPhoneNumberId] = useState<string | null>(
     initialData?.assigned_phone_number_id || null
   )
+  
+  // Voice configuration state
+  const [isVoiceListOpen, setIsVoiceListOpen] = useState(false)
   
   // Fetch available phone numbers for assignment (only for outbound/bidirectional agents)
   const { data: availablePhoneNumbers, isLoading: isLoadingAvailableNumbers, error: phoneNumbersError } = useAvailablePhoneNumbers()
@@ -583,19 +590,141 @@ export function WorkspaceAgentForm({
             </div>
           </div>
 
-          {/* Voice ID Input */}
-          <div className="space-y-2">
-            <Label htmlFor="voice_id">Voice ID</Label>
-            <Input
-              id="voice_id"
-              placeholder="e.g., 21m00Tcm4TlvDq8ikWAM (ElevenLabs voice ID)"
-              {...register("config.voice_id")}
-              disabled={isSubmitting}
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter the voice ID from your voice provider. For ElevenLabs, find this in your voice
-              settings.
-            </p>
+          {/* Voice Configuration */}
+          <div className="space-y-4 p-4 rounded-lg border border-violet-500/20 bg-violet-500/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-base font-semibold">Voice Configuration</Label>
+                <p className="text-xs text-muted-foreground mt-1">Select a voice for your agent</p>
+              </div>
+            </div>
+
+            {(() => {
+              const selectedVoiceId = watch("config.voice_id")
+              const availableVoices = getVoicesForProvider(selectedProvider as "vapi" | "retell")
+              const selectedVoice = availableVoices.find(v => v.id === selectedVoiceId)
+
+              return (
+                <div className="space-y-3">
+                  {/* Selected Voice Display */}
+                  {selectedVoice && !isVoiceListOpen && (
+                    <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+                      <div className="flex items-start gap-3">
+                        {(() => {
+                          const colors = getVoiceCardColor(selectedVoice.gender)
+                          return (
+                            <>
+                              <div className={cn("w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0", colors.bg)}>
+                                <span className={cn("font-semibold", colors.text)}>{selectedVoice.name[0]}</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-sm">{selectedVoice.name}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {selectedVoice.gender}
+                                  </Badge>
+                                  <Check className="h-4 w-4 text-green-600 ml-auto" />
+                                </div>
+                                <p className="text-xs text-muted-foreground">{selectedVoice.accent} • Age {selectedVoice.age}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{selectedVoice.characteristics}</p>
+                                {selectedProvider === "retell" && (
+                                  <p className="text-xs text-muted-foreground mt-2">
+                                    Voice ID: <code className="bg-muted px-1 rounded">{selectedVoice.id}</code> • Provider: ElevenLabs
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                      <div className="mt-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsVoiceListOpen(true)}
+                        >
+                          Change Voice
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Voice List (shown when no voice selected or editing) */}
+                  {(!selectedVoiceId || isVoiceListOpen) && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">
+                          Select Voice ({selectedProvider === "vapi" ? "Vapi" : "Retell"})
+                        </Label>
+                        {isVoiceListOpen && selectedVoiceId && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsVoiceListOpen(false)}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
+                      <ScrollArea className={cn(
+                        "rounded-lg border p-2",
+                        availableVoices.length <= 3 ? "h-auto" : "h-[320px]"
+                      )}>
+                        <div className="space-y-2">
+                          {availableVoices.map((voice) => {
+                            const colors = getVoiceCardColor(voice.gender)
+                            return (
+                              <div
+                                key={voice.id}
+                                className="p-3 rounded-lg hover:bg-muted border border-transparent hover:border-border transition-all"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className={cn("w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0", colors.bg)}>
+                                    <span className={cn("font-semibold", colors.text)}>{voice.name[0]}</span>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-sm">{voice.name}</p>
+                                      <Badge variant="outline" className="text-xs">
+                                        {voice.gender}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{voice.accent} • Age {voice.age}</p>
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{voice.characteristics}</p>
+                                    {selectedProvider === "retell" && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Voice ID: <code className="bg-muted px-1 rounded text-xs">{voice.id}</code>
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      setValue("config.voice_id", voice.id)
+                                      setIsVoiceListOpen(false)
+                                    }}
+                                  >
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <p className="text-xs text-muted-foreground">
+                        {availableVoices.length} voice{availableVoices.length !== 1 ? "s" : ""} available for {selectedProvider === "vapi" ? "Vapi" : "Retell"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </CardContent>
       </Card>
