@@ -6,6 +6,7 @@ import { grantInitialFreeTierCredits } from "@/lib/stripe/workspace-credits"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getConnectAccountId } from "@/lib/stripe"
 import { env } from "@/lib/env"
+import { assignDefaultIntegrationsToWorkspace } from "@/lib/workspace/setup"
 
 // Generate a URL-friendly slug from a name
 function generateSlug(name: string): string {
@@ -220,6 +221,16 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", clientInvitation.id)
 
+        // Auto-assign default partner integrations to the new workspace
+        const integrationResult = await assignDefaultIntegrationsToWorkspace(
+          workspace.id,
+          clientInvitation.partner_id,
+          userId
+        )
+        if (integrationResult.assignedCount > 0) {
+          console.log(`[Signup] Assigned ${integrationResult.assignedCount} default integration(s) to client workspace ${workspace.slug}`)
+        }
+
         workspaceRedirect = `/w/${workspace.slug}/dashboard`
       }
     } else if (!isInvitation && partner.is_platform_partner) {
@@ -260,6 +271,16 @@ export async function POST(request: NextRequest) {
         if (wsMemberError) {
           console.error("Failed to add workspace member:", wsMemberError)
         } else {
+          // Auto-assign default partner integrations to the new workspace
+          const integrationResult = await assignDefaultIntegrationsToWorkspace(
+            workspace.id,
+            partner.id,
+            userId
+          )
+          if (integrationResult.assignedCount > 0) {
+            console.log(`[Signup] Assigned ${integrationResult.assignedCount} default integration(s) to workspace ${workspace.slug}`)
+          }
+
           workspaceRedirect = `/w/${workspace.slug}/dashboard`
         }
       }

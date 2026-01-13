@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { getPartnerAuthContext, isPartnerAdmin } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, forbidden, serverError, getValidationError } from "@/lib/api/helpers"
 import { createWorkspaceSchema } from "@/types/database.types"
+import { assignDefaultIntegrationsToWorkspace } from "@/lib/workspace/setup"
 
 export async function POST(request: NextRequest) {
   try {
@@ -105,6 +106,17 @@ export async function POST(request: NextRequest) {
       // Rollback workspace creation
       await auth.adminClient.from("workspaces").delete().eq("id", workspace.id)
       return apiError("Failed to set up workspace owner")
+    }
+
+    // Auto-assign default partner integrations to the new workspace
+    const integrationResult = await assignDefaultIntegrationsToWorkspace(
+      workspace.id,
+      auth.partner.id,
+      auth.user.id
+    )
+
+    if (integrationResult.assignedCount > 0) {
+      console.log(`[CreateWorkspace] Assigned ${integrationResult.assignedCount} default integration(s) to workspace ${workspace.slug}`)
     }
 
     return apiResponse({
