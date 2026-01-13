@@ -641,207 +641,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
 
             <Separator />
 
-            {/* Phone Number Assignment - For all agent directions */}
-            {(formData.agentDirection === "inbound" || formData.agentDirection === "outbound") && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                      <Phone className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <Label className="mb-0">Phone Number</Label>
-                      <p className="text-xs text-muted-foreground">
-                        {formData.agentDirection === "outbound"
-                          ? "Select caller ID for outbound calls"
-                          : "Assign a phone number for inbound calls"}
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={formData.enablePhoneNumber}
-                    onCheckedChange={(checked) => {
-                      updateFormData("enablePhoneNumber", checked)
-                      if (!checked) {
-                        updateFormData("phoneNumberId", null)
-                      }
-                    }}
-                  />
-                </div>
-
-                {/* Phone Number Selection */}
-                {formData.enablePhoneNumber && (
-                  <div className="ml-13 pl-4 border-l-2 border-green-500/20">
-                    {isLoadingPhoneNumbers ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : availablePhoneNumbers && availablePhoneNumbers.length > 0 ? (
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">
-                          {formData.agentDirection === "outbound"
-                            ? "Select Caller ID"
-                            : "Select Phone Number"}
-                        </Label>
-                        <Select
-                          value={formData.phoneNumberId || ""}
-                          onValueChange={(value) => updateFormData("phoneNumberId", value || null)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose a phone number..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availablePhoneNumbers.map((number) => (
-                              <SelectItem key={number.id} value={number.id}>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono">
-                                    {number.friendly_name || number.phone_number}
-                                  </span>
-                                  {number.country_code && (
-                                    <Badge variant="outline" className="text-xs">
-                                      {number.country_code}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {availablePhoneNumbers.length} number
-                          {availablePhoneNumbers.length !== 1 ? "s" : ""} available
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-center p-4 rounded-lg bg-muted/50">
-                        <Phone className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-sm text-muted-foreground">No phone numbers available</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Add phone numbers in Organization → Telephony
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Knowledge Base Toggle */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <BookOpen className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <Label className="mb-0">Knowledge Base</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Connect documents to give your agent context
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={formData.enableKnowledgeBase}
-                  onCheckedChange={(checked) => {
-                    updateFormData("enableKnowledgeBase", checked)
-                    if (!checked) {
-                      updateFormData("knowledgeDocumentIds", [])
-                    }
-                  }}
-                />
-              </div>
-
-              {/* Knowledge Document Selection */}
-              {formData.enableKnowledgeBase && (
-                <div className="ml-13 pl-4 border-l-2 border-primary/20">
-                  {isLoadingDocs ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-10 w-full" />
-                      <Skeleton className="h-10 w-full" />
-                      <Skeleton className="h-10 w-full" />
-                    </div>
-                  ) : docsError ? (
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                      <AlertCircle className="h-4 w-4" />
-                      Failed to load documents
-                    </div>
-                  ) : knowledgeDocsData?.data && knowledgeDocsData.data.length > 0 ? (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Select Documents</Label>
-                      <ScrollArea className="h-[200px] rounded-lg border p-2">
-                        <div className="space-y-1">
-                          {knowledgeDocsData.data.map((doc: KnowledgeDocument) => {
-                            const DocIcon = documentTypeIcons[doc.document_type] || FileText
-                            const isSelected = formData.knowledgeDocumentIds.includes(doc.id)
-
-                            return (
-                              <div
-                                key={doc.id}
-                                className={cn(
-                                  "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors",
-                                  isSelected
-                                    ? "bg-primary/10 border border-primary/30"
-                                    : "hover:bg-muted"
-                                )}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    updateFormData(
-                                      "knowledgeDocumentIds",
-                                      formData.knowledgeDocumentIds.filter((id) => id !== doc.id)
-                                    )
-                                  } else {
-                                    updateFormData("knowledgeDocumentIds", [
-                                      ...formData.knowledgeDocumentIds,
-                                      doc.id,
-                                    ])
-                                  }
-                                }}
-                              >
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => {}}
-                                  className="pointer-events-none"
-                                />
-                                <DocIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">{doc.title}</p>
-                                  {doc.description && (
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {doc.description}
-                                    </p>
-                                  )}
-                                </div>
-                                {doc.category && (
-                                  <Badge variant="outline" className="text-xs shrink-0">
-                                    {doc.category}
-                                  </Badge>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </ScrollArea>
-                      <p className="text-xs text-muted-foreground">
-                        {formData.knowledgeDocumentIds.length} document
-                        {formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} selected
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="text-center p-4 rounded-lg bg-muted/50">
-                      <BookOpen className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">No documents available</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Create documents in the Knowledge Base section first
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Voice Configuration */}
+            {/* Voice Configuration - MOVED TO FIRST (before phone number & knowledge base) */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1061,6 +861,206 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            {/* Knowledge Base Toggle */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <BookOpen className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <Label className="mb-0">Knowledge Base</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Connect documents to give your agent context
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={formData.enableKnowledgeBase}
+                  onCheckedChange={(checked) => {
+                    updateFormData("enableKnowledgeBase", checked)
+                    if (!checked) {
+                      updateFormData("knowledgeDocumentIds", [])
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Knowledge Document Selection */}
+              {formData.enableKnowledgeBase && (
+                <div className="ml-13 pl-4 border-l-2 border-primary/20">
+                  {isLoadingDocs ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : docsError ? (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                      <AlertCircle className="h-4 w-4" />
+                      Failed to load documents
+                    </div>
+                  ) : knowledgeDocsData?.data && knowledgeDocsData.data.length > 0 ? (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Select Documents</Label>
+                      <ScrollArea className="h-[200px] rounded-lg border p-2">
+                        <div className="space-y-1">
+                          {knowledgeDocsData.data.map((doc: KnowledgeDocument) => {
+                            const DocIcon = documentTypeIcons[doc.document_type] || FileText
+                            const isSelected = formData.knowledgeDocumentIds.includes(doc.id)
+
+                            return (
+                              <div
+                                key={doc.id}
+                                className={cn(
+                                  "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors",
+                                  isSelected
+                                    ? "bg-primary/10 border border-primary/30"
+                                    : "hover:bg-muted"
+                                )}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    updateFormData(
+                                      "knowledgeDocumentIds",
+                                      formData.knowledgeDocumentIds.filter((id) => id !== doc.id)
+                                    )
+                                  } else {
+                                    updateFormData("knowledgeDocumentIds", [
+                                      ...formData.knowledgeDocumentIds,
+                                      doc.id,
+                                    ])
+                                  }
+                                }}
+                              >
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => {}}
+                                  className="pointer-events-none"
+                                />
+                                <DocIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{doc.title}</p>
+                                  {doc.description && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {doc.description}
+                                    </p>
+                                  )}
+                                </div>
+                                {doc.category && (
+                                  <Badge variant="outline" className="text-xs shrink-0">
+                                    {doc.category}
+                                  </Badge>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </ScrollArea>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.knowledgeDocumentIds.length} document
+                        {formData.knowledgeDocumentIds.length !== 1 ? "s" : ""} selected
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 rounded-lg bg-muted/50">
+                      <BookOpen className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">No documents available</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Create documents in the Knowledge Base section first
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Phone Number Assignment - For all agent directions */}
+            {(formData.agentDirection === "inbound" || formData.agentDirection === "outbound") && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                      <Phone className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <Label className="mb-0">Phone Number</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.agentDirection === "outbound"
+                          ? "Select caller ID for outbound calls"
+                          : "Assign a phone number for inbound calls"}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={formData.enablePhoneNumber}
+                    onCheckedChange={(checked) => {
+                      updateFormData("enablePhoneNumber", checked)
+                      if (!checked) {
+                        updateFormData("phoneNumberId", null)
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Phone Number Selection */}
+                {formData.enablePhoneNumber && (
+                  <div className="ml-13 pl-4 border-l-2 border-green-500/20">
+                    {isLoadingPhoneNumbers ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : availablePhoneNumbers && availablePhoneNumbers.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">
+                          {formData.agentDirection === "outbound"
+                            ? "Select Caller ID"
+                            : "Select Phone Number"}
+                        </Label>
+                        <Select
+                          value={formData.phoneNumberId || ""}
+                          onValueChange={(value) => updateFormData("phoneNumberId", value || null)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a phone number..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availablePhoneNumbers.map((number) => (
+                              <SelectItem key={number.id} value={number.id}>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono">
+                                    {number.friendly_name || number.phone_number}
+                                  </span>
+                                  {number.country_code && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {number.country_code}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {availablePhoneNumbers.length} number
+                          {availablePhoneNumbers.length !== 1 ? "s" : ""} available
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center p-4 rounded-lg bg-muted/50">
+                        <Phone className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">No phone numbers available</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Add phone numbers in Organization → Telephony
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
