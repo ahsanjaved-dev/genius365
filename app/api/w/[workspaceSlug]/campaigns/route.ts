@@ -11,11 +11,10 @@ import {
 import { createCampaignSchema, createCampaignWizardSchema } from "@/types/database.types"
 import type { BusinessHoursConfig } from "@/types/database.types"
 import {
-  loadJsonBatch,
-  buildLoadJsonPayload,
-  type CampaignData,
-  type RecipientData,
-} from "@/lib/integrations/inspra/client"
+  startCampaignBatch,
+  type CampaignProviderConfig,
+} from "@/lib/integrations/campaign-provider"
+import type { CampaignData, RecipientData } from "@/lib/integrations/inspra/client"
 
 // ============================================================================
 // SUPABASE CLIENT
@@ -86,6 +85,122 @@ async function getCLIForAgent(
   }
 
   return null
+}
+
+// ============================================================================
+// HELPER: Get VAPI Config for Fallback
+// ============================================================================
+
+interface VapiIntegrationDetails {
+  apiKey: string
+  phoneNumberId: string | null
+  config: any
+}
+
+async function getVapiConfigForFallback(
+  agent: any,
+  workspaceId: string,
+  adminClient: ReturnType<typeof getSupabaseAdmin>
+): Promise<VapiIntegrationDetails | null> {
+  try {
+    const { data: workspace } = await adminClient
+      .from("workspaces")
+      .select("partner_id")
+      .eq("id", workspaceId)
+      .single()
+
+    if (!workspace?.partner_id) return null
+
+    const { data: assignment } = await adminClient
+      .from("workspace_integration_assignments")
+      .select(`
+        partner_integration:partner_integrations (
+          id,
+          api_keys,
+          config,
+          is_active
+        )
+      `)
+      .eq("workspace_id", workspaceId)
+      .eq("provider", "vapi")
+      .single()
+
+    if (assignment?.partner_integration) {
+      const partnerIntegration = assignment.partner_integration as any
+      if (partnerIntegration.is_active) {
+        const apiKeys = partnerIntegration.api_keys as any
+        const vapiConfig = partnerIntegration.config || {}
+        
+        if (apiKeys?.default_secret_key) {
+          let phoneNumberId: string | null = null
+          
+          if (vapiConfig.shared_outbound_phone_number_id) {
+            phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+          } else if (agent.assigned_phone_number_id) {
+            const { data: phoneNumber } = await adminClient
+              .from("phone_numbers")
+              .select("external_id")
+              .eq("id", agent.assigned_phone_number_id)
+              .single()
+            
+            if (phoneNumber?.external_id) {
+              phoneNumberId = phoneNumber.external_id
+            }
+          }
+          
+          return {
+            apiKey: apiKeys.default_secret_key,
+            phoneNumberId,
+            config: vapiConfig,
+          }
+        }
+      }
+    }
+
+    // Try default integration
+    const { data: defaultIntegration } = await adminClient
+      .from("partner_integrations")
+      .select("id, api_keys, config, is_active")
+      .eq("partner_id", workspace.partner_id)
+      .eq("provider", "vapi")
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .single()
+
+    if (defaultIntegration) {
+      const apiKeys = defaultIntegration.api_keys as any
+      const vapiConfig = defaultIntegration.config || {}
+      
+      if (apiKeys?.default_secret_key) {
+        let phoneNumberId: string | null = null
+        
+        if (vapiConfig.shared_outbound_phone_number_id) {
+          phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+        } else if (agent.assigned_phone_number_id) {
+          const { data: phoneNumber } = await adminClient
+            .from("phone_numbers")
+            .select("external_id")
+            .eq("id", agent.assigned_phone_number_id)
+            .single()
+          
+          if (phoneNumber?.external_id) {
+            phoneNumberId = phoneNumber.external_id
+          }
+        }
+        
+        return {
+          apiKey: apiKeys.default_secret_key,
+          phoneNumberId,
+          config: vapiConfig,
+        }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error("[CampaignsAPI] Error getting VAPI config:", error)
+    return null
+  }
 }
 
 // GET /api/w/[workspaceSlug]/campaigns - List campaigns
@@ -176,7 +291,7 @@ export async function POST(
     const { agent_id, ...rest } = parsed.data
 
     // Verify agent exists and belongs to this workspace
-    // Fetch full agent details for Inspra payload
+    // Fetch full agent details for provider payload
     const { data: agent, error: agentError } = await ctx.adminClient
       .from("ai_agents")
       .select(
@@ -262,7 +377,7 @@ export async function POST(
       }
 
       // Determine the campaign status based on wizard completion and schedule type
-      // - Immediate campaigns become "ready" (payload sent to Inspra with future NBF, waits for "Start Now")
+      // - Immediate campaigns become "ready" (payload sent with future NBF, waits for "Start Now")
       // - Scheduled campaigns become "scheduled" (payload sent with scheduled NBF, auto-starts)
       // - Incomplete campaigns stay as "draft"
       const isWizardComplete = isWizardFlow && wizardFields.wizard_completed
@@ -313,19 +428,14 @@ export async function POST(
       console.log(`[CampaignsAPI] Converting draft ${draftId} to campaign`)
     } else {
       // Determine the campaign status based on wizard completion and schedule type
-      // - Immediate campaigns become "ready" (payload sent to Inspra with future NBF, waits for "Start Now")
-      // - Scheduled campaigns become "scheduled" (payload sent with scheduled NBF, auto-starts)
-      // - Incomplete campaigns stay as "draft"
       const isWizardComplete = isWizardFlow && wizardFields.wizard_completed
       const hasRecipients = recipients.length > 0
       let newCampaignStatus: string = "draft"
 
       if (isWizardComplete && hasRecipients) {
         if (rest.schedule_type === "scheduled" && rest.scheduled_start_at) {
-          // Scheduled campaigns: payload sent with scheduled NBF, auto-starts at that time
           newCampaignStatus = "scheduled"
         } else {
-          // Immediate campaigns: payload sent with future NBF, waits for "Start Now" click
           newCampaignStatus = "ready"
         }
       }
@@ -373,7 +483,7 @@ export async function POST(
         last_name: r.last_name || null,
         email: r.email || null,
         company: r.company || null,
-        // New standard columns for Inspra API
+        // New standard columns
         reason_for_call: r.reason_for_call || null,
         address_line_1: r.address_line_1 || null,
         address_line_2: r.address_line_2 || null,
@@ -403,7 +513,7 @@ export async function POST(
           // Continue with other batches even if one fails
         } else {
           insertedCount += inserted?.length || 0
-          // Collect inserted recipients for Inspra payload
+          // Collect inserted recipients for provider payload
           if (inserted) {
             insertedRecipients.push(
               ...inserted.map((r: any) => ({
@@ -442,24 +552,40 @@ export async function POST(
     }
 
     // =========================================================================
-    // SEND TO INSPRA API on CREATE for ALL completed campaigns (heavy lifting)
+    // SEND TO PROVIDER on CREATE for ALL completed campaigns
+    // Uses unified provider with automatic VAPI fallback
     // - Immediate/"ready" campaigns: NBF = 1 year future (waits for "Start Now")
     // - Scheduled campaigns: NBF = scheduled_start_at (auto-starts)
-    // 
-    // Note: Payload is sent NOW, but calls don't start until NBF time.
-    // For "ready" campaigns, user clicks "Start Now" which re-sends payload with NBF = NOW.
     // =========================================================================
 
-    let inspraResult: { success: boolean; error?: string } = { success: true }
+    let providerResult: {
+      success: boolean
+      provider: "inspra" | "vapi"
+      error?: string
+      fallbackUsed?: boolean
+      primaryError?: string
+    } = { success: true, provider: "inspra" }
+    
     const isCompletedCampaign = campaign.status === "scheduled" || campaign.status === "ready"
 
-    // Send to Inspra for all completed campaigns (both scheduled and ready/immediate)
+    // Send to provider for all completed campaigns (both scheduled and ready/immediate)
     if (insertedRecipients.length > 0 && isCompletedCampaign) {
       const isReady = campaign.status === "ready"
-      console.log(`[CampaignsAPI] Sending ${isReady ? "READY (immediate)" : "SCHEDULED"} campaign to Inspra API...`)
+      console.log(`[CampaignsAPI] Sending ${isReady ? "READY (immediate)" : "SCHEDULED"} campaign to provider...`)
 
-      // Build campaign data for Inspra
-      const campaignDataForInspra: CampaignData = {
+      // Get VAPI config for fallback
+      const vapiDetails = await getVapiConfigForFallback(agent, ctx.workspace.id, ctx.adminClient)
+      const vapiConfig: CampaignProviderConfig["vapi"] = vapiDetails?.apiKey && vapiDetails?.phoneNumberId
+        ? {
+            apiKey: vapiDetails.apiKey,
+            phoneNumberId: vapiDetails.phoneNumberId,
+          }
+        : undefined
+
+      console.log("[CampaignsAPI] VAPI fallback available:", !!vapiConfig)
+
+      // Build campaign data for provider
+      const campaignDataForProvider: CampaignData = {
         id: campaign.id,
         workspace_id: ctx.workspace.id,
         agent: {
@@ -475,32 +601,25 @@ export async function POST(
         timezone: campaign.timezone,
       }
 
-      // Build Inspra payload
-      // For "ready" campaigns: NBF = 1 year future (inspra/client.ts handles this)
-      // For "scheduled" campaigns: NBF = scheduled_start_at
-      const inspraPayload = buildLoadJsonPayload(campaignDataForInspra, insertedRecipients)
+      // Send via unified provider (Inspra first, VAPI fallback)
+      // Note: For "ready" campaigns, startNow: false means NBF = 1 year future
+      // For "scheduled" campaigns, startNow: false means NBF = scheduled_start_at
+      providerResult = await startCampaignBatch(
+        campaignDataForProvider,
+        insertedRecipients,
+        vapiConfig,
+        { startNow: false }
+      )
 
-      console.log("[CampaignsAPI] Inspra payload:", {
-        batchRef: inspraPayload.batchRef,
-        agentId: inspraPayload.agentId,
-        workspaceId: inspraPayload.workspaceId,
-        cli: inspraPayload.cli,
-        recipientCount: inspraPayload.callList.length,
-        nbf: inspraPayload.nbf,
-        exp: inspraPayload.exp,
-        blockRulesCount: inspraPayload.blockRules.length,
-      })
-
-      // Call Inspra API
-      inspraResult = await loadJsonBatch(inspraPayload)
-
-      if (inspraResult.success) {
-        console.log(`[CampaignsAPI] Successfully sent ${isReady ? "ready" : "scheduled"} campaign to Inspra API`)
-        // Note: started_at is NOT set here for "ready" campaigns - it's set when user clicks "Start Now"
+      if (providerResult.success) {
+        console.log(`[CampaignsAPI] Successfully sent ${isReady ? "ready" : "scheduled"} campaign to ${providerResult.provider}`)
+        if (providerResult.fallbackUsed) {
+          console.log("[CampaignsAPI] Fallback was used. Primary error:", providerResult.primaryError)
+        }
       } else {
-        console.error("[CampaignsAPI] Failed to send to Inspra API:", inspraResult.error)
+        console.error("[CampaignsAPI] Failed to send to provider:", providerResult.error)
         // Don't fail the campaign creation - just log the error
-        // The campaign is still created locally, can retry Inspra later
+        // The campaign is still created locally, can retry later
       }
     }
 
@@ -524,9 +643,12 @@ export async function POST(
           duplicates: duplicatesCount,
           total: recipients.length,
         },
-        _inspra: {
-          sent: inspraResult.success,
-          error: inspraResult.error,
+        _provider: {
+          sent: providerResult.success,
+          provider: providerResult.provider,
+          error: providerResult.error,
+          fallbackUsed: providerResult.fallbackUsed,
+          primaryError: providerResult.primaryError,
           batchRef: `campaign-${campaign.id}`,
         },
       },

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, notFound, getValidationError } from "@/lib/api/helpers"
 import { updateCampaignSchema } from "@/types/database.types"
-import { terminateBatch } from "@/lib/integrations/inspra/client"
+import { terminateCampaignBatch } from "@/lib/integrations/campaign-provider"
 
 // GET /api/w/[workspaceSlug]/campaigns/[id] - Get campaign details
 export async function GET(
@@ -120,7 +120,7 @@ export async function PATCH(
 }
 
 // DELETE /api/w/[workspaceSlug]/campaigns/[id] - Permanently delete campaign
-// Automatically terminates the batch with Inspra if campaign was active/paused
+// Automatically terminates the batch with provider if campaign was active/paused
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ workspaceSlug: string; id: string }> }
@@ -156,24 +156,22 @@ export async function DELETE(
 
     const agent = existing.agent as any
 
-    // If campaign is active or paused, terminate it with Inspra first
-    let inspraResult = { success: true, error: undefined as string | undefined }
+    // If campaign is active or paused, terminate it with provider first
+    let providerResult = { success: true, provider: "inspra" as const, error: undefined as string | undefined }
     const needsTermination = existing.status === "active" || existing.status === "paused"
     
     if (needsTermination && agent?.external_agent_id) {
-      const inspraPayload = {
-        workspaceId: ctx.workspace.id,
-        agentId: agent.external_agent_id,
-        batchRef: `campaign-${id}`,
-      }
+      console.log("[CampaignAPI] Terminating batch before delete:", id)
 
-      console.log("[CampaignAPI] Terminating batch before delete:", inspraPayload)
+      providerResult = await terminateCampaignBatch(
+        ctx.workspace.id,
+        agent.external_agent_id,
+        id
+      )
 
-      inspraResult = await terminateBatch(inspraPayload)
-
-      if (!inspraResult.success) {
-        console.error("[CampaignAPI] Inspra terminate error:", inspraResult.error)
-        // Continue with deletion even if Inspra fails
+      if (!providerResult.success) {
+        console.error("[CampaignAPI] Provider terminate error:", providerResult.error)
+        // Continue with deletion even if provider fails
       }
     }
 
@@ -194,10 +192,11 @@ export async function DELETE(
     return apiResponse({ 
       success: true,
       terminated: needsTermination,
-      inspra: needsTermination ? {
+      provider: needsTermination ? {
         called: !!agent?.external_agent_id,
-        success: inspraResult.success,
-        error: inspraResult.error,
+        used: providerResult.provider,
+        success: providerResult.success,
+        error: providerResult.error,
       } : undefined,
     })
   } catch (error) {
@@ -205,4 +204,3 @@ export async function DELETE(
     return serverError("Internal server error")
   }
 }
-

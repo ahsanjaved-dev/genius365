@@ -1,13 +1,15 @@
 import { NextRequest } from "next/server"
 import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, notFound } from "@/lib/api/helpers"
-import { terminateBatch } from "@/lib/integrations/inspra/client"
+import { terminateCampaignBatch } from "@/lib/integrations/campaign-provider"
 
 /**
  * POST /api/w/[workspaceSlug]/campaigns/[id]/terminate
  * 
  * Terminate/cancel a campaign.
- * Calls Inspra /terminate-batch to stop all processing.
+ * Uses unified provider with automatic fallback handling.
+ * For Inspra: calls /terminate-batch
+ * For VAPI: state-based (campaign status stops all further processing)
  */
 export async function POST(
   request: NextRequest,
@@ -39,28 +41,26 @@ export async function POST(
     }
 
     // Validate campaign can be terminated
-    if (campaign.status !== "active" && campaign.status !== "paused" && campaign.status !== "draft") {
-      return apiError("Only active, paused, or draft campaigns can be terminated")
+    if (campaign.status !== "active" && campaign.status !== "paused" && campaign.status !== "draft" && campaign.status !== "ready") {
+      return apiError("Only active, paused, draft, or ready campaigns can be terminated")
     }
 
     const agent = campaign.agent as any
 
-    // Call Inspra API to terminate batch (only if agent is synced)
-    let inspraResult = { success: true, error: undefined as string | undefined }
+    // Call unified provider to terminate batch (only if agent is synced)
+    let providerResult = { success: true, provider: "inspra" as const, error: undefined as string | undefined }
     
     if (agent?.external_agent_id) {
-      const inspraPayload = {
-        workspaceId: ctx.workspace.id,
-        agentId: agent.external_agent_id,
-        batchRef: `campaign-${id}`,
-      }
+      console.log("[CampaignTerminate] Terminating campaign:", id)
 
-      console.log("[CampaignTerminate] Calling Inspra terminate-batch:", inspraPayload)
+      providerResult = await terminateCampaignBatch(
+        ctx.workspace.id,
+        agent.external_agent_id,
+        id
+      )
 
-      inspraResult = await terminateBatch(inspraPayload)
-
-      if (!inspraResult.success) {
-        console.error("[CampaignTerminate] Inspra API error:", inspraResult.error)
+      if (!providerResult.success) {
+        console.error("[CampaignTerminate] Provider error:", providerResult.error)
         // Don't fail - still update local status
       }
     }
@@ -101,10 +101,11 @@ export async function POST(
     return apiResponse({
       success: true,
       campaign: updatedCampaign,
-      inspra: {
+      provider: {
         called: !!agent?.external_agent_id,
-        success: inspraResult.success,
-        error: inspraResult.error,
+        used: providerResult.provider,
+        success: providerResult.success,
+        error: providerResult.error,
       },
       message: "Campaign terminated. Pending recipients have been cancelled.",
     })

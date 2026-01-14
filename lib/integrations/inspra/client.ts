@@ -287,6 +287,7 @@ export interface CampaignData {
 }
 
 export interface RecipientData {
+  id?: string  // Database ID for tracking call results
   phone_number: string
   first_name?: string | null
   last_name?: string | null

@@ -81,8 +81,28 @@ const callStatusConfig: Record<RecipientCallStatus, { label: string; color: stri
   },
 }
 
-export function CallStatusBadge({ status }: { status: RecipientCallStatus }) {
-  const config = callStatusConfig[status]
+// Fallback for unknown/legacy statuses (e.g., "in_progress" from older data)
+const unknownStatusConfig = {
+  label: "Unknown",
+  color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+}
+
+export function CallStatusBadge({ status }: { status: RecipientCallStatus | string | null }) {
+  // Handle null/undefined status
+  if (!status) {
+    return (
+      <Badge className={unknownStatusConfig.color}>
+        —
+      </Badge>
+    )
+  }
+  
+  // Get config, fallback to unknown if status not recognized
+  const config = callStatusConfig[status as RecipientCallStatus] || {
+    label: status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), // Format unknown status nicely
+    color: unknownStatusConfig.color,
+  }
+  
   return (
     <Badge className={config.color}>
       {config.label}

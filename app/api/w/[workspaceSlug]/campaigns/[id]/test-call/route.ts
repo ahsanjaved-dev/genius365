@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, notFound, getValidationError } from "@/lib/api/helpers"
 import { z } from "zod"
-import { queueTestCall, convertBusinessHoursToBlockRules } from "@/lib/integrations/inspra/client"
+import {
+  makeTestCall,
+  convertBusinessHoursToBlockRules,
+  type CampaignProviderConfig,
+} from "@/lib/integrations/campaign-provider"
+import type { CampaignData } from "@/lib/integrations/inspra/client"
 import type { BusinessHoursConfig } from "@/types/database.types"
 
 const testCallSchema = z.object({
@@ -10,10 +16,141 @@ const testCallSchema = z.object({
   variables: z.record(z.string(), z.string()).optional(),
 })
 
+// ============================================================================
+// SUPABASE CLIENT
+// ============================================================================
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
+
+// ============================================================================
+// HELPER: Get VAPI Config for Fallback
+// ============================================================================
+
+interface VapiIntegrationDetails {
+  apiKey: string
+  phoneNumberId: string | null
+  config: any
+}
+
+async function getVapiConfigForFallback(
+  agent: any,
+  workspaceId: string,
+  adminClient: ReturnType<typeof getSupabaseAdmin>
+): Promise<VapiIntegrationDetails | null> {
+  try {
+    const { data: workspace } = await adminClient
+      .from("workspaces")
+      .select("partner_id")
+      .eq("id", workspaceId)
+      .single()
+
+    if (!workspace?.partner_id) return null
+
+    const { data: assignment } = await adminClient
+      .from("workspace_integration_assignments")
+      .select(`
+        partner_integration:partner_integrations (
+          id,
+          api_keys,
+          config,
+          is_active
+        )
+      `)
+      .eq("workspace_id", workspaceId)
+      .eq("provider", "vapi")
+      .single()
+
+    if (assignment?.partner_integration) {
+      const partnerIntegration = assignment.partner_integration as any
+      if (partnerIntegration.is_active) {
+        const apiKeys = partnerIntegration.api_keys as any
+        const vapiConfig = partnerIntegration.config || {}
+        
+        if (apiKeys?.default_secret_key) {
+          let phoneNumberId: string | null = null
+          
+          if (vapiConfig.shared_outbound_phone_number_id) {
+            phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+          } else if (agent.assigned_phone_number_id) {
+            const { data: phoneNumber } = await adminClient
+              .from("phone_numbers")
+              .select("external_id")
+              .eq("id", agent.assigned_phone_number_id)
+              .single()
+            
+            if (phoneNumber?.external_id) {
+              phoneNumberId = phoneNumber.external_id
+            }
+          }
+          
+          return {
+            apiKey: apiKeys.default_secret_key,
+            phoneNumberId,
+            config: vapiConfig,
+          }
+        }
+      }
+    }
+
+    // Try default integration
+    const { data: defaultIntegration } = await adminClient
+      .from("partner_integrations")
+      .select("id, api_keys, config, is_active")
+      .eq("partner_id", workspace.partner_id)
+      .eq("provider", "vapi")
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .single()
+
+    if (defaultIntegration) {
+      const apiKeys = defaultIntegration.api_keys as any
+      const vapiConfig = defaultIntegration.config || {}
+      
+      if (apiKeys?.default_secret_key) {
+        let phoneNumberId: string | null = null
+        
+        if (vapiConfig.shared_outbound_phone_number_id) {
+          phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+        } else if (agent.assigned_phone_number_id) {
+          const { data: phoneNumber } = await adminClient
+            .from("phone_numbers")
+            .select("external_id")
+            .eq("id", agent.assigned_phone_number_id)
+            .single()
+          
+          if (phoneNumber?.external_id) {
+            phoneNumberId = phoneNumber.external_id
+          }
+        }
+        
+        return {
+          apiKey: apiKeys.default_secret_key,
+          phoneNumberId,
+          config: vapiConfig,
+        }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error("[CampaignTestCall] Error getting VAPI config:", error)
+    return null
+  }
+}
+
 /**
  * POST /api/w/[workspaceSlug]/campaigns/[id]/test-call
  * 
- * Queue a single test call via Inspra /test-call endpoint.
+ * Queue a single test call via unified provider (Inspra with VAPI fallback).
  */
 export async function POST(
   request: NextRequest,
@@ -80,63 +217,83 @@ export async function POST(
       return apiError("Agent does not have a phone number assigned")
     }
 
-    // Set NBF to now and EXP to 24 hours from now for test calls
-    const now = new Date()
-    const exp = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    // =========================================================================
+    // GET VAPI CONFIG FOR FALLBACK
+    // =========================================================================
+    
+    const vapiDetails = await getVapiConfigForFallback(agent, ctx.workspace.id, ctx.adminClient)
+    const vapiConfig: CampaignProviderConfig["vapi"] = vapiDetails?.apiKey && vapiDetails?.phoneNumberId
+      ? {
+          apiKey: vapiDetails.apiKey,
+          phoneNumberId: vapiDetails.phoneNumberId,
+        }
+      : undefined
 
-    // Get business hours block rules
+    console.log("[CampaignTestCall] VAPI fallback available:", !!vapiConfig)
+
+    // =========================================================================
+    // MAKE TEST CALL VIA UNIFIED PROVIDER
+    // =========================================================================
+
     const businessHoursConfig = campaign.business_hours_config as BusinessHoursConfig | null
-    const blockRules = convertBusinessHoursToBlockRules(businessHoursConfig)
 
-    // Build test call payload
-    const inspraPayload = {
-      agentId: agent.external_agent_id,
-      workspaceId: ctx.workspace.id,
-      batchRef: `test-${id}-${Date.now()}`,
-      cli,
-      nbf: now.toISOString(),
-      exp: exp.toISOString(),
-      blockRules,
-      phone: parsed.data.phone_number,
-      variables: parsed.data.variables || {
-        FIRST_NAME: "Test",
-        LAST_NAME: "User",
-        COMPANY_NAME: "Test Company",
-        EMAIL: "",
-        REASON_FOR_CALL: "Test call",
-        ADDRESS: "",
-        ADDRESS_LINE_2: "",
-        CITY: "",
-        STATE: "",
-        POST_CODE: "",
-        COUNTRY: "",
+    // Build campaign data for test call
+    const campaignData: CampaignData = {
+      id: campaign.id,
+      workspace_id: ctx.workspace.id,
+      agent: {
+        external_agent_id: agent.external_agent_id,
+        external_phone_number: agent.external_phone_number,
+        assigned_phone_number_id: agent.assigned_phone_number_id,
       },
+      cli,
+      schedule_type: "immediate",
+      scheduled_start_at: null,
+      scheduled_expires_at: null,
+      business_hours_config: businessHoursConfig,
+      timezone: campaign.timezone || "UTC",
     }
 
-    console.log("[CampaignTestCall] Calling Inspra test-call:", {
-      campaignId: id,
-      phone: parsed.data.phone_number,
-      agentId: agent.external_agent_id,
-    })
-
-    // Call Inspra test-call endpoint
-    const inspraResult = await queueTestCall(inspraPayload)
-
-    if (!inspraResult.success) {
-      console.error("[CampaignTestCall] Inspra API error:", inspraResult.error)
-      // For testing with webhook.site, this might "fail" but the payload was sent
+    // Default variables if not provided
+    const variables = parsed.data.variables || {
+      FIRST_NAME: "Test",
+      LAST_NAME: "User",
+      COMPANY_NAME: "Test Company",
+      EMAIL: "",
+      REASON_FOR_CALL: "Test call",
+      ADDRESS: "",
+      ADDRESS_LINE_2: "",
+      CITY: "",
+      STATE: "",
+      POST_CODE: "",
+      COUNTRY: "",
     }
 
-    console.log("[CampaignTestCall] Test call queued")
+    console.log("[CampaignTestCall] Making test call to:", parsed.data.phone_number)
+
+    // Make test call via unified provider
+    const result = await makeTestCall(
+      campaignData,
+      parsed.data.phone_number,
+      variables,
+      vapiConfig
+    )
+
+    if (!result.success) {
+      console.error("[CampaignTestCall] Test call failed:", result.error)
+      return serverError(`Test call failed: ${result.error}`)
+    }
+
+    console.log("[CampaignTestCall] Test call queued via:", result.provider)
 
     return apiResponse({
       success: true,
-      message: "Test call queued successfully",
+      message: `Test call queued successfully via ${result.provider}`,
       phone: parsed.data.phone_number,
-      inspra: {
-        called: true,
-        success: inspraResult.success,
-        error: inspraResult.error,
+      provider: {
+        used: result.provider,
+        fallbackUsed: result.fallbackUsed,
+        primaryError: result.primaryError,
       },
     })
   } catch (error) {

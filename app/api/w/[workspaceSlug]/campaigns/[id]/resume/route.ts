@@ -1,19 +1,152 @@
 import { NextRequest } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, notFound } from "@/lib/api/helpers"
 import {
-  loadJsonBatch,
-  buildLoadJsonPayload,
-  type CampaignData,
-  type RecipientData,
-} from "@/lib/integrations/inspra/client"
+  startCampaignBatch,
+  type CampaignProviderConfig,
+} from "@/lib/integrations/campaign-provider"
+import type { CampaignData, RecipientData } from "@/lib/integrations/inspra/client"
 import type { BusinessHoursConfig } from "@/types/database.types"
+
+// ============================================================================
+// SUPABASE CLIENT
+// ============================================================================
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
+
+// ============================================================================
+// HELPER: Get VAPI Config for Fallback
+// ============================================================================
+
+interface VapiIntegrationDetails {
+  apiKey: string
+  phoneNumberId: string | null
+  config: any
+}
+
+async function getVapiConfigForFallback(
+  agent: any,
+  workspaceId: string,
+  adminClient: ReturnType<typeof getSupabaseAdmin>
+): Promise<VapiIntegrationDetails | null> {
+  try {
+    // Get workspace to find partner_id
+    const { data: workspace } = await adminClient
+      .from("workspaces")
+      .select("partner_id")
+      .eq("id", workspaceId)
+      .single()
+
+    if (!workspace?.partner_id) return null
+
+    // Check for assigned integration
+    const { data: assignment } = await adminClient
+      .from("workspace_integration_assignments")
+      .select(`
+        partner_integration:partner_integrations (
+          id,
+          api_keys,
+          config,
+          is_active
+        )
+      `)
+      .eq("workspace_id", workspaceId)
+      .eq("provider", "vapi")
+      .single()
+
+    if (assignment?.partner_integration) {
+      const partnerIntegration = assignment.partner_integration as any
+      if (partnerIntegration.is_active) {
+        const apiKeys = partnerIntegration.api_keys as any
+        const vapiConfig = partnerIntegration.config || {}
+        
+        if (apiKeys?.default_secret_key) {
+          let phoneNumberId: string | null = null
+          
+          if (vapiConfig.shared_outbound_phone_number_id) {
+            phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+          } else if (agent.assigned_phone_number_id) {
+            const { data: phoneNumber } = await adminClient
+              .from("phone_numbers")
+              .select("external_id")
+              .eq("id", agent.assigned_phone_number_id)
+              .single()
+            
+            if (phoneNumber?.external_id) {
+              phoneNumberId = phoneNumber.external_id
+            }
+          }
+          
+          return {
+            apiKey: apiKeys.default_secret_key,
+            phoneNumberId,
+            config: vapiConfig,
+          }
+        }
+      }
+    }
+
+    // Try default integration
+    const { data: defaultIntegration } = await adminClient
+      .from("partner_integrations")
+      .select("id, api_keys, config, is_active")
+      .eq("partner_id", workspace.partner_id)
+      .eq("provider", "vapi")
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .single()
+
+    if (defaultIntegration) {
+      const apiKeys = defaultIntegration.api_keys as any
+      const vapiConfig = defaultIntegration.config || {}
+      
+      if (apiKeys?.default_secret_key) {
+        let phoneNumberId: string | null = null
+        
+        if (vapiConfig.shared_outbound_phone_number_id) {
+          phoneNumberId = vapiConfig.shared_outbound_phone_number_id
+        } else if (agent.assigned_phone_number_id) {
+          const { data: phoneNumber } = await adminClient
+            .from("phone_numbers")
+            .select("external_id")
+            .eq("id", agent.assigned_phone_number_id)
+            .single()
+          
+          if (phoneNumber?.external_id) {
+            phoneNumberId = phoneNumber.external_id
+          }
+        }
+        
+        return {
+          apiKey: apiKeys.default_secret_key,
+          phoneNumberId,
+          config: vapiConfig,
+        }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error("[CampaignResume] Error getting VAPI config:", error)
+    return null
+  }
+}
 
 /**
  * POST /api/w/[workspaceSlug]/campaigns/[id]/resume
  * 
  * Resume a paused campaign.
- * Calls Inspra /load-json to re-queue pending recipients with updated timing.
+ * Uses unified provider with automatic VAPI fallback.
  */
 export async function POST(
   request: NextRequest,
@@ -98,7 +231,27 @@ export async function POST(
       return apiError("No pending recipients to resume calls for")
     }
 
-    // Build Inspra payload with current time as NBF (start immediately)
+    // =========================================================================
+    // GET VAPI CONFIG FOR FALLBACK
+    // =========================================================================
+    
+    const vapiDetails = await getVapiConfigForFallback(agent, ctx.workspace.id, ctx.adminClient)
+    const vapiConfig: CampaignProviderConfig["vapi"] = vapiDetails?.apiKey && vapiDetails?.phoneNumberId
+      ? {
+          apiKey: vapiDetails.apiKey,
+          phoneNumberId: vapiDetails.phoneNumberId,
+        }
+      : undefined
+
+    console.log("[CampaignResume] VAPI fallback available:", !!vapiConfig)
+
+    // =========================================================================
+    // RESUME CAMPAIGN VIA UNIFIED PROVIDER
+    // =========================================================================
+
+    console.log("[CampaignResume] Resuming campaign via unified provider...")
+
+    // Build campaign data - use "immediate" schedule type for resume
     const campaignData: CampaignData = {
       id: campaign.id,
       workspace_id: campaign.workspace_id,
@@ -130,30 +283,17 @@ export async function POST(
       country: r.country,
     }))
 
-    // Build payload - this sets NBF to now for immediate start
-    const inspraPayload = buildLoadJsonPayload(campaignData, recipientData)
-    
-    // Override NBF to now for resuming
-    inspraPayload.nbf = new Date().toISOString()
-    
-    // Set expiry to 30 days from now if not set
-    if (!campaign.scheduled_expires_at) {
-      const exp = new Date()
-      exp.setDate(exp.getDate() + 30)
-      inspraPayload.exp = exp.toISOString()
-    }
+    // Resume via unified provider
+    const providerResult = await startCampaignBatch(
+      campaignData,
+      recipientData,
+      vapiConfig,
+      { startNow: true }
+    )
 
-    console.log("[CampaignResume] Calling Inspra load-json:", {
-      batchRef: inspraPayload.batchRef,
-      recipientCount: inspraPayload.callList.length,
-      agentId: inspraPayload.agentId,
-    })
-
-    const inspraResult = await loadJsonBatch(inspraPayload)
-
-    if (!inspraResult.success) {
-      console.error("[CampaignResume] Inspra API error:", inspraResult.error)
-      // Don't fail - still update local status for testing
+    if (!providerResult.success) {
+      console.error("[CampaignResume] Failed to resume campaign:", providerResult.error)
+      // Don't fail completely - still update local status for manual handling
     }
 
     // Update campaign status to active
@@ -173,19 +313,25 @@ export async function POST(
       return serverError("Failed to update campaign status")
     }
 
-    console.log("[CampaignResume] Campaign resumed:", id)
+    console.log("[CampaignResume] Campaign resumed:", {
+      campaignId: id,
+      provider: providerResult.provider,
+      fallbackUsed: providerResult.fallbackUsed,
+    })
 
     return apiResponse({
       success: true,
       campaign: updatedCampaign,
-      inspra: {
-        called: true,
-        success: inspraResult.success,
-        error: inspraResult.error,
-        batchRef: inspraPayload.batchRef,
-        recipientCount: inspraPayload.callList.length,
+      provider: {
+        used: providerResult.provider,
+        success: providerResult.success,
+        error: providerResult.error,
+        fallbackUsed: providerResult.fallbackUsed,
+        primaryError: providerResult.primaryError,
+        batchRef: providerResult.batchRef,
+        recipientCount: recipients.length,
       },
-      message: "Campaign resumed. Pending calls will be processed according to business hours.",
+      message: `Campaign resumed via ${providerResult.provider}. Pending calls will be processed according to business hours.`,
     })
   } catch (error) {
     console.error("[CampaignResume] Exception:", error)

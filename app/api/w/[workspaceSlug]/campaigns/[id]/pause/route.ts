@@ -1,13 +1,15 @@
 import { NextRequest } from "next/server"
 import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError, notFound } from "@/lib/api/helpers"
-import { pauseBatch } from "@/lib/integrations/inspra/client"
+import { pauseCampaignBatch } from "@/lib/integrations/campaign-provider"
 
 /**
  * POST /api/w/[workspaceSlug]/campaigns/[id]/pause
  * 
  * Pause an active campaign.
- * Calls Inspra /pause-batch to stop processing new calls.
+ * Uses unified provider with automatic fallback handling.
+ * For Inspra: calls /pause-batch
+ * For VAPI: state-based (campaign status controls continuation)
  */
 export async function POST(
   request: NextRequest,
@@ -48,21 +50,18 @@ export async function POST(
       return apiError("Agent configuration is invalid")
     }
 
-    // Call Inspra API to pause batch
-    const inspraPayload = {
-      workspaceId: ctx.workspace.id,
-      agentId: agent.external_agent_id,
-      batchRef: `campaign-${id}`,
-    }
+    // Call unified provider to pause batch
+    console.log("[CampaignPause] Pausing campaign:", id)
 
-    console.log("[CampaignPause] Calling Inspra pause-batch:", inspraPayload)
+    const providerResult = await pauseCampaignBatch(
+      ctx.workspace.id,
+      agent.external_agent_id,
+      id
+    )
 
-    const inspraResult = await pauseBatch(inspraPayload)
-
-    if (!inspraResult.success) {
-      console.error("[CampaignPause] Inspra API error:", inspraResult.error)
+    if (!providerResult.success) {
+      console.error("[CampaignPause] Provider error:", providerResult.error)
       // Don't fail - still update local status
-      // The batch might not exist in Inspra yet (testing mode)
     }
 
     // Update campaign status to paused
@@ -86,10 +85,10 @@ export async function POST(
     return apiResponse({
       success: true,
       campaign: updatedCampaign,
-      inspra: {
-        called: true,
-        success: inspraResult.success,
-        error: inspraResult.error,
+      provider: {
+        used: providerResult.provider,
+        success: providerResult.success,
+        error: providerResult.error,
       },
       message: "Campaign paused. In-progress calls will complete, but no new calls will be initiated.",
     })

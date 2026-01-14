@@ -13,6 +13,37 @@ import type { ConversationInsertData } from "@/lib/integrations/retell/calls"
 const VAPI_BASE_URL = "https://api.vapi.ai"
 
 // ============================================================================
+// PHONE NUMBER UTILITIES
+// ============================================================================
+
+/**
+ * Normalize phone number to E.164 format (required by VAPI)
+ * E.164 format requires the + prefix followed by country code and number
+ * 
+ * Examples:
+ * - "61370566663" → "+61370566663"
+ * - "+61370566663" → "+61370566663" (already correct)
+ * - "0370566663" → "+0370566663" (will add +, but may need country code)
+ */
+function normalizeToE164(phoneNumber: string): string {
+  // Remove any whitespace, dashes, parentheses
+  const cleaned = phoneNumber.replace(/[\s\-\(\)\.]/g, "")
+  
+  // If already starts with +, return as is
+  if (cleaned.startsWith("+")) {
+    return cleaned
+  }
+  
+  // If starts with 00 (international prefix), replace with +
+  if (cleaned.startsWith("00")) {
+    return "+" + cleaned.slice(2)
+  }
+  
+  // Otherwise, add + prefix
+  return "+" + cleaned
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -137,19 +168,23 @@ export async function createOutboundCall(params: {
 }): Promise<VapiCallResponse> {
   const { apiKey, assistantId, phoneNumberId, customerNumber, customerName } = params
 
+  // Normalize phone number to E.164 format (VAPI requirement)
+  const normalizedNumber = normalizeToE164(customerNumber)
+
   try {
     console.log(
       "[VapiCalls] Creating outbound call from",
       phoneNumberId,
       "to",
-      customerNumber
+      normalizedNumber,
+      `(original: ${customerNumber})`
     )
 
     const payload: Record<string, unknown> = {
       assistantId,
       phoneNumberId,
       customer: {
-        number: customerNumber,
+        number: normalizedNumber,
         ...(customerName && { name: customerName }),
       },
     }
@@ -166,11 +201,18 @@ export async function createOutboundCall(params: {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       console.error("[VapiCalls] Create error:", errorData)
+      
+      // Handle message being an array (VAPI returns validation errors as array)
+      let errorMessage: string
+      if (Array.isArray(errorData.message)) {
+        errorMessage = errorData.message.join(", ")
+      } else {
+        errorMessage = errorData.message || `VAPI API error: ${response.status} ${response.statusText}`
+      }
+      
       return {
         success: false,
-        error:
-          errorData.message ||
-          `VAPI API error: ${response.status} ${response.statusText}`,
+        error: errorMessage,
       }
     }
 
