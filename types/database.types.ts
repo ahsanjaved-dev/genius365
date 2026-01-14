@@ -2596,7 +2596,7 @@ export type UpdateKnowledgeDocumentInput = z.infer<typeof updateKnowledgeDocumen
 // CALL CAMPAIGNS TYPES AND SCHEMAS
 // ============================================================================
 
-export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "cancelled"
+export type CampaignStatus = "draft" | "ready" | "scheduled" | "active" | "paused" | "completed" | "cancelled"
 export type CampaignScheduleType = "immediate" | "scheduled"
 export type RecipientCallStatus =
   | "pending"
@@ -2614,7 +2614,7 @@ export type RecipientCallOutcome =
   | "declined"
   | "error"
 
-export const campaignStatusSchema = z.enum(["draft", "active", "paused", "completed", "cancelled"])
+export const campaignStatusSchema = z.enum(["draft", "ready", "scheduled", "active", "paused", "completed", "cancelled"])
 export const campaignScheduleTypeSchema = z.enum(["immediate", "scheduled"])
 export const recipientCallStatusSchema = z.enum([
   "pending",

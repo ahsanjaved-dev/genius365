@@ -52,6 +52,9 @@ import {
   useCampaignRecipients,
   useUpdateCampaign,
   useDeleteRecipient,
+  usePauseCampaign,
+  useResumeCampaign,
+  useStartCampaign,
 } from "@/lib/hooks/use-campaigns"
 import {
   ArrowLeft,
@@ -124,6 +127,9 @@ export default function CampaignDetailPage() {
   } = useCampaignRecipients(campaignId, { status: statusFilter, page, pageSize })
   const updateMutation = useUpdateCampaign()
   const deleteRecipientMutation = useDeleteRecipient()
+  const pauseMutation = usePauseCampaign()
+  const resumeMutation = useResumeCampaign()
+  const startMutation = useStartCampaign()
 
   const campaign = campaignData?.data
   const recipients = recipientsData?.data || []
@@ -204,17 +210,46 @@ export default function CampaignDetailPage() {
       ? Math.round((campaign.completed_calls / campaign.total_recipients) * 100)
       : 0
 
-  const canStart =
-    (campaign.status === "draft" || campaign.status === "paused") && campaign.total_recipients > 0
+  // Ready campaigns can be started with "Start Now"
+  const canStart = campaign.status === "ready" && campaign.total_recipients > 0
+  // Paused campaigns can be resumed
+  const canResume = campaign.status === "paused" && campaign.total_recipients > 0
+  // Active campaigns can be paused
   const canPause = campaign.status === "active"
-  const isEditable = campaign.status === "draft" || campaign.status === "paused"
+  // Scheduled campaigns are waiting for their scheduled time (auto-start)
+  const isScheduled = campaign.status === "scheduled"
+  // Ready campaigns are waiting for user to click "Start Now"
+  const isReady = campaign.status === "ready"
+  // Editable means recipients can be added/removed (only incomplete drafts)
+  const isEditable = campaign.status === "draft"
 
-  const handleStatusChange = async (newStatus: "active" | "paused") => {
+  const handlePause = async () => {
     try {
-      await updateMutation.mutateAsync({ id: campaignId, data: { status: newStatus } })
-      toast.success(newStatus === "active" ? "Campaign started" : "Campaign paused")
+      await pauseMutation.mutateAsync(campaignId)
+      toast.success("Campaign paused")
+      refetchCampaign()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update campaign")
+      toast.error(error instanceof Error ? error.message : "Failed to pause campaign")
+    }
+  }
+
+  const handleResume = async () => {
+    try {
+      await resumeMutation.mutateAsync(campaignId)
+      toast.success("Campaign resumed")
+      refetchCampaign()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to resume campaign")
+    }
+  }
+
+  const handleStart = async () => {
+    try {
+      await startMutation.mutateAsync(campaignId)
+      toast.success("Campaign started! Calls are now being processed.")
+      refetchCampaign()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start campaign")
     }
   }
 
@@ -290,17 +325,62 @@ export default function CampaignDetailPage() {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
+          {/* Start Now button for ready campaigns */}
+          {canStart && (
+            <Button 
+              onClick={handleStart}
+              disabled={startMutation.isPending}
+            >
+              {startMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              Start Now
+            </Button>
+          )}
           {canPause && (
-            <Button variant="outline" onClick={() => handleStatusChange("paused")}>
-              <Pause className="h-4 w-4 mr-2" />
+            <Button 
+              variant="outline" 
+              onClick={handlePause}
+              disabled={pauseMutation.isPending}
+            >
+              {pauseMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Pause className="h-4 w-4 mr-2" />
+              )}
               Pause
             </Button>
           )}
-          {canStart && (
-            <Button onClick={() => handleStatusChange("active")}>
-              <Play className="h-4 w-4 mr-2" />
-              {campaign.status === "paused" ? "Resume" : "Start"} Campaign
+          {canResume && (
+            <Button 
+              onClick={handleResume}
+              disabled={resumeMutation.isPending}
+            >
+              {resumeMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              Resume Campaign
             </Button>
+          )}
+          {/* Badge for ready campaigns waiting to start */}
+          {isReady && !startMutation.isPending && (
+            <Badge variant="outline" className="px-3 py-1">
+              <Clock className="h-3 w-3 mr-1" />
+              Ready to start
+            </Badge>
+          )}
+          {/* Badge for scheduled campaigns showing start time */}
+          {isScheduled && (
+            <Badge variant="outline" className="px-3 py-1">
+              <Clock className="h-3 w-3 mr-1" />
+              Starts {campaign.scheduled_start_at 
+                ? new Date(campaign.scheduled_start_at).toLocaleString() 
+                : "at scheduled time"}
+            </Badge>
           )}
         </div>
       </div>

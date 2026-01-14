@@ -109,6 +109,95 @@ export async function cleanupExpiredCampaigns(): Promise<CleanupResult> {
 }
 
 /**
+ * Cleanup old incomplete drafts (older than 24 hours)
+ * 
+ * This removes campaign drafts that:
+ * 1. Have status "draft"
+ * 2. Have name "Untitled Campaign" (never renamed by user)
+ * 3. Are older than 24 hours
+ * 4. Have no recipients (abandoned before import)
+ * 
+ * @returns CleanupResult with count of deleted drafts
+ */
+export async function cleanupOldIncompleteDrafts(): Promise<CleanupResult> {
+  const adminClient = createAdminClient()
+  const errors: string[] = []
+  let deletedCount = 0
+
+  try {
+    // Calculate 24 hours ago
+    const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    // Find old incomplete drafts
+    const { data: oldDrafts, error: fetchError } = await adminClient
+      .from("call_campaigns")
+      .select("id, name, workspace_id, created_at, total_recipients, wizard_completed")
+      .eq("status", "draft")
+      .eq("name", "Untitled Campaign")
+      .eq("total_recipients", 0)
+      .lt("created_at", cutoffTime)
+      .is("deleted_at", null)
+
+    if (fetchError) {
+      logger.error("[CleanupDrafts] Error fetching old drafts:", {
+        message: fetchError.message,
+        code: fetchError.code,
+      })
+      errors.push(`Failed to fetch old drafts: ${fetchError.message}`)
+      return { success: false, cancelledCount: 0, errors }
+    }
+
+    if (!oldDrafts || oldDrafts.length === 0) {
+      logger.info("[CleanupDrafts] No old incomplete drafts found")
+      return { success: true, cancelledCount: 0, errors: [] }
+    }
+
+    logger.info(`[CleanupDrafts] Found ${oldDrafts.length} old incomplete drafts to delete`)
+
+    // Delete each old draft (cascade will delete recipients too)
+    for (const draft of oldDrafts) {
+      try {
+        const { error: deleteError } = await adminClient
+          .from("call_campaigns")
+          .delete()
+          .eq("id", draft.id)
+
+        if (deleteError) {
+          logger.error(`[CleanupDrafts] Failed to delete draft ${draft.id}:`, {
+            message: deleteError.message,
+            code: deleteError.code,
+          })
+          errors.push(`Draft ${draft.id}: ${deleteError.message}`)
+        } else {
+          deletedCount++
+          logger.info(`[CleanupDrafts] Deleted old draft: ${draft.id} (workspace: ${draft.workspace_id})`)
+        }
+      } catch (err) {
+        const error = err as Error
+        logger.error(`[CleanupDrafts] Exception deleting draft ${draft.id}:`, {
+          message: error.message,
+          name: error.name,
+        })
+        errors.push(`Draft ${draft.id}: ${error.message}`)
+      }
+    }
+
+    const success = errors.length === 0
+    logger.info(`[CleanupDrafts] Cleanup complete. Deleted: ${deletedCount}, Errors: ${errors.length}`)
+
+    return { success, cancelledCount: deletedCount, errors }
+  } catch (err) {
+    const error = err as Error
+    logger.error("[CleanupDrafts] Unexpected error during cleanup:", {
+      message: error.message,
+      name: error.name,
+    })
+    errors.push(`Unexpected error: ${error.message}`)
+    return { success: false, cancelledCount: deletedCount, errors }
+  }
+}
+
+/**
  * Get campaigns that will expire soon (within the next 24 hours)
  * Useful for sending notification emails
  * 

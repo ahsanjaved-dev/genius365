@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter, useParams, useSearchParams } from "next/navigation"
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, Suspense } from "react"
 import { CampaignWizard } from "@/components/workspace/campaigns/campaign-wizard-dynamic"
 import { CampaignLoading } from "@/components/workspace/campaigns/campaign-loading"
 import { useWorkspaceAgents } from "@/lib/hooks/use-workspace-agents"
@@ -26,21 +26,32 @@ interface DraftData {
   business_hours_config: any
 }
 
+// Main page component wrapped in Suspense
 export default function NewCampaignPage() {
+  return (
+    <Suspense fallback={<CampaignLoading message="Loading..." submessage="Please wait" />}>
+      <NewCampaignPageContent />
+    </Suspense>
+  )
+}
+
+function NewCampaignPageContent() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
   const workspaceSlug = params.workspaceSlug as string
   const draftIdParam = searchParams.get("draft")
 
-  // State
+  // State - initialize based on whether we have a draft ID
   const [draftId, setDraftId] = useState<string | null>(draftIdParam)
   const [draftData, setDraftData] = useState<DraftData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
   
   // Ref to prevent double creation in strict mode
   const isCreatingDraftRef = useRef(false)
+  const hasMountedRef = useRef(false)
 
   const { data: agentsData, isLoading: agentsLoading } = useWorkspaceAgents()
   const createMutation = useCreateCampaignWizard()
@@ -52,6 +63,12 @@ export default function NewCampaignPage() {
   // =========================================================================
   
   const initializeDraft = useCallback(async () => {
+    // Prevent double initialization
+    if (hasMountedRef.current && isInitialized) {
+      return
+    }
+    hasMountedRef.current = true
+    
     // If we already have a draft ID in URL, load that draft
     if (draftIdParam) {
       try {
@@ -84,12 +101,14 @@ export default function NewCampaignPage() {
         })
         setDraftId(data.id)
         setIsLoading(false)
+        setIsInitialized(true)
         
       } catch (error) {
         console.error("[NewCampaignPage] Error loading draft:", error)
         const errorMessage = error instanceof Error ? error.message : "Failed to load draft"
         setLoadError(errorMessage)
         setIsLoading(false)
+        setIsInitialized(true)
       }
       return
     }
@@ -132,10 +151,12 @@ export default function NewCampaignPage() {
       const errorMessage = error instanceof Error ? error.message : "Failed to create draft"
       setLoadError(errorMessage)
       setIsLoading(false)
+      setIsInitialized(true)
       isCreatingDraftRef.current = false
     }
-  }, [draftIdParam, workspaceSlug, router])
+  }, [draftIdParam, workspaceSlug, router, isInitialized])
 
+  // Run initialization immediately on mount
   useEffect(() => {
     initializeDraft()
   }, [initializeDraft])
@@ -150,17 +171,18 @@ export default function NewCampaignPage() {
       
       // Show appropriate success message based on status and schedule type
       const status = result.data?.status
-      const scheduleType = result.data?.schedule_type
+      const recipientCount = result.data?.total_recipients || 0
       
       if (status === "scheduled") {
-        toast.success("Campaign scheduled! It will start automatically at the scheduled time.")
-      } else if (scheduleType === "immediate") {
-        toast.success("Campaign ready! Click 'Start Campaign' to begin calling.")
+        toast.success(`Campaign scheduled with ${recipientCount} recipients! It will start automatically at the scheduled time.`)
+      } else if (status === "active") {
+        toast.success(`Campaign started with ${recipientCount} recipients! Calls are now being processed.`)
       } else {
         toast.success("Campaign created successfully!")
       }
       
-      router.push(`/w/${workspaceSlug}/campaigns/${result.data.id}`)
+      // Redirect to campaigns list so user can see and manage their campaign
+      router.push(`/w/${workspaceSlug}/campaigns`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create campaign")
       throw error

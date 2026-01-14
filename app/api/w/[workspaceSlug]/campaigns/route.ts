@@ -67,11 +67,13 @@ async function getCLIForAgent(
   const supabase = getSupabaseAdmin()
   const { data: assignment } = await supabase
     .from("workspace_integration_assignments")
-    .select(`
+    .select(
+      `
       partner_integration:partner_integrations (
         config
       )
-    `)
+    `
+    )
     .eq("workspace_id", workspaceId)
     .eq("provider", "vapi")
     .single()
@@ -177,7 +179,9 @@ export async function POST(
     // Fetch full agent details for Inspra payload
     const { data: agent, error: agentError } = await ctx.adminClient
       .from("ai_agents")
-      .select("id, name, provider, is_active, external_agent_id, external_phone_number, assigned_phone_number_id")
+      .select(
+        "id, name, provider, is_active, external_agent_id, external_phone_number, assigned_phone_number_id"
+      )
       .eq("id", agent_id)
       .eq("workspace_id", ctx.workspace.id)
       .is("deleted_at", null)
@@ -200,7 +204,9 @@ export async function POST(
     // Get CLI (Caller ID) for the campaign
     const cli = await getCLIForAgent(agent, ctx.workspace.id, ctx.partner.id, ctx.adminClient)
     if (!cli) {
-      return apiError("No outbound phone number configured for the agent. Please assign a phone number to the agent first.")
+      return apiError(
+        "No outbound phone number configured for the agent. Please assign a phone number to the agent first."
+      )
     }
 
     // Extract wizard-specific fields if present
@@ -256,19 +262,21 @@ export async function POST(
       }
 
       // Determine the campaign status based on wizard completion and schedule type
-      // - Immediate campaigns stay as "draft" until user clicks "Start"
-      // - Scheduled campaigns become "scheduled" and will auto-start at the scheduled time
+      // - Immediate campaigns become "ready" (payload sent to Inspra with future NBF, waits for "Start Now")
+      // - Scheduled campaigns become "scheduled" (payload sent with scheduled NBF, auto-starts)
+      // - Incomplete campaigns stay as "draft"
       const isWizardComplete = isWizardFlow && wizardFields.wizard_completed
       const hasRecipients = recipients.length > 0
       let campaignStatus: string = "draft"
-      
+
       if (isWizardComplete && hasRecipients) {
-        // Only scheduled campaigns get auto-scheduled status
-        // Immediate campaigns stay as draft - user must click "Start" to activate
         if (rest.schedule_type === "scheduled" && rest.scheduled_start_at) {
+          // Scheduled campaigns: payload sent with scheduled NBF, auto-starts at that time
           campaignStatus = "scheduled"
+        } else {
+          // Immediate campaigns: payload sent with future NBF, waits for "Start Now" click
+          campaignStatus = "ready"
         }
-        // For immediate, keep as "draft" - user will click "Start" when ready
       }
 
       // Update the existing draft
@@ -300,26 +308,26 @@ export async function POST(
       }
 
       // Delete existing recipients before re-inserting (will be handled below)
-      await ctx.adminClient
-        .from("call_recipients")
-        .delete()
-        .eq("campaign_id", draftId)
+      await ctx.adminClient.from("call_recipients").delete().eq("campaign_id", draftId)
 
       console.log(`[CampaignsAPI] Converting draft ${draftId} to campaign`)
     } else {
       // Determine the campaign status based on wizard completion and schedule type
-      // - Immediate campaigns stay as "draft" until user clicks "Start"
-      // - Scheduled campaigns become "scheduled" and will auto-start at the scheduled time
+      // - Immediate campaigns become "ready" (payload sent to Inspra with future NBF, waits for "Start Now")
+      // - Scheduled campaigns become "scheduled" (payload sent with scheduled NBF, auto-starts)
+      // - Incomplete campaigns stay as "draft"
       const isWizardComplete = isWizardFlow && wizardFields.wizard_completed
       const hasRecipients = recipients.length > 0
       let newCampaignStatus: string = "draft"
-      
+
       if (isWizardComplete && hasRecipients) {
-        // Only scheduled campaigns get auto-scheduled status
         if (rest.schedule_type === "scheduled" && rest.scheduled_start_at) {
+          // Scheduled campaigns: payload sent with scheduled NBF, auto-starts at that time
           newCampaignStatus = "scheduled"
+        } else {
+          // Immediate campaigns: payload sent with future NBF, waits for "Start Now" click
+          newCampaignStatus = "ready"
         }
-        // For immediate, keep as "draft" - user will click "Start" when ready
       }
 
       // Create new campaign in database
@@ -397,20 +405,22 @@ export async function POST(
           insertedCount += inserted?.length || 0
           // Collect inserted recipients for Inspra payload
           if (inserted) {
-            insertedRecipients.push(...inserted.map((r: any) => ({
-              phone_number: r.phone_number,
-              first_name: r.first_name,
-              last_name: r.last_name,
-              email: r.email,
-              company: r.company,
-              reason_for_call: r.reason_for_call,
-              address_line_1: r.address_line_1,
-              address_line_2: r.address_line_2,
-              suburb: r.suburb,
-              state: r.state,
-              post_code: r.post_code,
-              country: r.country,
-            })))
+            insertedRecipients.push(
+              ...inserted.map((r: any) => ({
+                phone_number: r.phone_number,
+                first_name: r.first_name,
+                last_name: r.last_name,
+                email: r.email,
+                company: r.company,
+                reason_for_call: r.reason_for_call,
+                address_line_1: r.address_line_1,
+                address_line_2: r.address_line_2,
+                suburb: r.suburb,
+                state: r.state,
+                post_code: r.post_code,
+                country: r.country,
+              }))
+            )
           }
         }
       }
@@ -432,13 +442,21 @@ export async function POST(
     }
 
     // =========================================================================
-    // SEND TO INSPRA API on CREATE
+    // SEND TO INSPRA API on CREATE for ALL completed campaigns (heavy lifting)
+    // - Immediate/"ready" campaigns: NBF = 1 year future (waits for "Start Now")
+    // - Scheduled campaigns: NBF = scheduled_start_at (auto-starts)
+    // 
+    // Note: Payload is sent NOW, but calls don't start until NBF time.
+    // For "ready" campaigns, user clicks "Start Now" which re-sends payload with NBF = NOW.
     // =========================================================================
-    
-    let inspraResult: { success: boolean; error?: string } = { success: true }
 
-    if (insertedRecipients.length > 0) {
-      console.log("[CampaignsAPI] Sending campaign to Inspra API...")
+    let inspraResult: { success: boolean; error?: string } = { success: true }
+    const isCompletedCampaign = campaign.status === "scheduled" || campaign.status === "ready"
+
+    // Send to Inspra for all completed campaigns (both scheduled and ready/immediate)
+    if (insertedRecipients.length > 0 && isCompletedCampaign) {
+      const isReady = campaign.status === "ready"
+      console.log(`[CampaignsAPI] Sending ${isReady ? "READY (immediate)" : "SCHEDULED"} campaign to Inspra API...`)
 
       // Build campaign data for Inspra
       const campaignDataForInspra: CampaignData = {
@@ -458,6 +476,8 @@ export async function POST(
       }
 
       // Build Inspra payload
+      // For "ready" campaigns: NBF = 1 year future (inspra/client.ts handles this)
+      // For "scheduled" campaigns: NBF = scheduled_start_at
       const inspraPayload = buildLoadJsonPayload(campaignDataForInspra, insertedRecipients)
 
       console.log("[CampaignsAPI] Inspra payload:", {
@@ -475,16 +495,8 @@ export async function POST(
       inspraResult = await loadJsonBatch(inspraPayload)
 
       if (inspraResult.success) {
-        console.log("[CampaignsAPI] Successfully sent to Inspra API")
-        
-        // Update campaign with Inspra batch reference
-        await ctx.adminClient
-          .from("call_campaigns")
-          .update({
-            // Store batch reference in metadata for tracking
-            // We could add a dedicated column later if needed
-          })
-          .eq("id", campaign.id)
+        console.log(`[CampaignsAPI] Successfully sent ${isReady ? "ready" : "scheduled"} campaign to Inspra API`)
+        // Note: started_at is NOT set here for "ready" campaigns - it's set when user clicks "Start Now"
       } else {
         console.error("[CampaignsAPI] Failed to send to Inspra API:", inspraResult.error)
         // Don't fail the campaign creation - just log the error

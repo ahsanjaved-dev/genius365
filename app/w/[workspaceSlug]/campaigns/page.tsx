@@ -46,6 +46,8 @@ import type { CallCampaignWithAgent, CampaignStatus } from "@/types/database.typ
 const statusOptions = [
   { value: "all", label: "All Status" },
   { value: "draft", label: "Draft" },
+  { value: "ready", label: "Ready" },
+  { value: "scheduled", label: "Scheduled" },
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
   { value: "completed", label: "Completed" },

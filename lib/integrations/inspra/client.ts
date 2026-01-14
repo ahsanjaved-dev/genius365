@@ -303,30 +303,43 @@ export interface RecipientData {
 
 /**
  * Build Inspra /load-json payload from campaign and recipients
+ * 
+ * @param campaign - Campaign data
+ * @param recipients - List of recipients
+ * @param options.startNow - If true, sets NBF to NOW (used when "Start Now" is clicked)
+ *                           If false (default), sets NBF based on schedule type:
+ *                           - Immediate: 1 year in future (waits for "Start Now")
+ *                           - Scheduled: scheduled_start_at time (auto-starts)
  */
 export function buildLoadJsonPayload(
   campaign: CampaignData,
-  recipients: RecipientData[]
+  recipients: RecipientData[],
+  options: { startNow?: boolean } = {}
 ): InspraLoadJsonPayload {
+  const { startNow = false } = options
+  
   // Calculate NBF (not before) and EXP (expiry)
   const now = new Date()
   let nbf: Date
   let exp: Date
 
-  if (campaign.schedule_type === "scheduled" && campaign.scheduled_start_at) {
+  if (startNow) {
+    // "Start Now" clicked - set NBF to NOW so calls begin immediately
+    nbf = now
+  } else if (campaign.schedule_type === "scheduled" && campaign.scheduled_start_at) {
+    // Scheduled campaigns at creation: start at the specified time (auto-starts)
     nbf = new Date(campaign.scheduled_start_at)
   } else {
-    // For immediate campaigns, NBF is now
-    // But since we're sending on CREATE, set NBF to far future
-    // User will update NBF when they START the campaign
-    nbf = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000) // 1 year from now (placeholder)
+    // Immediate campaigns at creation: set NBF to 1 year in future
+    // Calls won't start until "Start Now" is clicked (re-sends payload with startNow=true)
+    nbf = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
   }
 
   if (campaign.scheduled_expires_at) {
     exp = new Date(campaign.scheduled_expires_at)
   } else {
-    // Default: 30 days from NBF
-    exp = new Date(nbf.getTime() + 30 * 24 * 60 * 60 * 1000)
+    // Default: 30 days from NOW (not from NBF, to ensure enough time for immediate campaigns)
+    exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
   }
 
   // Convert business hours to block rules

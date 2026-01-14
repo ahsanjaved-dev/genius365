@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
-import { cleanupExpiredCampaigns } from "@/lib/campaigns/cleanup-expired"
+import { cleanupExpiredCampaigns, cleanupOldIncompleteDrafts } from "@/lib/campaigns/cleanup-expired"
 
 /**
  * Master Cron Job Orchestrator
@@ -14,8 +14,9 @@ import { cleanupExpiredCampaigns } from "@/lib/campaigns/cleanup-expired"
  *
  * Tasks:
  * 1. Cleanup Expired Campaigns - Cancel campaigns past their expiry date
- * 2. (Future) Send Expiring Notifications - Notify users of expiring campaigns
- * 3. (Future) Sync Agents - Sync agent changes to providers
+ * 2. Cleanup Old Incomplete Drafts - Delete abandoned drafts older than 24 hours
+ * 3. (Future) Send Expiring Notifications - Notify users of expiring campaigns
+ * 4. (Future) Sync Agents - Sync agent changes to providers
  */
 export async function POST(request: NextRequest) {
   try {
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     // TASK 1: Cleanup Expired Campaigns
     // ========================================================================
     try {
-      logger.info("[MasterCron] Task 1/3: Cleanup Expired Campaigns - Starting")
+      logger.info("[MasterCron] Task 1/4: Cleanup Expired Campaigns - Starting")
       const taskStart = Date.now()
 
       const cleanupResult = await cleanupExpiredCampaigns()
@@ -63,12 +64,12 @@ export async function POST(request: NextRequest) {
       }
 
       if (cleanupResult.success) {
-        logger.info("[MasterCron] Task 1/3: Cleanup Expired Campaigns - Complete", {
+        logger.info("[MasterCron] Task 1/4: Cleanup Expired Campaigns - Complete", {
           cancelledCount: cleanupResult.cancelledCount,
           durationMs: taskDuration,
         })
       } else {
-        logger.error("[MasterCron] Task 1/3: Cleanup Expired Campaigns - Partial failure", {
+        logger.error("[MasterCron] Task 1/4: Cleanup Expired Campaigns - Partial failure", {
           cancelledCount: cleanupResult.cancelledCount,
           errorCount: cleanupResult.errors.length,
           durationMs: taskDuration,
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (error) {
       const taskError = error instanceof Error ? error.message : String(error)
-      logger.error("[MasterCron] Task 1/3: Cleanup Expired Campaigns - Failed", {
+      logger.error("[MasterCron] Task 1/4: Cleanup Expired Campaigns - Failed", {
         message: taskError,
       })
       results.cleanupExpiredCampaigns = {
@@ -88,16 +89,59 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // TASK 2: Send Expiring Campaign Notifications (PLACEHOLDER)
+    // TASK 2: Cleanup Old Incomplete Drafts (24h+)
+    // ========================================================================
+    try {
+      logger.info("[MasterCron] Task 2/4: Cleanup Old Incomplete Drafts - Starting")
+      const taskStart = Date.now()
+
+      const draftCleanupResult = await cleanupOldIncompleteDrafts()
+
+      const taskDuration = Date.now() - taskStart
+      results.cleanupOldDrafts = {
+        success: draftCleanupResult.success,
+        deletedCount: draftCleanupResult.cancelledCount,
+        errorCount: draftCleanupResult.errors.length,
+        errors: draftCleanupResult.errors.slice(0, 5), // First 5 errors for brevity
+        durationMs: taskDuration,
+      }
+
+      if (draftCleanupResult.success) {
+        logger.info("[MasterCron] Task 2/4: Cleanup Old Incomplete Drafts - Complete", {
+          deletedCount: draftCleanupResult.cancelledCount,
+          durationMs: taskDuration,
+        })
+      } else {
+        logger.error("[MasterCron] Task 2/4: Cleanup Old Incomplete Drafts - Partial failure", {
+          deletedCount: draftCleanupResult.cancelledCount,
+          errorCount: draftCleanupResult.errors.length,
+          durationMs: taskDuration,
+        })
+        errors.push(`Draft cleanup completed with ${draftCleanupResult.errors.length} errors`)
+      }
+    } catch (error) {
+      const taskError = error instanceof Error ? error.message : String(error)
+      logger.error("[MasterCron] Task 2/4: Cleanup Old Incomplete Drafts - Failed", {
+        message: taskError,
+      })
+      results.cleanupOldDrafts = {
+        success: false,
+        error: taskError,
+      }
+      errors.push("Draft cleanup task failed")
+    }
+
+    // ========================================================================
+    // TASK 3: Send Expiring Campaign Notifications (PLACEHOLDER)
     // ========================================================================
     // Uncomment when implemented
     // try {
-    //   logger.info("[MasterCron] Task 2/3: Send Expiring Notifications - Starting")
+    //   logger.info("[MasterCron] Task 3/4: Send Expiring Notifications - Starting")
     //   const notifyResult = await sendCampaignExpiringNotifications()
     //   results.sendExpiringNotifications = notifyResult
-    //   logger.info("[MasterCron] Task 2/3: Send Expiring Notifications - Complete")
+    //   logger.info("[MasterCron] Task 3/4: Send Expiring Notifications - Complete")
     // } catch (error) {
-    //   logger.error("[MasterCron] Task 2/3: Send Expiring Notifications - Failed", {
+    //   logger.error("[MasterCron] Task 3/4: Send Expiring Notifications - Failed", {
     //     message: error instanceof Error ? error.message : String(error),
     //   })
     //   results.sendExpiringNotifications = { success: false, error: String(error) }
@@ -105,17 +149,17 @@ export async function POST(request: NextRequest) {
     // }
 
     // ========================================================================
-    // TASK 3: Sync Agents to Providers (PLACEHOLDER)
+    // TASK 4: Sync Agents to Providers (PLACEHOLDER)
     // ========================================================================
     // Uncomment when implemented
     // Note: This is a heavy operation - consider running less frequently
     // try {
-    //   logger.info("[MasterCron] Task 3/3: Sync Agents - Starting")
+    //   logger.info("[MasterCron] Task 4/4: Sync Agents - Starting")
     //   const syncResult = await syncAgentsToProviders()
     //   results.syncAgentsToProviders = syncResult
-    //   logger.info("[MasterCron] Task 3/3: Sync Agents - Complete")
+    //   logger.info("[MasterCron] Task 4/4: Sync Agents - Complete")
     // } catch (error) {
-    //   logger.error("[MasterCron] Task 3/3: Sync Agents - Failed", {
+    //   logger.error("[MasterCron] Task 4/4: Sync Agents - Failed", {
     //     message: error instanceof Error ? error.message : String(error),
     //   })
     //   results.syncAgentsToProviders = { success: false, error: String(error) }
@@ -181,6 +225,12 @@ export async function GET() {
       {
         name: "cleanupExpiredCampaigns",
         description: "Cancel campaigns that have passed their expiry date without being started",
+        status: "enabled",
+        frequency: "every 12 hours",
+      },
+      {
+        name: "cleanupOldIncompleteDrafts",
+        description: "Delete abandoned 'Untitled Campaign' drafts older than 24 hours with no recipients",
         status: "enabled",
         frequency: "every 12 hours",
       },

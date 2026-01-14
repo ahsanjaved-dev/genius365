@@ -27,6 +27,7 @@ import {
   XCircle,
   Edit,
   Loader2,
+  Clock,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { CallCampaignWithAgent, CampaignStatus } from "@/types/database.types"
@@ -44,6 +45,16 @@ const statusConfig: Record<CampaignStatus, { label: string; color: string; icon:
     label: "Draft",
     color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
     icon: null,
+  },
+  ready: {
+    label: "Ready",
+    color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
+    icon: <Play className="h-3 w-3 mr-1" />,
+  },
+  scheduled: {
+    label: "Scheduled",
+    color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+    icon: <Clock className="h-3 w-3 mr-1" />,
   },
   active: {
     label: "Active",
@@ -92,15 +103,21 @@ export function CampaignCard({
   
   // Determine available actions based on status
   const isDraft = campaign.status === "draft"
+  const isReady = campaign.status === "ready"
+  const isScheduled = campaign.status === "scheduled"
   const isActive = campaign.status === "active"
   const isPaused = campaign.status === "paused"
   
-  const canStart = isDraft
+  // Ready campaigns can be started (user clicks "Start Now")
+  const canStart = isReady
+  // Paused campaigns can be resumed
   const canResume = isPaused
+  // Active campaigns can be paused
   const canPause = isActive
   // Delete is always available - the API will terminate active campaigns automatically
   const canDelete = true
-  const canEdit = isDraft
+  // Only incomplete drafts can be edited via wizard
+  const canEdit = isDraft && !campaign.wizard_completed
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -114,7 +131,7 @@ export function CampaignCard({
               </div>
               <div className="min-w-0">
                 <Link
-                  href={isDraft ? `/w/${workspaceSlug}/campaigns/new?draft=${campaign.id}` : `/w/${workspaceSlug}/campaigns/${campaign.id}`}
+                  href={canEdit ? `/w/${workspaceSlug}/campaigns/new?draft=${campaign.id}` : `/w/${workspaceSlug}/campaigns/${campaign.id}`}
                   className="font-semibold text-foreground hover:text-primary transition-colors truncate block"
                 >
                   {campaign.name}
@@ -134,7 +151,8 @@ export function CampaignCard({
                 <Users className="h-4 w-4" />
                 <span>{campaign.total_recipients} recipients</span>
               </div>
-              {!isDraft && (
+              {/* Show call stats for campaigns that have started or completed */}
+              {(isActive || isPaused || campaign.status === "completed" || campaign.status === "cancelled") && (
                 <>
                   <div className="flex items-center gap-1">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -148,10 +166,17 @@ export function CampaignCard({
                   )}
                 </>
               )}
+              {/* Show scheduled time for scheduled campaigns */}
+              {isScheduled && campaign.scheduled_start_at && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-4 w-4 text-purple-600" />
+                  <span>Starts {new Date(campaign.scheduled_start_at).toLocaleDateString()}</span>
+                </div>
+              )}
             </div>
 
-            {/* Progress bar */}
-            {campaign.total_recipients > 0 && !isDraft && (
+            {/* Progress bar - show for campaigns that have started */}
+            {campaign.total_recipients > 0 && (isActive || isPaused || campaign.status === "completed" || campaign.status === "cancelled") && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                   <span>{campaign.completed_calls} / {campaign.total_recipients} completed</span>
@@ -170,7 +195,7 @@ export function CampaignCard({
             </Badge>
 
             <div className="flex items-center gap-1">
-              {/* Quick action for drafts - Continue editing */}
+              {/* Quick action for incomplete drafts - Continue editing */}
               {canEdit && (
                 <Button 
                   variant="outline" 
@@ -192,8 +217,20 @@ export function CampaignCard({
                 </Button>
               )}
 
-              {/* View button for non-draft campaigns */}
-              {!isDraft && (
+              {/* Start Now button for ready campaigns */}
+              {canStart && onStart && (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => onStart(campaign)}
+                >
+                  <Play className="h-4 w-4 mr-1" />
+                  Start Now
+                </Button>
+              )}
+
+              {/* View button for non-actionable campaigns */}
+              {!canEdit && !canStart && (
                 <Button variant="ghost" size="sm" asChild>
                   <Link href={`/w/${workspaceSlug}/campaigns/${campaign.id}`}>
                     <Eye className="h-4 w-4 mr-1" />
@@ -209,24 +246,35 @@ export function CampaignCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {/* Start option for ready campaigns (also in main button) */}
                   {canStart && onStart && (
                     <DropdownMenuItem onClick={() => onStart(campaign)}>
                       <Play className="h-4 w-4 mr-2" />
-                      Start Campaign
+                      Start Now
                     </DropdownMenuItem>
                   )}
+                  {/* Resume option for paused campaigns */}
                   {canResume && onResume && (
                     <DropdownMenuItem onClick={() => onResume(campaign)}>
                       <Play className="h-4 w-4 mr-2" />
                       Resume Campaign
                     </DropdownMenuItem>
                   )}
+                  {/* Pause option for active campaigns */}
                   {canPause && onPause && (
                     <DropdownMenuItem onClick={() => onPause(campaign)}>
                       <Pause className="h-4 w-4 mr-2" />
                       Pause Campaign
                     </DropdownMenuItem>
                   )}
+                  {/* View details - always available */}
+                  <DropdownMenuItem asChild>
+                    <Link href={`/w/${workspaceSlug}/campaigns/${campaign.id}`}>
+                      <Eye className="h-4 w-4 mr-2" />
+                      View Details
+                    </Link>
+                  </DropdownMenuItem>
+                  {/* Delete is always available */}
                   {canDelete && onDelete && (
                     <>
                       <DropdownMenuSeparator />
