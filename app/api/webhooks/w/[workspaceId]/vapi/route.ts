@@ -289,7 +289,19 @@ function verifyVapiSignature(
 // =============================================================================
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const { workspaceId } = await params
+  // IMMEDIATE LOG - Before any async operations
+  console.log(`[VAPI Webhook W] ===== WEBHOOK HIT - ENTRY POINT =====`)
+  console.log(`[VAPI Webhook W] Request URL: ${request.url}`)
+  console.log(`[VAPI Webhook W] Timestamp: ${new Date().toISOString()}`)
+  
+  let workspaceId: string
+  try {
+    const resolvedParams = await params
+    workspaceId = resolvedParams.workspaceId
+  } catch (paramError) {
+    console.error(`[VAPI Webhook W] ERROR awaiting params:`, paramError)
+    return NextResponse.json({ error: "Failed to resolve params" }, { status: 500 })
+  }
 
   console.log(`[VAPI Webhook W/${workspaceId}] ===== WEBHOOK RECEIVED =====`)
   console.log(`[VAPI Webhook W/${workspaceId}] URL: ${request.url}`)
@@ -336,19 +348,43 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     console.log(`[VAPI Webhook W/${workspaceId}] Received webhook`)
 
-    // Validate workspace exists
-    if (!prisma) {
-      console.error("[VAPI Webhook] Prisma not configured")
-      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
+    // Validate workspace exists - try Prisma first, fallback to Supabase
+    let workspace: { id: string; partnerId: string } | null = null
+    
+    if (prisma) {
+      try {
+        workspace = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { id: true, partnerId: true },
+        })
+      } catch (prismaError) {
+        console.error(`[VAPI Webhook W/${workspaceId}] Prisma query failed:`, prismaError)
+      }
+    } else {
+      console.warn(`[VAPI Webhook W/${workspaceId}] Prisma not available, trying Supabase...`)
     }
 
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { id: true, partnerId: true },
-    })
+    // Fallback to Supabase if Prisma failed or unavailable
+    if (!workspace) {
+      try {
+        const supabase = getSupabaseAdmin()
+        const { data, error } = await supabase
+          .from("workspaces")
+          .select("id, partner_id")
+          .eq("id", workspaceId)
+          .single()
+        
+        if (data && !error) {
+          workspace = { id: data.id, partnerId: data.partner_id }
+          console.log(`[VAPI Webhook W/${workspaceId}] Found workspace via Supabase`)
+        }
+      } catch (supabaseError) {
+        console.error(`[VAPI Webhook W/${workspaceId}] Supabase fallback failed:`, supabaseError)
+      }
+    }
 
     if (!workspace) {
-      console.error(`[VAPI Webhook] Workspace not found: ${workspaceId}`)
+      console.error(`[VAPI Webhook W/${workspaceId}] Workspace not found via any method`)
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 })
     }
 
