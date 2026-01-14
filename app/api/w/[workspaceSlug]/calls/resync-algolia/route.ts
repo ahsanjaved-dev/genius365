@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     console.log("[Resync API] Step 2: Re-syncing all calls...")
     const syncResult = await syncWorkspaceCallsToAlgolia(
       ctx.workspace.id,
-      ctx.workspace.partnerId
+      ctx.workspace.partner_id
     )
 
     if (!syncResult.success) {

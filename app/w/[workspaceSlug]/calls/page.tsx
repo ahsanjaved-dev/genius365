@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,12 +20,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ConversationDetailModal } from "@/components/workspace/conversations/conversation-detail-modal"
 import { AlgoliaSearchPanel } from "@/components/workspace/calls/algolia-search-panel"
 import { FallbackSearchPanel, type FallbackFilters } from "@/components/workspace/calls/fallback-search-panel"
 import { useWorkspaceCalls, useWorkspaceCallsStats } from "@/lib/hooks/use-workspace-calls"
 import { useWorkspaceAgents } from "@/lib/hooks/use-workspace-agents"
 import { useIsAlgoliaConfigured } from "@/lib/hooks/use-algolia-search"
+import { useWorkspaceCallsRealtime } from "@/lib/hooks/use-realtime-call-status"
 import { exportCallsToPDF, exportCallsToCSV } from "@/lib/utils/export-calls-pdf"
 import { toast } from "sonner"
 import {
@@ -43,9 +43,11 @@ import {
   FileText,
   Monitor,
   FileJson,
+  ExternalLink,
+  Radio,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
-import type { ConversationWithAgent } from "@/types/database.types"
+import type { ConversationWithAgent, Conversation } from "@/types/database.types"
 import type { AlgoliaCallHit } from "@/lib/algolia/types"
 
 // ============================================================================
@@ -87,13 +89,66 @@ export default function CallsPage() {
   })
   
   // Shared state
-  const [selectedCall, setSelectedCall] = useState<ConversationWithAgent | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [exportFormat, setExportFormat] = useState<"pdf" | "csv">("pdf")
   const [isResyncing, setIsResyncing] = useState(false)
+  
+  // Real-time call status updates
+  const [realtimeCallStatuses, setRealtimeCallStatuses] = useState<Map<string, string>>(new Map())
 
   // Check if Algolia is configured
   const { isConfigured: algoliaConfigured, isLoading: algoliaLoading } = useIsAlgoliaConfigured()
+  
+  // Fetch calls for DB mode (only when Algolia is not configured)
+  const { data, isLoading, error } = useWorkspaceCalls({
+    page,
+    pageSize,
+    status: dbFilters.status !== "all" ? dbFilters.status : undefined,
+    direction:
+      dbFilters.direction !== "all" && dbFilters.direction !== "web" ? dbFilters.direction : undefined,
+    callType: dbFilters.direction === "web" ? "web" : undefined,
+    agentId: dbFilters.agentId !== "all" ? dbFilters.agentId : undefined,
+    search: dbFilters.search || undefined,
+  })
+
+  // Get workspace ID for realtime subscription (from data or params)
+  const workspaceId = data?.data?.[0]?.workspace_id || workspaceSlug || ""
+  
+  // Subscribe to real-time call status updates for this workspace
+  const { recentEvents, isConnected: realtimeConnected } = useWorkspaceCallsRealtime(
+    workspaceId,
+    {
+      onNewCall: (conversation) => {
+        console.log("[Calls] New call received:", conversation.id)
+        // Trigger refetch of calls list
+        toast.info("New call started", {
+          description: `${conversation.caller_name || "Unknown"} - ${conversation.phone_number || "Web Call"}`,
+        })
+      },
+      onCallComplete: (conversation) => {
+        console.log("[Calls] Call completed:", conversation.id)
+        // Update local status
+        setRealtimeCallStatuses((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(conversation.id as string, conversation.status as string)
+          return newMap
+        })
+      },
+    }
+  )
+  
+  // Update realtime statuses when events come in
+  useEffect(() => {
+    if (recentEvents.length > 0) {
+      setRealtimeCallStatuses((prev) => {
+        const newMap = new Map(prev)
+        recentEvents.forEach((event) => {
+          newMap.set(event.conversationId, event.status)
+        })
+        return newMap
+      })
+    }
+  }, [recentEvents])
 
   const getCallTypeLabel = (call: ConversationWithAgent | AlgoliaCallHit): "web" | "inbound" | "outbound" => {
     if ("call_type" in call && call.call_type) {
@@ -107,18 +162,6 @@ export default function CallsPage() {
     const direction = "direction" in call ? call.direction : "outbound"
     return direction === "inbound" ? "inbound" : "outbound"
   }
-
-  // Fetch calls for DB mode (only when Algolia is not configured)
-  const { data, isLoading, error } = useWorkspaceCalls({
-    page,
-    pageSize,
-    status: dbFilters.status !== "all" ? dbFilters.status : undefined,
-    direction:
-      dbFilters.direction !== "all" && dbFilters.direction !== "web" ? dbFilters.direction : undefined,
-    callType: dbFilters.direction === "web" ? "web" : undefined,
-    agentId: dbFilters.agentId !== "all" ? dbFilters.agentId : undefined,
-    search: dbFilters.search || undefined,
-  })
 
   // Fetch stats
   const { data: stats, isLoading: statsLoading } = useWorkspaceCallsStats()
@@ -208,74 +251,72 @@ export default function CallsPage() {
     }
   }, [algoliaConfigured, workspaceSlug])
 
-  // Handle view call detail from Algolia suggestion
+  // Handle view call detail - navigate to detail page
   const handleViewCallDetail = useCallback((conversationId: string) => {
-    // Find in Algolia results first, then in DB results
-    const fromAlgolia = algoliaResults.find(h => h.objectID === conversationId || h.conversation_id === conversationId)
-    if (fromAlgolia) {
-      const converted = convertAlgoliaToConversation([fromAlgolia])
-      if (converted.length > 0) {
-        setSelectedCall(converted[0])
-        return
-      }
-    }
-    
-    // Fallback: find in DB results
-    const fromDb = dbCalls.find(c => c.id === conversationId)
-    if (fromDb) {
-      setSelectedCall(fromDb)
-    }
-  }, [algoliaResults, dbCalls])
+    router.push(`/w/${workspaceSlug}/calls/${conversationId}`)
+  }, [router, workspaceSlug])
+  
+  // Helper to get current status (with realtime override)
+  const getCallStatus = useCallback((call: ConversationWithAgent) => {
+    return realtimeCallStatuses.get(call.id) || call.status
+  }, [realtimeCallStatuses])
 
   // Convert Algolia hits to ConversationWithAgent format for display
   const convertAlgoliaToConversation = (hits: AlgoliaCallHit[]): ConversationWithAgent[] => {
-    return hits.map((hit) => ({
-      id: hit.conversation_id || hit.objectID,
-      conversation_id: hit.conversation_id,
-      external_id: hit.external_id,
-      workspace_id: hit.workspace_id,
-      agent_id: hit.agent_id,
-      phone_number: hit.phone_number,
-      caller_name: hit.caller_name,
-      status: hit.status as ConversationWithAgent["status"],
-      direction: hit.direction as ConversationWithAgent["direction"],
-      sentiment: hit.sentiment,
-      provider: hit.provider as ConversationWithAgent["provider"],
-      duration_seconds: hit.duration_seconds,
-      total_cost: hit.total_cost,
-      started_at: hit.started_at_timestamp ? new Date(hit.started_at_timestamp).toISOString() : null,
-      created_at: new Date(hit.created_at_timestamp).toISOString(),
-      updated_at: new Date(hit.created_at_timestamp).toISOString(),
-      transcript: hit.transcript || null,
-      summary: hit.summary || null,
-      recording_url: hit.recording_url,
-      metadata: hit.call_type ? { call_type: hit.call_type } : null,
-      agent: {
-        id: hit.agent_id || "",
-        name: hit.agent_name || "Unknown",
-        provider: hit.provider as "vapi" | "retell",
-        is_active: true,
-        workspace_id: hit.workspace_id,
-        external_id: null,
-        voice_id: null,
-        voice_provider: null,
-        first_message: null,
-        system_prompt: null,
-        llm_model: null,
-        llm_temperature: null,
-        silence_timeout_seconds: null,
-        max_call_duration_seconds: null,
-        background_sound: null,
-        agent_direction: "inbound",
-        tool_ids: null,
-        tools_config: null,
-        knowledge_base_ids: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      // Highlight info
-      _highlightResult: hit._highlightResult,
-    })) as ConversationWithAgent[]
+    // Helper to check if timestamp is valid (not 0 or Unix epoch)
+    const isValidTimestamp = (ts: number | null | undefined): boolean => {
+      if (!ts || ts <= 0) return false
+      const date = new Date(ts)
+      return date.getFullYear() > 2020
+    }
+
+    return hits.map((hit) => {
+      const result: ConversationWithAgent = {
+        id: hit.conversation_id || hit.objectID,
+        external_id: hit.external_id || null,
+        workspace_id: hit.workspace_id || null,
+        agent_id: hit.agent_id || null,
+        phone_number: hit.phone_number || null,
+        caller_name: hit.caller_name || null,
+        status: (hit.status || "completed") as ConversationWithAgent["status"],
+        direction: (hit.direction || "inbound") as ConversationWithAgent["direction"],
+        sentiment: hit.sentiment || null,
+        duration_seconds: hit.duration_seconds || 0,
+        total_cost: hit.total_cost || 0,
+        started_at: isValidTimestamp(hit.started_at_timestamp) 
+          ? new Date(hit.started_at_timestamp!).toISOString() 
+          : null,
+        ended_at: null,
+        created_at: isValidTimestamp(hit.created_at_timestamp)
+          ? new Date(hit.created_at_timestamp).toISOString()
+          : new Date().toISOString(),
+        transcript: hit.transcript || null,
+        summary: hit.summary || null,
+        recording_url: hit.recording_url || null,
+        metadata: hit.call_type ? { call_type: hit.call_type } : {},
+        // Missing required fields with defaults
+        cost_breakdown: {},
+        customer_rating: null,
+        deleted_at: null,
+        error_code: null,
+        error_message: null,
+        follow_up_notes: null,
+        followed_up_at: null,
+        followed_up_by: null,
+        quality_score: null,
+        requires_follow_up: false,
+        transcript_search: null,
+        agent: {
+          id: hit.agent_id || "",
+          name: hit.agent_name || "Unknown",
+          provider: (hit.provider || "vapi") as "vapi" | "retell",
+          voice_provider: null,
+          model_provider: null,
+          transcriber_provider: null,
+        },
+      }
+      return result
+    })
   }
 
   // Export handler
@@ -312,21 +353,47 @@ export default function CallsPage() {
   }, [algoliaConfigured, algoliaResults, dbCalls, exportFormat])
 
   // Format duration
-  const formatDuration = (seconds: number) => {
+  const formatDuration = (seconds: number | null | undefined) => {
+    if (!seconds || seconds <= 0) return "0:00"
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
   // Format duration for display (e.g., "2m 30s")
-  const formatDurationDisplay = (seconds: number) => {
-    if (seconds === 0) return "0:00"
+  const formatDurationDisplay = (seconds: number | null | undefined) => {
+    if (!seconds || seconds <= 0) return "0:00"
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  // Get current calls based on Algolia availability
+  // Check if a date is valid and reasonable (not Unix epoch or too old)
+  const isValidDate = (dateStr: string | null | undefined): boolean => {
+    if (!dateStr) return false
+    try {
+      const date = new Date(dateStr)
+      // Check if valid date and year is after 2020 (reasonable for our app)
+      return !isNaN(date.getTime()) && date.getFullYear() > 2020
+    } catch {
+      return false
+    }
+  }
+
+  // Get the best available timestamp for display
+  const getDisplayTimestamp = (call: ConversationWithAgent): Date | null => {
+    // Try started_at first, then created_at
+    if (isValidDate(call.started_at)) {
+      return new Date(call.started_at!)
+    }
+    if (isValidDate(call.created_at)) {
+      return new Date(call.created_at!)
+    }
+    return null
+  }
+
+  // Use Algolia when configured for better search performance
+  // Falls back to DB when Algolia is not configured
   const currentCalls = algoliaConfigured ? convertAlgoliaToConversation(algoliaResults) : dbCalls
   const currentTotal = algoliaConfigured ? algoliaTotal : (data?.total || 0)
   const isCurrentLoading = algoliaConfigured ? algoliaSearching : isLoading
@@ -538,6 +605,24 @@ export default function CallsPage() {
                 {currentTotal || 0} total calls
               </CardDescription>
             </div>
+            {/* Real-time connection indicator */}
+            <div className="flex items-center gap-2 text-sm">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  realtimeConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"
+                }`}
+              />
+              <span className="text-muted-foreground">
+                {realtimeConnected ? (
+                  <span className="flex items-center gap-1">
+                    <Radio className="h-3 w-3" />
+                    Live Updates
+                  </span>
+                ) : (
+                  "Offline"
+                )}
+              </span>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -568,21 +653,32 @@ export default function CallsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {currentCalls.map((call) => (
+                {currentCalls.map((call) => {
+                  const currentStatus = getCallStatus(call)
+                  const isLive = currentStatus === "in_progress" || currentStatus === "ringing"
+                  
+                  return (
                   <TableRow
                     key={call.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedCall(call)}
+                    onClick={() => handleViewCallDetail(call.id)}
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
+                        {isLive ? (
+                          <div className="relative">
+                            <Phone className="h-4 w-4 text-blue-500" />
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
+                          </div>
+                        ) : (
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                        )}
                         <div>
                           <p className="font-medium">
-                            {call.caller_name || "Unknown"}
+                            {call.caller_name || (getCallTypeLabel(call) === "web" ? "Web Caller" : (call.phone_number ? "Caller" : "Unknown"))}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {call.phone_number || "No number"}
+                            {call.phone_number || (getCallTypeLabel(call) === "web" ? "Browser" : "No number")}
                           </p>
                         </div>
                       </div>
@@ -621,8 +717,9 @@ export default function CallsPage() {
                       })()}
                     </TableCell>
                     <TableCell>
-                      <Badge className={statusColors[call.status] || statusColors.completed}>
-                        {call.status.replace("_", " ")}
+                      <Badge className={`${statusColors[currentStatus] || statusColors.completed} ${isLive ? 'animate-pulse' : ''}`}>
+                        {isLive && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                        {currentStatus.replace("_", " ")}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -638,39 +735,52 @@ export default function CallsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {call.started_at
-                        ? formatDistanceToNow(new Date(call.started_at), {
-                            addSuffix: true,
-                          })
-                        : call.created_at
-                        ? formatDistanceToNow(new Date(call.created_at), {
-                            addSuffix: true,
-                          })
-                        : "N/A"}
+                      {(() => {
+                        const timestamp = getDisplayTimestamp(call)
+                        if (timestamp) {
+                          return formatDistanceToNow(timestamp, { addSuffix: true })
+                        }
+                        return "N/A"
+                      })()}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        {call.transcript && (
-                          <span title="Has transcript">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-2">
+                        {call.recording_url && (
+                          <span title="Has recording">
+                            <Radio className="h-4 w-4 text-green-600" />
                           </span>
                         )}
+                        {call.transcript && (
+                          <span title="Has transcript">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </span>
+                        )}
+                        {call.summary && (
+                          <span title="Has summary">
+                            <Activity className="h-4 w-4 text-purple-600" />
+                          </span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleViewCallDetail(call.id)
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
-
-      {/* Call Detail Modal */}
-      <ConversationDetailModal
-        conversation={selectedCall}
-        open={!!selectedCall}
-        onClose={() => setSelectedCall(null)}
-      />
     </div>
   )
 }
