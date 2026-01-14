@@ -173,7 +173,13 @@ export function getNextBusinessHourWindow(
         
         if (firstSlot) {
           // Parse start time
-          const [hours, minutes] = firstSlot.start.split(":").map(Number)
+          const timeParts = firstSlot.start.split(":").map(Number)
+          const hours = timeParts[0]
+          const minutes = timeParts[1]
+          
+          if (hours === undefined || minutes === undefined) {
+            continue // Invalid time format, skip to next day
+          }
           
           // Create date in target timezone
           const targetDate = new Date(checkDate)
@@ -339,6 +345,11 @@ export async function processBatchCalls(
   
   for (let i = 0; i < callList.length; i++) {
     const item = callList[i]
+    
+    if (!item) {
+      console.warn(`[VapiBatch] Skipping undefined item at index ${i}`)
+      continue
+    }
     
     // Re-check business hours periodically (every 10 calls) - only if not skipped
     if (!skipBusinessHoursCheck && i > 0 && i % 10 === 0 && businessHoursConfig?.enabled) {

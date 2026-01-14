@@ -22,17 +22,17 @@ export interface DraftData {
   agent_id?: string
   recipients?: Array<{
     phone_number: string
-    first_name?: string
-    last_name?: string
-    email?: string
-    company?: string
-    reason_for_call?: string
-    address_line_1?: string
-    address_line_2?: string
-    suburb?: string
-    state?: string
-    post_code?: string
-    country?: string
+    first_name?: string | null
+    last_name?: string | null
+    email?: string | null
+    company?: string | null
+    reason_for_call?: string | null
+    address_line_1?: string | null
+    address_line_2?: string | null
+    suburb?: string | null
+    state?: string | null
+    post_code?: string | null
+    country?: string | null
   }>
   csv_column_headers?: string[]
   schedule_type?: "immediate" | "scheduled"

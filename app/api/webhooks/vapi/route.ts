@@ -460,6 +460,9 @@ async function updateCampaignRecipientStatus(
     }
 
     const recipientData = recipient[0]
+    if (!recipientData) {
+      return
+    }
     console.log(`[VAPI Webhook] Updating campaign recipient ${recipientData.id} with outcome: ${callOutcome}`)
 
     // Update recipient status

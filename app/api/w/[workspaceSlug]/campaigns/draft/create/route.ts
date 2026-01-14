@@ -69,7 +69,10 @@ export async function POST(
       return apiError("No active agents found. Please create an agent first.", 400)
     }
 
-    const placeholderAgentId = agents[0].id
+    const placeholderAgentId = agents[0]?.id
+    if (!placeholderAgentId) {
+      return apiError("No active agents found. Please create an agent first.", 400)
+    }
 
     // Create new draft with placeholder values
     const { data: draft, error: createError } = await ctx.adminClient

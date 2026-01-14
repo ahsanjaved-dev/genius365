@@ -157,7 +157,7 @@ export async function DELETE(
     const agent = existing.agent as any
 
     // If campaign is active or paused, terminate it with provider first
-    let providerResult = { success: true, provider: "inspra" as const, error: undefined as string | undefined }
+    let providerResult: { success: boolean; provider: "inspra" | "vapi"; error?: string } = { success: true, provider: "inspra" as const, error: undefined }
     const needsTermination = existing.status === "active" || existing.status === "paused"
     
     if (needsTermination && agent?.external_agent_id) {

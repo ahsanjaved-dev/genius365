@@ -48,7 +48,7 @@ export async function POST(
     const agent = campaign.agent as any
 
     // Call unified provider to terminate batch (only if agent is synced)
-    let providerResult = { success: true, provider: "inspra" as const, error: undefined as string | undefined }
+    let providerResult: { success: boolean; provider: "inspra" | "vapi"; error?: string } = { success: true, provider: "inspra" as const, error: undefined }
     
     if (agent?.external_agent_id) {
       console.log("[CampaignTerminate] Terminating campaign:", id)
