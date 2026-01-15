@@ -47,6 +47,13 @@ import {
 } from "@/components/workspace/campaigns/campaign-status-badge"
 import { ImportRecipientsDialog } from "@/components/workspace/campaigns/import-recipients-dialog"
 import { AddRecipientDialog } from "@/components/workspace/campaigns/add-recipient-dialog"
+import { CampaignAnalytics, type CampaignAnalyticsData } from "@/components/workspace/campaigns/campaign-analytics"
+import { 
+  CampaignActivityFeed, 
+  type ActivityEvent,
+  recipientStatusToActivityEvent,
+} from "@/components/workspace/campaigns/campaign-activity-feed"
+import { WebhookStatusAlert } from "@/components/workspace/campaigns/webhook-status-alert"
 import {
   useCampaign,
   useCampaignRecipients,
@@ -62,6 +69,8 @@ import {
   useRealtimeCampaignStatus,
   type RecipientCallStatus as RealtimeRecipientStatus,
 } from "@/lib/hooks/use-realtime-campaign"
+import { useCampaignPolling } from "@/lib/hooks/use-campaign-polling"
+import { useCampaignProgress } from "@/lib/hooks/use-campaign-progress"
 import {
   ArrowLeft,
   Loader2,
@@ -121,6 +130,7 @@ export default function CampaignDetailPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<CallRecipient | null>(null)
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
 
   const {
     data: campaignData,
@@ -143,6 +153,13 @@ export default function CampaignDetailPage() {
   const recipients = recipientsData?.data || []
   const totalRecipients = recipientsData?.total || 0
   const totalPages = recipientsData?.totalPages || 1
+
+  // Progress tracking with ETA
+  const { progress: campaignProgress } = useCampaignProgress({
+    campaignId,
+    pollingInterval: campaign?.status === "active" ? 3000 : 10000,
+    onlyWhenActive: false,
+  })
 
   // Real-time updates for campaign recipients
   const {
@@ -178,6 +195,55 @@ export default function CampaignDetailPage() {
       refetchCampaign()
     }, [refetchCampaign]),
   })
+
+  // Polling fallback for when realtime updates aren't being received
+  // (e.g., webhook URL mismatch, network issues)
+  const {
+    isPolling,
+    realtimeHealthy,
+    pollNow,
+    reportRealtimeUpdate,
+  } = useCampaignPolling({
+    campaignId,
+    workspaceId: campaign?.workspace_id,
+    enabled: campaign?.status === "active", // Only poll for active campaigns
+    pollingInterval: 10000, // Poll every 10 seconds if realtime fails
+    realtimeTimeoutMs: 30000, // Start polling after 30s without realtime updates
+    onPollUpdate: useCallback(() => {
+      // Refetch data when polling detects changes
+      refetchCampaign()
+      refetchRecipients()
+    }, [refetchCampaign, refetchRecipients]),
+  })
+
+  // Report realtime updates to polling hook (so it knows realtime is working)
+  useEffect(() => {
+    if (recentUpdates.length > 0) {
+      reportRealtimeUpdate()
+    }
+  }, [recentUpdates, reportRealtimeUpdate])
+
+  // Convert realtime updates to activity events
+  useEffect(() => {
+    if (recentUpdates.length > 0) {
+      const newEvents = recentUpdates
+        .filter(update => update.call_status) // Only track status changes
+        .map(update => {
+          const recipient = recipients.find(r => r.id === update.id)
+          return recipientStatusToActivityEvent(
+            update.id,
+            recipient?.first_name || null,
+            recipient?.phone_number || update.phone_number || "Unknown",
+            update.call_status,
+            update.external_call_id
+          )
+        })
+      
+      if (newEvents.length > 0) {
+        setActivityEvents(prev => [...prev, ...newEvents].slice(-100)) // Keep last 100 events
+      }
+    }
+  }, [recentUpdates, recipients])
 
   // Get real-time status for a recipient (fallback to API status)
   const getRecipientStatus = useCallback((recipient: CallRecipient): RecipientCallStatus => {
@@ -470,6 +536,11 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
+      {/* Webhook Status Alert - Shows if there are webhook URL mismatches */}
+      {(campaign.status === "active" || campaign.status === "ready") && (
+        <WebhookStatusAlert showOnlyOnIssues={true} />
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
@@ -523,10 +594,53 @@ export default function CampaignDetailPage() {
               <p className="text-xs text-muted-foreground">Progress</p>
               <Progress value={progress} className="h-2 mt-2" />
               <p className="text-xs text-muted-foreground mt-1">{processedCalls} / {campaign.total_recipients}</p>
+              {campaign.status === "active" && campaignProgress && (
+                <div className="mt-2 pt-2 border-t space-y-1">
+                  {campaignProgress.etaDisplay && (
+                    <p className="text-xs text-blue-600 font-medium">
+                      {campaignProgress.etaDisplay}
+                    </p>
+                  )}
+                  {campaignProgress.callsPerMinute > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {campaignProgress.callsPerMinute} calls/min
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Analytics & Activity Row - Only show for active/completed campaigns */}
+      {(campaign.status === "active" || campaign.status === "completed" || campaign.status === "paused") && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Campaign Analytics */}
+          <CampaignAnalytics
+            data={{
+              total: campaign.total_recipients,
+              completed: processedCalls,
+              successful: campaign.successful_calls || 0,
+              failed: campaign.failed_calls || 0,
+              pending: campaign.pending_calls || 0,
+              successRate: processedCalls > 0 
+                ? Math.round(((campaign.successful_calls || 0) / processedCalls) * 100) 
+                : 0,
+              avgDurationSeconds: campaignProgress?.avgCallDurationMs 
+                ? campaignProgress.avgCallDurationMs / 1000 
+                : undefined,
+            }}
+          />
+
+          {/* Live Activity Feed */}
+          <CampaignActivityFeed
+            events={activityEvents}
+            autoScroll={campaign.status === "active"}
+            compact={campaign.status !== "active"}
+          />
+        </div>
+      )}
 
       {/* Schedule & Settings Row */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -637,14 +751,24 @@ export default function CampaignDetailPage() {
               <CardTitle className="flex items-center gap-2">
                 <Phone className="h-5 w-5" />
                 Recipients
-                {/* Real-time connection indicator */}
-                {realtimeConnected ? (
+                {/* Connection status indicator - shows realtime + polling fallback */}
+                {realtimeConnected && realtimeHealthy ? (
                   <span className="flex items-center gap-1 text-xs font-normal text-green-600">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
                     Live
+                  </span>
+                ) : isPolling ? (
+                  <span className="flex items-center gap-1 text-xs font-normal text-yellow-600" title="Using polling fallback - realtime updates may be delayed">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Polling
+                  </span>
+                ) : realtimeConnected ? (
+                  <span className="flex items-center gap-1 text-xs font-normal text-yellow-600" title="Connected but no recent updates">
+                    <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
+                    Waiting...
                   </span>
                 ) : (
                   <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">

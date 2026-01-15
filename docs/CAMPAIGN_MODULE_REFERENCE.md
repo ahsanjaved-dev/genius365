@@ -2,6 +2,8 @@
 
 > **LLM-Friendly Documentation** - This document provides a comprehensive reference for the Campaign Module in Genius365. It covers architecture, data models, API endpoints, frontend components, hooks, and integration flows.
 
+> **Last Updated:** January 15, 2026
+
 ---
 
 ## Table of Contents
@@ -17,8 +19,9 @@
 9. [Campaign Lifecycle](#9-campaign-lifecycle)
 10. [Draft System](#10-draft-system)
 11. [Business Logic](#11-business-logic)
-12. [Error Handling](#12-error-handling)
-13. [File Reference Map](#13-file-reference-map)
+12. [Stale Call Cleanup](#12-stale-call-cleanup)
+13. [Error Handling](#13-error-handling)
+14. [File Reference Map](#14-file-reference-map)
 
 ---
 
@@ -29,7 +32,7 @@ The **Campaign Module** is Genius365's outbound calling campaign management syst
 - Create AI-powered voice campaigns
 - Import recipient lists via CSV
 - Schedule campaigns with business hours
-- Execute calls through **Inspra** (primary) or **VAPI** (fallback) providers
+- Execute calls through **VAPI** (direct integration)
 - Monitor campaign progress in real-time
 - Handle retries and call outcomes
 
@@ -37,13 +40,14 @@ The **Campaign Module** is Genius365's outbound calling campaign management syst
 
 | Feature | Description |
 |---------|-------------|
-| Multi-provider Support | Inspra (primary) and VAPI (fallback) |
+| VAPI Provider | Direct VAPI integration for outbound calls |
 | CSV Import | Up to 10,000 recipients per campaign |
 | Business Hours | Configurable daily schedules with timezone support |
-| Auto-save Drafts | Wizard progress saved automatically |
+| Auto-save Drafts | Wizard progress saved automatically via sessionStorage + DB |
 | Concurrency Control | Configurable parallel call limits |
 | Retry Logic | Automatic retry with configurable attempts |
-| Real-time Status | Live campaign and recipient status updates |
+| Real-time Status | Live campaign and recipient status updates via Supabase Realtime |
+| Stale Call Cleanup | Automatic detection and cleanup of orphaned calls |
 
 ---
 
@@ -53,14 +57,14 @@ The **Campaign Module** is Genius365's outbound calling campaign management syst
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend UI   │────▶│   API Routes    │────▶│   Providers     │
-│  (React/Next)   │     │  (Next.js API)  │     │ (Inspra/VAPI)   │
+│   Frontend UI   │────▶│   API Routes    │────▶│      VAPI       │
+│  (React/Next)   │     │  (Next.js API)  │     │   (Provider)    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
         │                       │                       │
         ▼                       ▼                       ▼
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   React Query   │     │    Supabase     │     │   Webhooks      │
-│   (Caching)     │     │   (Database)    │     │  (Callbacks)    │
+│   + Realtime    │     │   (Database)    │     │  (Callbacks)    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
@@ -75,25 +79,33 @@ The **Campaign Module** is Genius365's outbound calling campaign management syst
     └── Initial creation
 ```
 
-### 2.3 Provider Selection Logic
+### 2.3 Provider Architecture (VAPI-Only)
 
 ```typescript
 // File: lib/integrations/campaign-provider.ts
 
-function getCampaignProvider(agent: AIAgent): CampaignProvider {
-  // 1. Check if agent has external agent ID (synced to provider)
-  if (!agent.external_agent_id) {
-    throw new Error("Agent not synced to provider")
+// Campaigns now use VAPI directly for outbound calls
+// Inspra integration has been deprecated
+
+export async function startCampaignBatch(
+  campaign: CampaignData,
+  recipients: RecipientData[],
+  vapiConfig?: { apiKey: string; phoneNumberId: string },
+  options?: { startNow?: boolean }
+): Promise<CampaignBatchResult> {
+  // 1. Validate VAPI configuration
+  if (!vapiConfig?.apiKey || !vapiConfig?.phoneNumberId) {
+    return { success: false, provider: "vapi", error: "VAPI config required" }
   }
   
-  // 2. Determine provider based on agent.provider field
-  switch (agent.provider) {
-    case "inspra":
-      return new InspraProvider()
-    case "vapi":
-      return new VAPIProvider()
-    default:
-      throw new Error(`Unsupported provider: ${agent.provider}`)
+  // 2. Start batch via VAPI batch-calls module
+  const result = await startVapiBatch(config, callItems)
+  
+  return {
+    success: result.success,
+    provider: "vapi",
+    batchRef: result.batchRef,
+    vapiResults: result,
   }
 }
 ```
@@ -360,9 +372,66 @@ type RecipientCallOutcome =
 
 **Flow:**
 1. Validate status is `active`
-2. Notify provider to stop queueing
-3. Update status to `paused`
-4. Current calls complete normally
+2. Update status to `paused`
+3. Current calls complete normally
+4. Batch caller stops picking up new recipients
+
+---
+
+#### `POST /api/w/[workspaceSlug]/campaigns/[id]/resume`
+
+**Purpose:** Resume a paused campaign
+
+**Flow:**
+1. Validate status is `paused`
+2. Validate agent is still synced and active
+3. Get pending recipients
+4. Update status to `active`
+5. Restart batch caller via unified provider
+
+**Response:**
+```typescript
+{
+  success: true,
+  campaign: Campaign,
+  provider: {
+    used: "vapi",
+    success: boolean,
+    fallbackUsed: boolean,
+    batchRef: string,
+    recipientCount: number
+  },
+  message: string
+}
+```
+
+---
+
+#### `POST /api/w/[workspaceSlug]/campaigns/[id]/cleanup`
+
+**Purpose:** Manually cleanup stale "calling" recipients
+
+**Purpose:** Mark recipients stuck in "calling" status as failed
+
+**Restrictions:**
+- Only works on `active` campaigns
+
+**Flow:**
+1. Find recipients with `call_status = "calling"` older than threshold (5 min default)
+2. Mark them as `failed` with timeout error
+3. Update campaign statistics
+4. Check if campaign should be completed
+
+**Response:**
+```typescript
+{
+  success: true,
+  message: string,
+  staleRecipientsFound: number,
+  staleRecipientsUpdated: number,
+  campaignCompleted: boolean
+}
+```
 
 ---
 
@@ -728,7 +797,49 @@ interface WizardFormData {
 
 ---
 
-### 6.5 Dialog Components
+### 6.5 CampaignActionOverlay
+
+**Path:** `components/workspace/campaigns/campaign-action-overlay.tsx`
+
+**Purpose:** Modal overlay shown during campaign actions (start, pause, resume, terminate)
+
+**Props:**
+```typescript
+interface CampaignActionOverlayProps {
+  open: boolean
+  action: "start" | "pause" | "resume" | "terminate" | null
+  campaignName?: string
+  recipientCount?: number
+  progress?: number // 0-100 for start action
+}
+```
+
+**Features:**
+- Non-dismissable modal during action
+- Action-specific icons and messaging
+- Progress bar for start action
+- Prevents accidental navigation
+
+---
+
+### 6.6 WizardDraftCard
+
+**Path:** `components/workspace/campaigns/wizard-draft-card.tsx`
+
+**Purpose:** Shows unsaved wizard progress from sessionStorage
+
+**Features:**
+- Detects wizard draft in sessionStorage
+- Shows progress summary (step, recipients count, schedule type)
+- "Continue" button to resume wizard
+- "Discard" option with confirmation dialog
+- Auto-hides if no draft found
+
+**Storage Key:** `campaign-wizard-storage`
+
+---
+
+### 6.7 Dialog Components
 
 #### AddRecipientDialog
 
@@ -844,82 +955,201 @@ const {
 
 ---
 
-## 8. Provider Integrations
+### 7.3 useRealtimeCampaignRecipients Hook
 
-### 8.1 Provider Interface
+**Path:** `lib/hooks/use-realtime-campaign.ts`
 
-**Path:** `lib/integrations/campaign-provider.ts`
+**Purpose:** Real-time campaign status updates via Supabase Realtime
 
+**Features:**
+- Subscribes to `call_recipients` table changes
+- Tracks recipient status transitions
+- Computes live statistics
+- Supports multiple callback hooks
+
+**Usage:**
 ```typescript
-interface CampaignProvider {
-  name: string
-  
-  // Create campaign in provider system
-  createCampaign(params: CreateCampaignParams): Promise<ExternalCampaign>
-  
-  // Start calling
-  startCampaign(campaignId: string): Promise<void>
-  
-  // Pause calling
-  pauseCampaign(campaignId: string): Promise<void>
-  
-  // Resume calling
-  resumeCampaign(campaignId: string): Promise<void>
-  
-  // Cancel campaign
-  cancelCampaign(campaignId: string): Promise<void>
-  
-  // Make single call
-  makeCall(params: MakeCallParams): Promise<CallResult>
-  
-  // Get campaign status
-  getCampaignStatus(campaignId: string): Promise<CampaignStatus>
-  
-  // Get call results
-  getCallResults(campaignId: string): Promise<CallResult[]>
+const { 
+  isConnected,
+  connectionState,
+  recentUpdates,      // Last N recipient updates
+  stats,              // Live campaign statistics
+  currentlyCalling,   // Recipients currently in "calling" state
+  error
+} = useRealtimeCampaignRecipients({
+  campaignId: string,
+  workspaceId?: string,
+  onRecipientUpdate?: (recipient: CampaignRecipient) => void,
+  onCallComplete?: (recipient: CampaignRecipient) => void,
+  onCallFailed?: (recipient: CampaignRecipient) => void,
+  onStatsUpdate?: (stats: CampaignStatsUpdate) => void
+})
+```
+
+**Types:**
+```typescript
+interface CampaignStatsUpdate {
+  total: number
+  pending: number
+  calling: number
+  completed: number
+  failed: number
+  successful: number
+}
+
+interface RecipientUpdateEvent {
+  recipientId: string
+  phoneNumber: string
+  previousStatus: RecipientCallStatus | null
+  newStatus: RecipientCallStatus
+  outcome?: RecipientCallOutcome
+  eventType: "INSERT" | "UPDATE"
+  timestamp: Date
+  data: CampaignRecipient
 }
 ```
 
 ---
 
-### 8.2 Inspra Integration
+## 8. Provider Integrations
 
-**Path:** `lib/integrations/inspra/client.ts`
+### 8.1 Provider Architecture (VAPI-Only)
 
-**API Base:** Configurable via `INSPRA_API_URL`
+**Note:** Inspra integration has been deprecated. All campaigns now use VAPI directly.
 
-**Endpoints Used:**
-- `POST /campaigns` - Create campaign
-- `POST /campaigns/{id}/start` - Start
-- `POST /campaigns/{id}/pause` - Pause
-- `POST /campaigns/{id}/resume` - Resume
-- `POST /campaigns/{id}/cancel` - Cancel
-- `GET /campaigns/{id}/status` - Status
-- `POST /calls` - Single call
-
-**Key Features:**
-- Batch recipient upload
-- Webhook callbacks for status updates
-- Business hours enforcement
-- Concurrency control
+**Primary Files:**
+- `lib/integrations/campaign-provider.ts` - Provider abstraction layer
+- `lib/integrations/vapi/batch-calls.ts` - VAPI batch calling implementation
+- `lib/campaigns/batch-caller.ts` - Native batch calling engine
 
 ---
 
-### 8.3 VAPI Integration
+### 8.2 Campaign Provider Interface
+
+**Path:** `lib/integrations/campaign-provider.ts`
+
+```typescript
+export type CampaignProvider = "vapi"
+
+export interface CampaignProviderConfig {
+  vapi?: {
+    apiKey: string
+    phoneNumberId: string  // VAPI phone number ID for outbound calls
+  }
+}
+
+export interface CampaignBatchResult {
+  success: boolean
+  provider: CampaignProvider
+  error?: string
+  batchRef?: string
+  recipientCount?: number
+  vapiResults?: VapiBatchResult
+  fallbackUsed?: boolean
+  primaryError?: string
+}
+
+// Main function for starting campaigns
+export async function startCampaignBatch(
+  campaign: CampaignData,
+  recipients: RecipientData[],
+  vapiConfig?: CampaignProviderConfig["vapi"],
+  options?: { startNow?: boolean }
+): Promise<CampaignBatchResult>
+```
+
+---
+
+### 8.3 VAPI Batch Calls
 
 **Path:** `lib/integrations/vapi/batch-calls.ts`
 
-**Approach:** Individual calls (no native campaign support)
+**Features:**
+- Sequential call creation with configurable delays
+- Business hours scheduling
+- Integration with campaign infrastructure
+- Call tracking and status updates
 
-**Flow:**
-1. Campaign starts
-2. Queue recipients to call
-3. Make calls sequentially/parallel based on concurrency
-4. Track results via webhooks
+**Key Types:**
+```typescript
+interface VapiBatchConfig {
+  apiKey: string
+  assistantId: string          // VAPI external_agent_id
+  phoneNumberId: string        // VAPI phone number ID for outbound
+  workspaceId: string
+  campaignId: string
+  batchRef: string
+  businessHoursConfig?: BusinessHoursConfig | null
+  timezone?: string
+  delayBetweenCallsMs?: number // Default: 1000ms
+  skipBusinessHoursCheck?: boolean
+}
 
-**API Used:**
-- `POST /call` - Create outbound call
-- Webhooks for call completion
+interface VapiBatchResult {
+  success: boolean
+  batchRef: string
+  totalRecipients: number
+  initiated: number
+  failed: number
+  skipped: number
+  outsideBusinessHours: boolean
+  errors: string[]
+  results: VapiBatchCallResult[]
+}
+```
+
+---
+
+### 8.4 Native Batch Caller Engine
+
+**Path:** `lib/campaigns/batch-caller.ts`
+
+**Purpose:** Handles batch outbound calling using VAPI directly
+
+**Features:**
+- Concurrent call processing with configurable limits
+- Recipient status tracking
+- Campaign state management (pause/terminate via DB flags)
+- Business hours enforcement
+- Retry logic with configurable attempts and delays
+
+**Key Functions:**
+```typescript
+// Start a campaign
+export async function startCampaign(config: BatchCallerConfig): Promise<BatchCallResult>
+
+// Pause a campaign
+export async function pauseCampaign(campaignId: string): Promise<{ success: boolean; error?: string }>
+
+// Resume a paused campaign
+export async function resumeCampaign(config: BatchCallerConfig): Promise<BatchCallResult>
+
+// Terminate/cancel a campaign
+export async function terminateCampaign(campaignId: string): Promise<{ success: boolean; error?: string }>
+
+// Check if within business hours
+export function isWithinBusinessHours(
+  config: BusinessHoursConfig | null | undefined,
+  timezone: string
+): boolean
+```
+
+**BatchCallerConfig:**
+```typescript
+interface BatchCallerConfig {
+  campaignId: string
+  workspaceId: string
+  agentId: string
+  externalAgentId: string
+  phoneNumberId: string      // VAPI phone number ID
+  vapiSecretKey: string
+  concurrencyLimit: number
+  maxAttempts: number
+  retryDelayMinutes: number
+  businessHoursConfig?: BusinessHoursConfig | null
+  timezone: string
+}
+```
 
 ---
 
@@ -1130,9 +1360,72 @@ async function cleanupExpiredCampaigns() {
 
 ---
 
-## 12. Error Handling
+## 12. Stale Call Cleanup
 
-### 12.1 Common Error Codes
+### 12.1 Overview
+
+**Path:** `lib/campaigns/stale-call-cleanup.ts`
+
+**Problem:** VAPI webhooks may not always fire (network issues, timeouts). Recipients can get stuck in "calling" status indefinitely.
+
+**Solution:** Stale call cleanup utility that detects and marks orphaned calls as failed.
+
+### 12.2 Stale Call Detection
+
+A call is considered "stale" when:
+1. Status is `calling`
+2. `call_started_at` was more than 5 minutes ago (configurable)
+3. No webhook has been received (no completion data)
+
+### 12.3 Cleanup Functions
+
+```typescript
+// Cleanup stale calls for a specific campaign
+export async function cleanupStaleCalls(
+  campaignId: string,
+  thresholdMinutes: number = 5  // Default: 5 minutes
+): Promise<StaleCallCleanupResult>
+
+// Cleanup stale calls for all active campaigns (background job)
+export async function cleanupAllActiveCampaigns(): Promise<{
+  success: boolean
+  campaignsProcessed: number
+  totalStaleRecipients: number
+  totalCampaignsCompleted: number
+}>
+```
+
+### 12.4 Cleanup Result
+
+```typescript
+interface StaleCallCleanupResult {
+  success: boolean
+  campaignId: string
+  staleRecipientsFound: number
+  staleRecipientsUpdated: number
+  campaignCompleted: boolean  // True if campaign auto-completed
+  error?: string
+}
+```
+
+### 12.5 API Endpoint
+
+**Path:** `POST /api/w/[workspaceSlug]/campaigns/[id]/cleanup`
+
+Manually trigger cleanup for a specific campaign. Only works on active campaigns.
+
+### 12.6 Auto-Completion
+
+After cleanup, the utility checks if the campaign should be marked as completed:
+- If no recipients remain in `pending`, `queued`, or `calling` status
+- Campaign is still `active`
+- Then: Update status to `completed`
+
+---
+
+## 13. Error Handling
+
+### 13.1 Common Error Codes
 
 | Error | Code | Description |
 |-------|------|-------------|
@@ -1144,8 +1437,9 @@ async function cleanupExpiredCampaigns() {
 | Invalid CSV | 400 | Missing required columns |
 | Provider error | 502 | External provider failure |
 | Paywall blocked | 403 | Usage limits exceeded |
+| Stale call timeout | 408 | Call timed out without webhook response |
 
-### 12.2 Error Response Format
+### 13.2 Error Response Format
 
 ```typescript
 {
@@ -1157,7 +1451,7 @@ async function cleanupExpiredCampaigns() {
 
 ---
 
-## 13. File Reference Map
+## 14. File Reference Map
 
 ### API Routes
 
@@ -1167,7 +1461,9 @@ async function cleanupExpiredCampaigns() {
 | `/api/w/[slug]/campaigns/[id]` | `app/api/w/[workspaceSlug]/campaigns/[id]/route.ts` |
 | `/api/w/[slug]/campaigns/[id]/start` | `app/api/w/[workspaceSlug]/campaigns/[id]/start/route.ts` |
 | `/api/w/[slug]/campaigns/[id]/pause` | `app/api/w/[workspaceSlug]/campaigns/[id]/pause/route.ts` |
+| `/api/w/[slug]/campaigns/[id]/resume` | `app/api/w/[workspaceSlug]/campaigns/[id]/resume/route.ts` |
 | `/api/w/[slug]/campaigns/[id]/terminate` | `app/api/w/[workspaceSlug]/campaigns/[id]/terminate/route.ts` |
+| `/api/w/[slug]/campaigns/[id]/cleanup` | `app/api/w/[workspaceSlug]/campaigns/[id]/cleanup/route.ts` |
 | `/api/w/[slug]/campaigns/[id]/test-call` | `app/api/w/[workspaceSlug]/campaigns/[id]/test-call/route.ts` |
 | `/api/w/[slug]/campaigns/[id]/recipients` | `app/api/w/[workspaceSlug]/campaigns/[id]/recipients/route.ts` |
 | `/api/w/[slug]/campaigns/draft` | `app/api/w/[workspaceSlug]/campaigns/draft/route.ts` |
@@ -1186,9 +1482,13 @@ async function cleanupExpiredCampaigns() {
 | Component | File |
 |-----------|------|
 | CampaignWizard | `components/workspace/campaigns/campaign-wizard.tsx` |
+| CampaignWizardOptimized | `components/workspace/campaigns/campaign-wizard-optimized.tsx` |
+| CampaignWizardDynamic | `components/workspace/campaigns/campaign-wizard-dynamic.tsx` |
 | CampaignCard | `components/workspace/campaigns/campaign-card.tsx` |
 | CampaignStatusBadge | `components/workspace/campaigns/campaign-status-badge.tsx` |
 | CampaignLoading | `components/workspace/campaigns/campaign-loading.tsx` |
+| CampaignActionOverlay | `components/workspace/campaigns/campaign-action-overlay.tsx` |
+| WizardDraftCard | `components/workspace/campaigns/wizard-draft-card.tsx` |
 | StepDetails | `components/workspace/campaigns/steps/step-details.tsx` |
 | StepImport | `components/workspace/campaigns/steps/step-import.tsx` |
 | StepSchedule | `components/workspace/campaigns/steps/step-schedule.tsx` |
@@ -1203,10 +1503,13 @@ async function cleanupExpiredCampaigns() {
 |--------|------|
 | useCampaigns | `lib/hooks/use-campaigns.ts` |
 | useCampaignDraft | `lib/hooks/use-campaign-draft.ts` |
+| useRealtimeCampaignRecipients | `lib/hooks/use-realtime-campaign.ts` |
 | CampaignProvider | `lib/integrations/campaign-provider.ts` |
-| InspraClient | `lib/integrations/inspra/client.ts` |
 | VAPIBatchCalls | `lib/integrations/vapi/batch-calls.ts` |
+| BatchCaller | `lib/campaigns/batch-caller.ts` |
+| StaleCallCleanup | `lib/campaigns/stale-call-cleanup.ts` |
 | CleanupExpired | `lib/campaigns/cleanup-expired.ts` |
+| CampaignWizardStore | `lib/stores/campaign-wizard-store.ts` |
 
 ### Cron Jobs
 
@@ -1264,6 +1567,6 @@ console.log({
 
 ---
 
-*Last Updated: January 2026*
-*Version: 1.0*
+*Last Updated: January 15, 2026*
+*Version: 1.1*
 

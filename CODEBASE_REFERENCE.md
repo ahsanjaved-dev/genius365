@@ -1,6 +1,6 @@
 # Genius365 Codebase Reference (Single-file, LLM-friendly, developer-friendly)
 
-> **Last Updated**: January 12, 2026  
+> **Last Updated**: January 15, 2026  
 > **Audience**: Developers + AI assistants (LLM-friendly)  
 > **Scope**: Repo at `genius365/` (Next.js App Router + Supabase + Prisma + Stripe + VAPI/Retell + optional Algolia)
 
@@ -70,6 +70,7 @@ Tech stack (from `package.json`, `next.config.ts`, `prisma/schema.prisma`):
 If you're trying to answer a question quickly, start here:
 
 ### Core Auth & Routing
+
 - **Route protection / CSP / redirects / session refresh**: `proxy.ts` + `lib/supabase/middleware.ts`
 - **Partner resolution (white-label hostnames)**: `lib/api/partner.ts`
 - **Auth context** (partner + workspaces): `lib/api/auth.ts`
@@ -77,6 +78,7 @@ If you're trying to answer a question quickly, start here:
 - **Super admin auth**: `lib/api/super-admin-auth.ts`
 
 ### Calls & Conversations
+
 - **Calls API** (list + search): `app/api/w/[workspaceSlug]/calls/route.ts`
 - **Calls ingest** (poll provider → insert/update conversation): `app/api/w/[workspaceSlug]/calls/ingest/route.ts`
 - **Calls stats**: `app/api/w/[workspaceSlug]/calls/stats/route.ts`
@@ -84,6 +86,7 @@ If you're trying to answer a question quickly, start here:
 - **Algolia call log indexing/search**: `lib/algolia/call-logs.ts`, `lib/algolia/client.ts`
 
 ### Agents
+
 - **Agents API** (create/update/delete + sync trigger): `app/api/w/[workspaceSlug]/agents/route.ts`, `app/api/w/[workspaceSlug]/agents/[id]/route.ts`
 - **Provider sync (VAPI)**: `lib/integrations/vapi/agent/sync.ts`
 - **Provider sync (Retell)**: `lib/integrations/retell/agent/sync.ts`
@@ -91,21 +94,25 @@ If you're trying to answer a question quickly, start here:
 - **Outbound calls**: `app/api/w/[workspaceSlug]/agents/[id]/outbound-call/route.ts`
 
 ### Org-Level Integrations (NEW)
+
 - **Partner integrations API**: `app/api/partner/integrations/route.ts`
 - **Workspace assigned integrations**: `app/api/w/[workspaceSlug]/assigned-integrations/route.ts`
 - **Per-provider assignment**: `app/api/w/[workspaceSlug]/assigned-integration/[provider]/route.ts`
 
 ### Telephony (NEW)
+
 - **SIP trunks API**: `app/api/partner/telephony/sip-trunks/route.ts`
 - **Phone numbers API**: `app/api/partner/telephony/phone-numbers/route.ts`
 - **Phone number sync**: `app/api/partner/telephony/phone-numbers/[id]/sync/route.ts`
 
 ### Billing
+
 - **Billing (partner platform subscription + credits)**: `app/api/partner/billing/*`, `app/api/webhooks/stripe/route.ts`, `lib/stripe/*`
 - **Billing (workspace credits + subscriptions via Connect)**: `app/api/w/[workspaceSlug]/credits/*`, `app/api/w/[workspaceSlug]/subscription/*`, `app/api/webhooks/stripe-connect/route.ts`, `lib/stripe/workspace-credits.ts`
 - **Paywall enforcement**: `lib/billing/workspace-paywall.ts` + `lib/api/workspace-auth.ts`
 
 ### Other Modules
+
 - **Campaigns**: `app/api/w/[workspaceSlug]/campaigns/*`, cron: `app/api/cron/master/route.ts`, `lib/campaigns/cleanup-expired.ts`
 - **Knowledge base**: `app/api/w/[workspaceSlug]/knowledge-base/*`
 - **Client invitations**: `app/api/partner/client-invitations/route.ts`
@@ -187,6 +194,7 @@ genius365/
 ├── types/                       # Supabase types + API Zod schemas
 ├── docs/                        # Product/testing docs
 ├── scripts/                     # Database scripts and utilities
+│   └── sql/                     # SQL migration/setup scripts
 ├── proxy.ts                     # Next.js middleware entry ("proxy" function)
 ├── next.config.ts               # Next config + Sentry webpack integration
 ├── instrumentation*.ts          # Sentry instrumentation hooks
@@ -195,16 +203,18 @@ genius365/
 
 ### Components (`components/`)
 
-- `components/ui/*`: shadcn/ui primitives (25 components including Radix + Tailwind)
+- `components/ui/*`: shadcn/ui primitives (29 components including Radix + Tailwind)
 - `components/workspace/*`: workspace shell + feature components
   - `workspace-dashboard-layout.tsx` (shell layout)
   - `workspace-sidebar.tsx` (nav + workspace switcher)
+  - `workspace-mobile-sidebar.tsx` (mobile nav)
   - `workspace-header.tsx`
   - `workspace-selector.tsx`
   - `paywall-banner.tsx`
   - `agents/*` (wizard + tool editor + agent cards)
-  - `campaigns/*` (wizard + steps + dialogs)
-  - `conversations/*` (detail modal)
+  - `campaigns/*` (wizard + wizard-optimized + steps + dialogs + draft card)
+  - `calls/*` (Algolia search panel, fallback search, transcript player)
+  - `conversations/*` (detail modal with dynamic loading)
   - `billing/*` (workspace credits card)
   - `integrations/*` (connect dialogs)
   - `members/*` (invite dialog)
@@ -214,7 +224,7 @@ genius365/
   - `integrations/*` (add/manage integration dialogs, workspace integrations dialog)
   - `telephony/*` (phone number dialog, SIP trunk dialog)
 - `components/super-admin/*`: super admin shell + dialogs
-- `components/agents/*`: agent-specific components (card, test call, delete dialog)
+- `components/agents/*`: agent-specific components (card, test call, outbound test call, delete dialog)
 - `components/auth/*`: auth layout + password strength
 - `components/billing/*`: change plan dialog, credits card
 - `components/marketing/*`: partner request form, pricing card
@@ -228,7 +238,10 @@ genius365/
 - `lib/stripe/*`: Stripe platform + Connect logic (credits, subscriptions, invoices)
 - `lib/billing/*`: usage + paywall checks
 - `lib/integrations/*`: provider integrations (VAPI/Retell), function tools, retries, circuit breaker
-- `lib/hooks/*`: 35+ React Query hooks for workspace/partner/super-admin data
+- `lib/hooks/*`: 40+ React Query hooks for workspace/partner/super-admin data
+  - Includes realtime hooks (`use-realtime-campaign.ts`, `use-realtime-call-status.ts`)
+  - Dashboard/analytics hooks (`use-dashboard-charts.ts`, `use-dashboard-data.ts`)
+  - Web call hooks (`use-web-call/vapi.ts`, `use-web-call/retell.ts`)
 - `lib/rbac/*`: permission matrix + wrappers
 - `lib/algolia/*`: optional call logs index/search
 - `lib/email/*`: Resend client + email templates
@@ -239,7 +252,7 @@ genius365/
 Actual routes:
 
 - `dashboard/`, `agents/`, `agents/new/`, `agents/[id]/`
-- `calls/`, `conversations/`
+- `calls/`, `calls/[callId]/`, `conversations/`
 - `campaigns/`, `campaigns/new/`, `campaigns/[id]/`
 - `knowledge-base/`
 - `analytics/`
@@ -288,6 +301,11 @@ Actual routes:
 - `/super-admin/partners` (+ detail)
 - `/super-admin/variants`
 - `/super-admin/billing`
+
+### Public pages (agency onboarding)
+
+- `/agency-checkout` - Agency subscription checkout page
+- `/agency-checkout/success` - Checkout success confirmation
 
 ---
 
@@ -361,51 +379,62 @@ This section is intended as a **truthy map** of the API surface. Start here when
 All under `app/api/partner/*`:
 
 **Partner summary**
-  - `GET /api/partner` → `app/api/partner/route.ts`
+
+- `GET /api/partner` → `app/api/partner/route.ts`
 
 **Dashboard**
-  - `GET /api/partner/dashboard/stats` → `app/api/partner/dashboard/stats/route.ts`
+
+- `GET /api/partner/dashboard/stats` → `app/api/partner/dashboard/stats/route.ts`
 
 **Team + invitations**
-  - `GET|POST /api/partner/team` → `app/api/partner/team/route.ts`
-  - `PATCH|DELETE /api/partner/team/[memberId]` → `app/api/partner/team/[memberId]/route.ts`
-  - `GET|POST /api/partner/invitations` → `app/api/partner/invitations/route.ts`
-  - `DELETE /api/partner/invitations/[invitationId]` → `app/api/partner/invitations/[invitationId]/route.ts`
+
+- `GET|POST /api/partner/team` → `app/api/partner/team/route.ts`
+- `PATCH|DELETE /api/partner/team/[memberId]` → `app/api/partner/team/[memberId]/route.ts`
+- `GET|POST /api/partner/invitations` → `app/api/partner/invitations/route.ts`
+- `DELETE /api/partner/invitations/[invitationId]` → `app/api/partner/invitations/[invitationId]/route.ts`
 
 **Client invitations (NEW)**
+
 - `GET|POST /api/partner/client-invitations` → `app/api/partner/client-invitations/route.ts`
 - `DELETE /api/partner/client-invitations/[invitationId]` → `app/api/partner/client-invitations/[invitationId]/route.ts`
 
 **Workspaces (partner-level management)**
-  - `GET|POST /api/partner/workspaces` → `app/api/partner/workspaces/route.ts`
-  - `GET|PATCH /api/partner/workspaces/[id]/members` → `app/api/partner/workspaces/[id]/members/route.ts`
-  - `GET /api/partner/workspaces/[id]/billing` → `app/api/partner/workspaces/[id]/billing/route.ts`
+
+- `GET|POST /api/partner/workspaces` → `app/api/partner/workspaces/route.ts`
+- `GET|PATCH /api/partner/workspaces/[id]/members` → `app/api/partner/workspaces/[id]/members/route.ts`
+- `GET /api/partner/workspaces/[id]/billing` → `app/api/partner/workspaces/[id]/billing/route.ts`
 - `GET|POST /api/partner/workspaces/[id]/integrations` → `app/api/partner/workspaces/[id]/integrations/route.ts`
 - `GET|DELETE /api/partner/workspaces/[id]/integrations/[provider]` → `app/api/partner/workspaces/[id]/integrations/[provider]/route.ts`
 
 **Billing (platform, partner subscription)**
-  - `GET /api/partner/billing` → `app/api/partner/billing/route.ts`
-  - `POST /api/partner/billing/checkout` → `app/api/partner/billing/checkout/route.ts`
-  - `POST /api/partner/billing/change-plan` → `app/api/partner/billing/change-plan/route.ts`
-  - `POST /api/partner/billing/portal` → `app/api/partner/billing/portal/route.ts`
+
+- `GET /api/partner/billing` → `app/api/partner/billing/route.ts`
+- `POST /api/partner/billing/checkout` → `app/api/partner/billing/checkout/route.ts`
+- `POST /api/partner/billing/change-plan` → `app/api/partner/billing/change-plan/route.ts`
+- `POST /api/partner/billing/portal` → `app/api/partner/billing/portal/route.ts`
 
 **Credits (partner-level)**
-  - `GET /api/partner/credits` → `app/api/partner/credits/route.ts`
-  - `POST /api/partner/credits/topup` → `app/api/partner/credits/topup/route.ts`
+
+- `GET /api/partner/credits` → `app/api/partner/credits/route.ts`
+- `POST /api/partner/credits/topup` → `app/api/partner/credits/topup/route.ts`
 
 **Stripe Connect (partner onboarding)**
-  - `POST /api/partner/stripe/connect` → `app/api/partner/stripe/connect/route.ts`
+
+- `POST /api/partner/stripe/connect` → `app/api/partner/stripe/connect/route.ts`
 
 **Workspace subscription plans (partner-defined catalog)**
-  - `GET|POST /api/partner/subscription-plans` → `app/api/partner/subscription-plans/route.ts`
-  - `GET|PATCH|DELETE /api/partner/subscription-plans/[planId]` → `app/api/partner/subscription-plans/[planId]/route.ts`
+
+- `GET|POST /api/partner/subscription-plans` → `app/api/partner/subscription-plans/route.ts`
+- `GET|PATCH|DELETE /api/partner/subscription-plans/[planId]` → `app/api/partner/subscription-plans/[planId]/route.ts`
 
 **Integrations (NEW - Org-level API keys)**
+
 - `GET|POST /api/partner/integrations` → `app/api/partner/integrations/route.ts`
 - `GET|PATCH|DELETE /api/partner/integrations/[id]` → `app/api/partner/integrations/[id]/route.ts`
 - `POST /api/partner/integrations/[id]/set-default` → `app/api/partner/integrations/[id]/set-default/route.ts`
 
 **Telephony (NEW - SIP Trunks + Phone Numbers)**
+
 - `GET|POST /api/partner/telephony/sip-trunks` → `app/api/partner/telephony/sip-trunks/route.ts`
 - `GET|PATCH|DELETE /api/partner/telephony/sip-trunks/[id]` → `app/api/partner/telephony/sip-trunks/[id]/route.ts`
 - `POST /api/partner/telephony/sip-trunks/[id]/sync` → `app/api/partner/telephony/sip-trunks/[id]/sync/route.ts`
@@ -418,11 +447,13 @@ All under `app/api/partner/*`:
 All under: `app/api/w/[workspaceSlug]/*`
 
 **Workspace core**
+
 - `GET /api/w/[workspaceSlug]/dashboard/stats` → `app/api/w/[workspaceSlug]/dashboard/stats/route.ts`
 - `GET /api/w/[workspaceSlug]/dashboard/charts` → `app/api/w/[workspaceSlug]/dashboard/charts/route.ts`
 - `GET /api/w/[workspaceSlug]/settings` → `app/api/w/[workspaceSlug]/settings/route.ts`
 
 **Agents**
+
 - `GET|POST /api/w/[workspaceSlug]/agents` → `app/api/w/[workspaceSlug]/agents/route.ts`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/agents/[id]` → `app/api/w/[workspaceSlug]/agents/[id]/route.ts`
 - `POST /api/w/[workspaceSlug]/agents/[id]/test-call` → `app/api/w/[workspaceSlug]/agents/[id]/test-call/route.ts`
@@ -430,43 +461,59 @@ All under: `app/api/w/[workspaceSlug]/*`
 - `ANY /api/w/[workspaceSlug]/agents/[id]/[...path]` → `app/api/w/[workspaceSlug]/agents/[id]/[...path]/route.ts` (passthrough for provider-specific endpoints)
 
 **Calls / conversations**
+
 - `GET /api/w/[workspaceSlug]/calls` → `app/api/w/[workspaceSlug]/calls/route.ts`
+- `GET /api/w/[workspaceSlug]/calls/[callId]` → `app/api/w/[workspaceSlug]/calls/[callId]/route.ts` (individual call details)
 - `POST /api/w/[workspaceSlug]/calls/ingest` → `app/api/w/[workspaceSlug]/calls/ingest/route.ts`
+- `POST /api/w/[workspaceSlug]/calls/search` → `app/api/w/[workspaceSlug]/calls/search/route.ts` (Algolia-powered search)
 - `GET /api/w/[workspaceSlug]/calls/stats` → `app/api/w/[workspaceSlug]/calls/stats/route.ts`
+- `POST /api/w/[workspaceSlug]/calls/resync-algolia` → `app/api/w/[workspaceSlug]/calls/resync-algolia/route.ts` (resync calls to Algolia)
+- `POST /api/w/[workspaceSlug]/calls/clear-algolia` → `app/api/w/[workspaceSlug]/calls/clear-algolia/route.ts` (clear Algolia index)
 - `GET /api/w/[workspaceSlug]/conversations` → `app/api/w/[workspaceSlug]/conversations/route.ts`
 
 **Campaigns**
+
 - `GET|POST /api/w/[workspaceSlug]/campaigns` → `app/api/w/[workspaceSlug]/campaigns/route.ts`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/campaigns/[id]` → `app/api/w/[workspaceSlug]/campaigns/[id]/route.ts`
 - `GET|POST|DELETE /api/w/[workspaceSlug]/campaigns/[id]/recipients` → `app/api/w/[workspaceSlug]/campaigns/[id]/recipients/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/start` → `app/api/w/[workspaceSlug]/campaigns/[id]/start/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/pause` → `app/api/w/[workspaceSlug]/campaigns/[id]/pause/route.ts`
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/resume` → `app/api/w/[workspaceSlug]/campaigns/[id]/resume/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/terminate` → `app/api/w/[workspaceSlug]/campaigns/[id]/terminate/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/test-call` → `app/api/w/[workspaceSlug]/campaigns/[id]/test-call/route.ts`
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/cleanup` → `app/api/w/[workspaceSlug]/campaigns/[id]/cleanup/route.ts` (cleanup stale calls)
+- `GET /api/w/[workspaceSlug]/campaigns/draft` → `app/api/w/[workspaceSlug]/campaigns/draft/route.ts` (list drafts)
+- `POST /api/w/[workspaceSlug]/campaigns/draft/create` → `app/api/w/[workspaceSlug]/campaigns/draft/create/route.ts` (create draft)
 
 **Knowledge base**
+
 - `GET|POST /api/w/[workspaceSlug]/knowledge-base` → `app/api/w/[workspaceSlug]/knowledge-base/route.ts`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/knowledge-base/[id]` → `app/api/w/[workspaceSlug]/knowledge-base/[id]/route.ts`
 
 **Integrations**
+
 - `GET|POST /api/w/[workspaceSlug]/integrations` → `app/api/w/[workspaceSlug]/integrations/route.ts`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/integrations/[provider]` → `app/api/w/[workspaceSlug]/integrations/[provider]/route.ts`
 - `GET /api/w/[workspaceSlug]/integrations/algolia-search-config` → `app/api/w/[workspaceSlug]/integrations/algolia-search-config/route.ts`
 
 **Assigned Integrations (NEW - Org-level key assignments)**
+
 - `GET /api/w/[workspaceSlug]/assigned-integrations` → `app/api/w/[workspaceSlug]/assigned-integrations/route.ts`
 - `GET /api/w/[workspaceSlug]/assigned-integration/[provider]` → `app/api/w/[workspaceSlug]/assigned-integration/[provider]/route.ts`
 
 **Phone Numbers**
+
 - `GET /api/w/[workspaceSlug]/phone-numbers/available` → `app/api/w/[workspaceSlug]/phone-numbers/available/route.ts`
 
 **Members + invitations**
+
 - `GET|POST /api/w/[workspaceSlug]/members` → `app/api/w/[workspaceSlug]/members/route.ts`
 - `PATCH|DELETE /api/w/[workspaceSlug]/members/[memberId]` → `app/api/w/[workspaceSlug]/members/[memberId]/route.ts`
 - `GET|POST /api/w/[workspaceSlug]/invitations` → `app/api/w/[workspaceSlug]/invitations/route.ts`
 - `DELETE /api/w/[workspaceSlug]/invitations/[id]` → `app/api/w/[workspaceSlug]/invitations/[id]/route.ts`
 
 **Billing (workspace credits + subscription)**
+
 - `GET /api/w/[workspaceSlug]/credits` → `app/api/w/[workspaceSlug]/credits/route.ts`
 - `POST /api/w/[workspaceSlug]/credits/topup` → `app/api/w/[workspaceSlug]/credits/topup/route.ts`
 - `GET|POST|PATCH|DELETE /api/w/[workspaceSlug]/subscription` → `app/api/w/[workspaceSlug]/subscription/route.ts`
@@ -474,33 +521,44 @@ All under: `app/api/w/[workspaceSlug]/*`
 - `POST /api/w/[workspaceSlug]/subscription/preview` → `app/api/w/[workspaceSlug]/subscription/preview/route.ts`
 
 **Analytics**
+
 - `GET /api/w/[workspaceSlug]/analytics` → `app/api/w/[workspaceSlug]/analytics/route.ts`
 
 ### External webhooks
 
 - `POST /api/webhooks/vapi` → VAPI call events → billing + function calls forwarding
 - `POST /api/webhooks/retell` → Retell call events → billing
+- `POST /api/webhooks/w/[workspaceId]/vapi` → Workspace-level VAPI webhooks (per-workspace webhook URL)
+- `POST /api/webhooks/w/[workspaceId]/retell` → Workspace-level Retell webhooks (per-workspace webhook URL)
 - `POST /api/webhooks/stripe` → platform Stripe events (partner subscription + partner credits)
 - `POST /api/webhooks/stripe-connect` → Connect events (workspace credits + workspace subscriptions)
+
+### Public APIs (unauthenticated)
+
+- `POST /api/public/agency-checkout` → `app/api/public/agency-checkout/route.ts` (agency checkout flow)
+- `GET /api/public/white-label-plans` → `app/api/public/white-label-plans/route.ts` (public plans listing)
 
 ### Super admin APIs
 
 All under `app/api/super-admin/*`:
 
 **Partner requests**
-  - `GET /api/super-admin/partner-requests` → `app/api/super-admin/partner-requests/route.ts`
-  - `GET|PATCH /api/super-admin/partner-requests/[id]` → `app/api/super-admin/partner-requests/[id]/route.ts`
-  - `POST /api/super-admin/partner-requests/[id]/provision` → `app/api/super-admin/partner-requests/[id]/provision/route.ts`
+
+- `GET /api/super-admin/partner-requests` → `app/api/super-admin/partner-requests/route.ts`
+- `GET|PATCH /api/super-admin/partner-requests/[id]` → `app/api/super-admin/partner-requests/[id]/route.ts`
+- `POST /api/super-admin/partner-requests/[id]/provision` → `app/api/super-admin/partner-requests/[id]/provision/route.ts`
 
 **Partners**
-  - `GET /api/super-admin/partners` → `app/api/super-admin/partners/route.ts`
-  - `GET|PATCH /api/super-admin/partners/[id]` → `app/api/super-admin/partners/[id]/route.ts`
-  - `GET|POST /api/super-admin/partners/[id]/domains` → `app/api/super-admin/partners/[id]/domains/route.ts`
-  - `GET /api/super-admin/partners/[id]/workspaces` → `app/api/super-admin/partners/[id]/workspaces/route.ts`
+
+- `GET /api/super-admin/partners` → `app/api/super-admin/partners/route.ts`
+- `GET|PATCH /api/super-admin/partners/[id]` → `app/api/super-admin/partners/[id]/route.ts`
+- `GET|POST /api/super-admin/partners/[id]/domains` → `app/api/super-admin/partners/[id]/domains/route.ts`
+- `GET /api/super-admin/partners/[id]/workspaces` → `app/api/super-admin/partners/[id]/workspaces/route.ts`
 
 **White-label variants**
-  - `GET|POST /api/super-admin/white-label-variants` → `app/api/super-admin/white-label-variants/route.ts`
-  - `GET|PATCH|DELETE /api/super-admin/white-label-variants/[id]` → `app/api/super-admin/white-label-variants/[id]/route.ts`
+
+- `GET|POST /api/super-admin/white-label-variants` → `app/api/super-admin/white-label-variants/route.ts`
+- `GET|PATCH|DELETE /api/super-admin/white-label-variants/[id]` → `app/api/super-admin/white-label-variants/[id]/route.ts`
 
 ### Utility APIs
 
@@ -534,11 +592,23 @@ All under `app/api/super-admin/*`:
 Defined in `proxy.ts`:
 
 **Platform Partner (genius365.ai)**:
+
 - Full access to all routes (marketing, auth, dashboard, etc.)
 
 **White-Label Partners**:
-- **Allowed**: `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/accept-*-invitation`, `/select-workspace`, `/setup-profile`, `/workspace-onboarding`, `/w/*`, `/org/*`, `/api/partner/*`, `/api/w/*`, `/api/auth/*`, `/api/webhooks/*`
+
+- **Allowed**: `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/accept-*-invitation`, `/select-workspace`, `/setup-profile`, `/workspace-onboarding`, `/w/*`, `/org/*`, `/api/partner/*`, `/api/w/*`, `/api/auth/*`, `/api/webhooks/*`, `/agency-checkout/*`
 - **Blocked**: `/`, `/pricing`, `/request-partner`, `/api/partner-requests`, `/api/super-admin/*`
+
+### Agency checkout flow (NEW)
+
+Public checkout flow for agencies to subscribe:
+
+- `/agency-checkout` - Checkout page with plan selection
+- `/agency-checkout/success` - Post-checkout success page
+- `POST /api/public/agency-checkout` - Create checkout session
+- `GET /api/public/white-label-plans` - Get available plans
+- Uses `lib/checkout-token.ts` for secure token generation
 
 ### Auth context primitives
 
@@ -571,6 +641,7 @@ Authoritative schema:
 ### Key enums
 
 **Agent/Provider**:
+
 - `AgentProvider`: `vapi` | `retell` | `synthflow`
 - `VoiceProvider`: `elevenlabs` | `deepgram` | `azure` | `openai` | `cartesia`
 - `ModelProvider`: `openai` | `anthropic` | `google` | `groq`
@@ -579,23 +650,28 @@ Authoritative schema:
 - `SyncStatus`: `not_synced` | `pending` | `synced` | `error`
 
 **Calls**:
+
 - `CallDirection`: `inbound` | `outbound`
 - `CallStatus`: `initiated` | `ringing` | `in_progress` | `completed` | `failed` | `no_answer` | `busy` | `canceled`
 
 **Telephony (NEW)**:
+
 - `PhoneNumberStatus`: `available` | `assigned` | `pending` | `inactive` | `error`
 - `PhoneNumberProvider`: `sip` | `vapi` | `retell` | `twilio`
 
 **Billing**:
+
 - `WorkspaceSubscriptionStatus`: `active` | `past_due` | `canceled` | `incomplete` | `trialing` | `paused`
 - `BillingType`: `prepaid` | `postpaid`
 - `CreditTransactionType`: `topup` | `usage` | `refund` | `adjustment`
 
 **Leads (NEW)**:
+
 - `LeadStatus`: `new` | `contacted` | `qualified` | `converted` | `lost` | `nurturing`
 - `LeadSource`: `voice_agent` | `manual` | `import` | `api` | `webhook`
 
 **Knowledge**:
+
 - `KnowledgeDocumentType`: `document` | `faq` | `product_info` | `policy` | `script` | `other`
 - `KnowledgeDocumentStatus`: `draft` | `processing` | `active` | `archived` | `error`
 
@@ -759,6 +835,7 @@ Provider integrations live in `lib/integrations/`:
 - `vapi/*`
   - agent mapping/sync: `lib/integrations/vapi/agent/*`
   - call retrieval/polling: `lib/integrations/vapi/calls.ts`
+  - batch outbound calls: `lib/integrations/vapi/batch-calls.ts` (fallback for campaigns)
   - browser web call session: `lib/integrations/vapi/web-call.ts`
   - phone numbers: `lib/integrations/vapi/phone-numbers.ts`
   - SIP trunks: `lib/integrations/vapi/sip-trunk.ts`
@@ -772,6 +849,8 @@ Provider integrations live in `lib/integrations/`:
   - Provider-agnostic function tool definitions
   - VAPI tool mapping with full tool type support
   - Retell tool mapping (native tools only)
+- `campaign-provider.ts` - Campaign provider abstraction (Inspra primary, VAPI fallback)
+- `inspra/client.ts` - Inspra outbound API client
 
 ### Infrastructure patterns
 
@@ -881,9 +960,29 @@ Calls are stored as **`conversations`** rows (Prisma `Conversation` model; Supab
   - Otherwise fallback to DB `ilike` matching (transcript/caller/phone + agent name enrichment)
   - Includes rate-limited "warmup" indexing of recent calls when Algolia returns 0 hits
 
+### Individual call detail
+
+- API: `GET /api/w/[workspaceSlug]/calls/[callId]` → `app/api/w/[workspaceSlug]/calls/[callId]/route.ts`
+- Page: `/w/[workspaceSlug]/calls/[callId]` - Dedicated call detail page
+- Component: `components/workspace/calls/transcript-player.tsx` - Audio player with transcript sync
+
+### Algolia search
+
+- API: `POST /api/w/[workspaceSlug]/calls/search` → Dedicated search endpoint
+- Management endpoints:
+  - `POST /api/w/[workspaceSlug]/calls/resync-algolia` - Resync all calls to Algolia
+  - `POST /api/w/[workspaceSlug]/calls/clear-algolia` - Clear Algolia index
+- Library: `lib/algolia/call-logs.ts`, `lib/algolia/sync.ts` - Indexing and search utilities
+- UI components:
+  - `components/workspace/calls/algolia-search-panel.tsx` - Full search with autocomplete
+  - `components/workspace/calls/algolia-search-box.tsx` - Search input component
+  - `components/workspace/calls/fallback-search-panel.tsx` - DB fallback when Algolia unavailable
+  - `components/workspace/calls/algolia-benefits-banner.tsx` - Promotion banner
+
 ### Dashboard charts
 
 - API: `GET /api/w/[workspaceSlug]/dashboard/charts`
+- Hook: `lib/hooks/use-dashboard-charts.ts`
 - Returns:
   - Calls over time (with duration and cost)
   - Call outcomes distribution
@@ -905,12 +1004,19 @@ Calls are stored as **`conversations`** rows (Prisma `Conversation` model; Supab
   - `usage_tracking` row
 - Indexes to Algolia async
 
+### Realtime call status
+
+- Hook: `lib/hooks/use-realtime-call-status.ts` - Live call status updates
+
 ### Provider webhooks (billing + transcript updates)
 
 - VAPI webhook: `app/api/webhooks/vapi/route.ts`
   - Handles call events (call.started, call.ended)
   - Forwards function-call events to user's configured webhook URL
 - Retell webhook: `app/api/webhooks/retell/route.ts`
+- **Workspace-level webhooks** (NEW):
+  - `POST /api/webhooks/w/[workspaceId]/vapi` - Per-workspace VAPI webhook URL
+  - `POST /api/webhooks/w/[workspaceId]/retell` - Per-workspace Retell webhook URL
 
 They:
 
@@ -991,22 +1097,45 @@ API:
   - supports "wizard flow" creation (recipients + variable mappings + overrides)
 - `app/api/w/[workspaceSlug]/campaigns/[id]/route.ts`
   - get/update/delete (delete is blocked for active campaigns)
+- `app/api/w/[workspaceSlug]/campaigns/draft/route.ts` - Draft campaign management
+- `app/api/w/[workspaceSlug]/campaigns/draft/create/route.ts` - Create draft from wizard
 
 Campaign actions:
 
-- `POST .../campaigns/[id]/start` - Start campaign via Inspra API
+- `POST .../campaigns/[id]/start` - Start campaign via Inspra API or VAPI batch fallback
   - Converts business hours to block rules
   - Maps recipients to call list
-  - Sends to external outbound API
+  - Sends to external outbound API (Inspra primary, VAPI batch as fallback)
 - `POST .../campaigns/[id]/pause` - Pause active campaign
+- `POST .../campaigns/[id]/resume` - Resume paused campaign
 - `POST .../campaigns/[id]/terminate` - Cancel/terminate campaign
 - `POST .../campaigns/[id]/test-call` - Make test call for campaign
+- `POST .../campaigns/[id]/cleanup` - Clean up stale/orphaned calls
+
+Campaign infrastructure:
+
+- `lib/campaigns/batch-caller.ts` - Batch calling logic
+- `lib/campaigns/stale-call-cleanup.ts` - Stale call cleanup utilities
+- `lib/campaigns/cleanup-expired.ts` - Expired campaign cleanup
+- `lib/integrations/vapi/batch-calls.ts` - VAPI batch calls (fallback provider)
+
+UI components:
+
+- `components/workspace/campaigns/campaign-wizard.tsx` - Main campaign wizard
+- `components/workspace/campaigns/campaign-wizard-optimized.tsx` - Performance-optimized wizard
+- `components/workspace/campaigns/campaign-wizard-dynamic.tsx` - Dynamic loading wrapper
+- `components/workspace/campaigns/wizard-draft-card.tsx` - Draft campaign display card
+- `components/workspace/campaigns/steps/` - Wizard step components
+
+Realtime:
+
+- `lib/hooks/use-realtime-campaign.ts` - Realtime campaign status updates
+- `lib/hooks/use-campaign-draft.ts` - Campaign draft management hook
 
 Cron:
 
 - `app/api/cron/master/route.ts` runs `cleanupExpiredCampaigns()`
   - **Vercel schedule**: `vercel.json` schedules `/api/cron/master` daily at `0 0 * * *`
-- `lib/campaigns/cleanup-expired.ts`
 
 ---
 
@@ -1110,13 +1239,10 @@ High-signal variables (non-exhaustive):
 
 Living docs under `docs/` (useful for onboarding/testing):
 
-- `docs/LOCAL_SUBDOMAIN_TESTING.md`
-- `docs/RBAC_TESTING_GUIDE.md`
-- `docs/STRIPE_BILLING_GUIDE.md`
-- `docs/CAMPAIGNS_TESTING_GUIDE.md`
-- `docs/CAMPAIGN_WIZARD_TESTING_PLAN.md`
-- `docs/WHITE_LABEL_REQUEST_FLOW_IMPROVEMENT.md`
-- `docs/inspra_outbound_api_docs.txt`
+- `docs/CAMPAIGN_MODULE_REFERENCE.md` - Campaign module architecture and implementation
+- `docs/CAMPAIGN_TESTING_GUIDE.md` - Campaign feature testing procedures
+- `docs/campaign-test-data-500.csv` - Sample CSV data for campaign testing
+- `docs/inspra_outbound_api_docs.txt` - Inspra outbound API documentation
 
 ---
 
@@ -1174,7 +1300,12 @@ npm run db:pull      # Introspect DB and update schema
 ### Algolia integration is workspace-scoped, REST-only
 
 - Keys live in `workspace_integrations` row with `provider="algolia"` under the `config` JSON.
-- The integration uses `fetch` (REST) and intentionally avoids the Algolia JS client (`lib/algolia/*`).
+- The integration uses `fetch` (REST) and intentionally avoids the Algolia JS client.
+- Key files:
+  - `lib/algolia/call-logs.ts` - Call log indexing and search
+  - `lib/algolia/sync.ts` - Bulk sync utilities
+  - `lib/algolia/client.ts` - REST client helpers
+  - `lib/algolia/types.ts` - TypeScript types
 
 ### Org-level integrations vs legacy workspace integrations
 
@@ -1206,4 +1337,4 @@ npm run db:pull      # Introspect DB and update schema
 
 ---
 
-*Last comprehensive update: January 12, 2026*
+_Last comprehensive update: January 15, 2026_
