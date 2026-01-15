@@ -363,7 +363,12 @@ export function mapToVapi(agent: AIAgent): VapiAssistantPayload {
   // NEW: Use workspace-level webhook URL so we can route by workspace
   // The webhook URL is constructed using workspace_id from agent metadata
   // Format: {APP_URL}/api/webhooks/w/{workspaceId}/vapi
-  const baseUrl = (env.appUrl || "https://genius365.vercel.app").replace(/\/$/, "")
+  let baseUrl = (env.appUrl || "https://genius365.vercel.app").replace(/\/$/, "")
+  
+  // Ensure URL has https:// protocol (VAPI requires valid URL with protocol)
+  if (baseUrl && !baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+    baseUrl = `https://${baseUrl}`
+  }
   
   // If workspace_id is available, use workspace-level webhook
   // Otherwise fall back to legacy global webhook

@@ -206,7 +206,12 @@ export function mapToRetellLLM(agent: AIAgent): RetellLLMPayload {
   // Set webhook URL for tool calls
   // NEW: Use workspace-level webhook URL so we can route by workspace
   // Format: {APP_URL}/api/webhooks/w/{workspaceId}/retell
-  const baseUrl = env.appUrl || "https://genius365.vercel.app"
+  let baseUrl = (env.appUrl || "https://genius365.vercel.app").replace(/\/$/, "")
+  
+  // Ensure URL has https:// protocol
+  if (baseUrl && !baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+    baseUrl = `https://${baseUrl}`
+  }
   
   // If workspace_id is available, use workspace-level webhook
   // Otherwise fall back to user's custom URL

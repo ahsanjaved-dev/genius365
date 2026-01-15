@@ -256,11 +256,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           syncedAgent = syncResult.agent as any
         } else if (!syncResult.success) {
           console.error("[AgentCreate] VAPI sync failed:", syncResult.error)
-          // Update sync status to error
+          // Update sync status to error (use last_sync_error - correct column name)
           await ctx.adminClient
             .from("ai_agents")
-            .update({ sync_status: "error", sync_error: syncResult.error })
+            .update({ sync_status: "error", last_sync_error: syncResult.error })
             .eq("id", agent.id)
+          // Update local copy for response
+          syncedAgent = { ...agent, sync_status: "error", last_sync_error: syncResult.error } as any
+        } else {
+          // Sync returned success but no agent - shouldn't happen, log warning
+          console.warn("[AgentCreate] VAPI sync returned success but no agent data")
         }
       } else if (validation.data.provider === "retell") {
         const syncResult = await safeRetellSync(agent as AIAgent, "create")
@@ -268,11 +273,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           syncedAgent = syncResult.agent as any
         } else if (!syncResult.success) {
           console.error("[AgentCreate] Retell sync failed:", syncResult.error)
-          // Update sync status to error
+          // Update sync status to error (use last_sync_error - correct column name)
           await ctx.adminClient
             .from("ai_agents")
-            .update({ sync_status: "error", sync_error: syncResult.error })
+            .update({ sync_status: "error", last_sync_error: syncResult.error })
             .eq("id", agent.id)
+          // Update local copy for response
+          syncedAgent = { ...agent, sync_status: "error", last_sync_error: syncResult.error } as any
+        } else {
+          // Sync returned success but no agent - shouldn't happen, log warning
+          console.warn("[AgentCreate] Retell sync returned success but no agent data")
         }
       }
     }

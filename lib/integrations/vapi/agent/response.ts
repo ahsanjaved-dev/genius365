@@ -70,7 +70,13 @@ export async function processVapiResponse(
 
     // Generate webhook URL based on workspace
     // This URL is stored in config as read-only for user reference
-    const baseUrl = (env.appUrl || "https://genius365.vercel.app").replace(/\/$/, "")
+    let baseUrl = (env.appUrl || "https://genius365.vercel.app").replace(/\/$/, "")
+    
+    // Ensure URL has https:// protocol
+    if (baseUrl && !baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+      baseUrl = `https://${baseUrl}`
+    }
+    
     const webhookUrl = currentAgent?.workspace_id
       ? `${baseUrl}/api/webhooks/w/${currentAgent.workspace_id}/vapi`
       : `${baseUrl}/api/webhooks/vapi`
