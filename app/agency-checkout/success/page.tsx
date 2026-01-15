@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, CheckCircle2, PartyPopper, Mail, Clock } from "lucide-react"
 
-export default function AgencyCheckoutSuccessPage() {
+function AgencyCheckoutSuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const sessionId = searchParams.get("session_id")
@@ -122,5 +122,26 @@ export default function AgencyCheckoutSuccessPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
+      <Card className="w-full max-w-md">
+        <CardContent className="pt-12 pb-12 text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default function AgencyCheckoutSuccessPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AgencyCheckoutSuccessContent />
+    </Suspense>
   )
 }

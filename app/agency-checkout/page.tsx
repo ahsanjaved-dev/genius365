@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,7 +36,7 @@ interface CheckoutData {
   expiresAt: string
 }
 
-export default function AgencyCheckoutPage() {
+function AgencyCheckoutContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get("token")
@@ -314,5 +314,26 @@ export default function AgencyCheckoutPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
+      <Card className="w-full max-w-md">
+        <CardContent className="pt-12 pb-12 text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading checkout...</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default function AgencyCheckoutPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AgencyCheckoutContent />
+    </Suspense>
   )
 }
