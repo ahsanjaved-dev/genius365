@@ -45,6 +45,7 @@ export {
   type AutocompleteResult,
   type MultiQuerySearch,
   type MultiQueryResult,
+  type IndexCallLogResult,
 } from "./call-logs"
 
 // Types for frontend integration

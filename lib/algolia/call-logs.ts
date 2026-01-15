@@ -90,6 +90,12 @@ export interface AutocompleteResult {
   }>
 }
 
+export interface IndexCallLogResult {
+  success: boolean
+  reason?: "algolia_not_configured" | "config_not_found" | "api_error"
+  error?: string
+}
+
 // ============================================================================
 // ALGOLIA REST API HELPERS
 // ============================================================================
@@ -148,18 +154,21 @@ export async function indexCallLogToAlgolia(params: {
   partnerId: string
   agentName: string
   agentProvider: AgentProvider
-}): Promise<boolean> {
+}): Promise<IndexCallLogResult> {
   const { conversation, workspaceId, partnerId, agentName, agentProvider } = params
 
   // Check if Algolia is configured for this workspace
   const configured = await isAlgoliaConfigured(workspaceId)
   if (!configured) {
-    // Silently skip if not configured
-    return false
+    console.log("[Algolia] Skipping index - Algolia not configured for workspace:", workspaceId)
+    return { success: false, reason: "algolia_not_configured" }
   }
 
   const config = await getWorkspaceAlgoliaConfig(workspaceId)
-  if (!config) return false
+  if (!config) {
+    console.log("[Algolia] Skipping index - Could not get Algolia config for workspace:", workspaceId)
+    return { success: false, reason: "config_not_found" }
+  }
 
   try {
     const metadata = conversation.metadata as unknown as Record<string, unknown> | null
@@ -200,33 +209,60 @@ export async function indexCallLogToAlgolia(params: {
       call_type = conversation.direction || "unknown"
     }
 
+    // Handle both snake_case (Supabase) and camelCase (Prisma) field names
+    const conv = conversation as any
+    const phoneNumber = conv.phone_number ?? conv.phoneNumber
+    const callerName = conv.caller_name ?? conv.callerName
+    const durationSeconds = conv.duration_seconds ?? conv.durationSeconds
+    const totalCost = conv.total_cost ?? conv.totalCost
+    const externalId = conv.external_id ?? conv.externalId
+    const agentId = conv.agent_id ?? conv.agentId
+    const startedAt = conv.started_at ?? conv.startedAt
+    const endedAt = conv.ended_at ?? conv.endedAt
+    const createdAt = conv.created_at ?? conv.createdAt
+
     const record: CallLogAlgoliaRecord = {
       objectID: conversation.id,
       conversation_id: conversation.id,
-      external_id: conversation.external_id,
+      external_id: externalId,
       workspace_id: workspaceId, // CRITICAL - ensures data isolation
       partner_id: partnerId,
-      agent_id: conversation.agent_id,
+      agent_id: agentId,
       call_type,
       transcript: conversation.transcript,
       summary: conversation.summary,
       // Use "Unknown Number" / "Unknown Caller" for display purposes
-      phone_number: conversation.phone_number || "Unknown Number",
-      caller_name: conversation.caller_name || "Unknown Caller",
+      phone_number: phoneNumber || "Unknown Number",
+      caller_name: callerName || "Unknown Caller",
       agent_name: agentName || "Unknown Agent",
       status: conversation.status || "unknown",
       direction: conversation.direction || null,
       sentiment: conversation.sentiment,
       provider: agentProvider,
-      duration_seconds: conversation.duration_seconds || 0,
-      total_cost: conversation.total_cost || 0,
-      started_at_timestamp: conversation.started_at
-        ? new Date(conversation.started_at).getTime()
+      duration_seconds: durationSeconds || 0,
+      total_cost: totalCost || 0,
+      started_at_timestamp: startedAt
+        ? new Date(startedAt).getTime()
         : null,
-      ended_at_timestamp: conversation.ended_at
-        ? new Date(conversation.ended_at).getTime()
+      ended_at_timestamp: endedAt
+        ? new Date(endedAt).getTime()
         : null,
-      created_at_timestamp: new Date(conversation.created_at).getTime(),
+      // For sorting, use ended_at if available (completed calls), otherwise created_at
+      // This ensures newly completed calls appear at the top
+      created_at_timestamp: (() => {
+        // Try ended_at first (for completed calls)
+        if (endedAt) {
+          const endedTime = new Date(endedAt).getTime()
+          if (!isNaN(endedTime)) return endedTime
+        }
+        // Fallback to created_at
+        if (createdAt) {
+          const createdTime = new Date(createdAt).getTime()
+          if (!isNaN(createdTime)) return createdTime
+        }
+        // Final fallback to current time
+        return Date.now()
+      })(),
       recording_url: conversation.recording_url,
     }
 
@@ -240,11 +276,17 @@ export async function indexCallLogToAlgolia(params: {
       body: record,
     })
 
-    console.log("[Algolia] Indexed call log:", conversation.id, "workspace:", workspaceId)
-    return true
+    const indexedTimestamp = record.created_at_timestamp
+    const timestampStr = indexedTimestamp ? new Date(indexedTimestamp).toISOString() : "null"
+    console.log("[Algolia] Indexed call log:", conversation.id, "workspace:", workspaceId, "timestamp:", indexedTimestamp, `(${timestampStr})`)
+    return { success: true }
   } catch (error) {
     console.error("[Algolia] Failed to index call log:", error)
-    return false
+    return { 
+      success: false, 
+      reason: "api_error", 
+      error: error instanceof Error ? error.message : String(error) 
+    }
   }
 }
 

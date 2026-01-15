@@ -16,6 +16,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { processCallCompletion } from "@/lib/billing/usage"
 import { Prisma } from "@/lib/generated/prisma"
+import { indexCallLogToAlgolia, configureCallLogsIndex } from "@/lib/algolia"
+import type { AgentProvider, Conversation } from "@/types/database.types"
 
 // Disable body parsing - we need the raw body for signature verification
 export const dynamic = "force-dynamic"
@@ -170,6 +172,13 @@ async function handleFunctionCall(payload: RetellFunctionCall): Promise<Record<s
   }
 }
 
+/**
+ * Handle call_ended event from Retell
+ * Contains complete call data with transcript, recording, duration
+ * 
+ * IMPORTANT: This is the PRIMARY Retell event that triggers Algolia indexing.
+ * Only completed calls with full data are indexed for call logs display.
+ */
 async function handleCallEnded(payload: RetellCallEvent) {
   const { call } = payload
 
@@ -199,6 +208,13 @@ async function handleCallEnded(payload: RetellCallEvent) {
           partnerId: true,
         },
       },
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          provider: true,
+        },
+      },
     },
   })
 
@@ -219,7 +235,7 @@ async function handleCallEnded(payload: RetellCallEvent) {
   const durationSeconds = Math.max(0, Math.floor(durationMs / 1000))
 
   // 3. Update conversation with call details
-  await prisma.conversation.update({
+  const updatedConversation = await prisma.conversation.update({
     where: { id: conversation.id },
     data: {
       status: "completed",
@@ -235,7 +251,29 @@ async function handleCallEnded(payload: RetellCallEvent) {
     },
   })
 
-  // 4. Process billing
+  // 4. Index to Algolia - ensure index is configured first
+  // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
+  if (conversation.agent) {
+    try {
+      await configureCallLogsIndex(conversation.workspace.id)
+      const indexResult = await indexCallLogToAlgolia({
+        conversation: updatedConversation as unknown as Conversation,
+        workspaceId: conversation.workspace.id,
+        partnerId: conversation.workspace.partnerId,
+        agentName: conversation.agent?.name || "Unknown Agent",
+        agentProvider: (conversation.agent?.provider as AgentProvider) || "retell",
+      })
+      if (indexResult.success) {
+        console.log(`[Retell Webhook] Successfully indexed call ${call.call_id} to Algolia`)
+      } else {
+        console.warn(`[Retell Webhook] Algolia indexing skipped for call ${call.call_id}: ${indexResult.reason}`)
+      }
+    } catch (err) {
+      console.error("[Retell Webhook] Algolia indexing failed:", err)
+    }
+  }
+
+  // 5. Process billing
   const result = await processCallCompletion({
     conversationId: conversation.id,
     workspaceId: conversation.workspace.id,
@@ -257,6 +295,13 @@ async function handleCallEnded(payload: RetellCallEvent) {
   }
 }
 
+/**
+ * Handle call_started event from Retell
+ * Updates conversation status to in_progress
+ * 
+ * NOTE: This handler does NOT index to Algolia. Only call_ended/call_analyzed
+ * events trigger Algolia indexing for call logs display.
+ */
 async function handleCallStarted(payload: RetellCallEvent) {
   const { call } = payload
 
@@ -285,6 +330,13 @@ async function handleCallStarted(payload: RetellCallEvent) {
   }
 }
 
+/**
+ * Handle call_analyzed event from Retell
+ * Contains analysis data: summary, sentiment, custom analysis
+ * 
+ * NOTE: This event comes AFTER call_ended and RE-INDEXES to Algolia
+ * to update the call log with analysis data (summary, sentiment).
+ */
 async function handleCallAnalyzed(payload: RetellCallEvent) {
   const { call } = payload
 
@@ -298,10 +350,25 @@ async function handleCallAnalyzed(payload: RetellCallEvent) {
   // Find conversation and update with analysis data
   const conversation = await prisma.conversation.findFirst({
     where: { externalId: call.call_id },
+    include: {
+      workspace: {
+        select: {
+          id: true,
+          partnerId: true,
+        },
+      },
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          provider: true,
+        },
+      },
+    },
   })
 
   if (conversation && call.call_analysis) {
-    await prisma.conversation.update({
+    const updatedConversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
         summary: call.call_analysis.call_summary || conversation.summary,
@@ -318,5 +385,26 @@ async function handleCallAnalyzed(payload: RetellCallEvent) {
     })
 
     console.log(`[Retell Webhook] Conversation ${conversation.id} updated with analysis`)
+
+    // Re-index to Algolia with updated analysis data (summary, sentiment are searchable)
+    // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
+    if (conversation.agent && conversation.workspace) {
+      try {
+        const indexResult = await indexCallLogToAlgolia({
+          conversation: updatedConversation as unknown as Conversation,
+          workspaceId: conversation.workspace.id,
+          partnerId: conversation.workspace.partnerId,
+          agentName: conversation.agent.name || "Unknown Agent",
+          agentProvider: (conversation.agent.provider as AgentProvider) || "retell",
+        })
+        if (indexResult.success) {
+          console.log(`[Retell Webhook] Re-indexed call ${call.call_id} to Algolia with analysis data`)
+        } else {
+          console.warn(`[Retell Webhook] Algolia re-indexing skipped for call ${call.call_id}: ${indexResult.reason}`)
+        }
+      } catch (err) {
+        console.error("[Retell Webhook] Algolia re-indexing failed:", err)
+      }
+    }
   }
 }

@@ -425,11 +425,10 @@ async function handleStatusUpdate(
 
   if (!prisma) return
   
-  // Find or create conversation
+  // Find existing conversation (don't filter by workspace - externalId is unique)
   let conversation = await prisma.conversation.findFirst({
     where: {
       externalId: call.id,
-      workspaceId: workspaceId,
     },
   })
 
@@ -438,10 +437,16 @@ async function handleStatusUpdate(
     const agent = await findAgentByAssistantId(call.assistantId, workspaceId)
     
     if (agent) {
+      // Use agent's actual workspace_id (not the one from URL - could be mismatched!)
+      const agentWorkspaceId = agent.workspace_id || workspaceId
+      if (agentWorkspaceId !== workspaceId) {
+        console.warn(`[VAPI Webhook] StatusUpdate: Workspace ID mismatch! URL: ${workspaceId}, Agent: ${agentWorkspaceId}`)
+      }
+      
       conversation = await prisma.conversation.create({
         data: {
           externalId: call.id,
-          workspaceId: workspaceId,
+          workspaceId: agentWorkspaceId, // Use agent's actual workspace
           agentId: agent.id,
           direction: mapCallDirection(call.type),
           status: mapVapiStatus(status),
@@ -455,7 +460,7 @@ async function handleStatusUpdate(
           },
         },
       })
-      console.log(`[VAPI Webhook] Created conversation: ${conversation.id}`)
+      console.log(`[VAPI Webhook] Created conversation: ${conversation.id} in workspace: ${agentWorkspaceId}`)
     }
   }
 
@@ -483,7 +488,10 @@ async function handleEndOfCallReport(
   console.log("[VAPI Webhook] RAW PAYLOAD KEYS:", Object.keys(payload))
   console.log("[VAPI Webhook] MESSAGE KEYS:", Object.keys(payload.message || {}))
   
+  // Extract from message - note: cost/costBreakdown are at MESSAGE level, not inside call!
   const { call, artifact, analysis } = payload.message
+  const messageCost = (payload.message as any).cost as number | undefined
+  const messageCostBreakdown = (payload.message as any).costBreakdown as object | undefined
 
   if (!call?.id || !prisma) {
     console.error("[VAPI Webhook] No call ID or Prisma not configured")
@@ -521,11 +529,11 @@ async function handleEndOfCallReport(
   console.log("  - customer.number:", call.customer?.number)
   console.log("  - customer.name:", call.customer?.name)
 
-  // Find existing conversation
+  // Find existing conversation (don't filter by workspace - externalId is unique)
+  // This allows us to find the conversation even if webhook URL has wrong workspace_id
   let conversation = await prisma.conversation.findFirst({
     where: {
       externalId: call.id,
-      workspaceId: workspaceId,
     },
     include: {
       agent: {
@@ -534,6 +542,13 @@ async function handleEndOfCallReport(
           name: true,
           provider: true,
           config: true,
+          workspaceId: true, // Include for workspace validation
+        },
+      },
+      workspace: {
+        select: {
+          id: true,
+          partnerId: true, // Get actual partner_id from workspace
         },
       },
     },
@@ -546,6 +561,12 @@ async function handleEndOfCallReport(
     if (!agent) {
       console.error(`[VAPI Webhook] Agent not found for assistantId: ${assistantId}`)
       return
+    }
+
+    // Use agent's actual workspace_id (not the one from URL - could be mismatched!)
+    const actualWorkspaceId = agent.workspace_id || workspaceId
+    if (actualWorkspaceId !== workspaceId) {
+      console.warn(`[VAPI Webhook] Workspace ID mismatch! URL: ${workspaceId}, Agent: ${actualWorkspaceId}. Using agent's workspace.`)
     }
 
     // Calculate duration with timestamp validation
@@ -613,7 +634,7 @@ async function handleEndOfCallReport(
     conversation = await prisma.conversation.create({
       data: {
         externalId: call.id,
-        workspaceId: workspaceId,
+        workspaceId: actualWorkspaceId, // Use agent's actual workspace
         agentId: agent.id,
         direction: mapCallDirection(call.type),
         status: "completed",
@@ -625,13 +646,13 @@ async function handleEndOfCallReport(
         summary: summary,
         sentiment: sentiment,
         phoneNumber: call.customer?.number || null,
-        callerName: call.customer?.name || null,
-        totalCost: call.cost || 0,
+        callerName: call.customer?.name || null, // VAPI uses customer.name, not caller_name
+        totalCost: messageCost || 0, // Use message.cost (at message level, not call level)
         metadata: {
           provider: "vapi",
           call_type: call.type,
           ended_reason: call.endedReason,
-          vapi_cost_breakdown: call.costBreakdown ? JSON.parse(JSON.stringify(call.costBreakdown)) : undefined,
+          vapi_cost_breakdown: messageCostBreakdown ? JSON.parse(JSON.stringify(messageCostBreakdown)) : undefined,
           vapi_analysis: analysis ? JSON.parse(JSON.stringify(analysis)) : undefined,
           assistant_id: assistantId,
           stereo_recording_url: typeof artifact?.stereoRecording === 'string' ? artifact.stereoRecording : undefined,
@@ -639,12 +660,19 @@ async function handleEndOfCallReport(
         },
       },
       include: {
+        workspace: {
+          select: {
+            id: true,
+            partnerId: true,
+          },
+        },
         agent: {
           select: {
             id: true,
             name: true,
             provider: true,
             config: true,
+            workspaceId: true,
           },
         },
       },
@@ -656,23 +684,8 @@ async function handleEndOfCallReport(
       console.log(`[VAPI Webhook] Transcript length: ${transcript?.length || 0} chars`)
       console.log(`[VAPI Webhook] Summary: ${summary || "NOT PROVIDED"}`)
       console.log(`[VAPI Webhook] Sentiment: ${sentiment || "NOT PROVIDED"}`)
-
-      // Index newly created conversation to Algolia
-      if (conversation.agent) {
-        const conversationId = conversation.id
-        console.log(`[VAPI Webhook] Indexing NEW conversation to Algolia: ${conversationId}`)
-        indexCallLogToAlgolia({
-          conversation: conversation as unknown as Conversation,
-          workspaceId: workspaceId,
-          partnerId: partnerId,
-          agentName: conversation.agent.name || "Unknown Agent",
-          agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
-        }).then(() => {
-          console.log(`[VAPI Webhook] Algolia index SUCCESS for NEW: ${conversationId}`)
-        }).catch((err) => {
-          console.error(`[VAPI Webhook] Algolia indexing FAILED for NEW: ${conversationId}`, err)
-        })
-      }
+      // Note: Algolia indexing will happen AFTER billing is processed (below)
+      // This ensures the cost is calculated before indexing
     }
   }
 
@@ -753,14 +766,14 @@ async function handleEndOfCallReport(
       recordingUrl: recordingUrl || conversation.recordingUrl,
       phoneNumber: call.customer?.number || conversation.phoneNumber,
       callerName: call.customer?.name || conversation.callerName,
-      totalCost: call.cost || conversation.totalCost,
+      totalCost: messageCost || conversation.totalCost, // Use message.cost (at message level, not call level)
       summary: summary || conversation.summary,
       sentiment: sentiment || conversation.sentiment,
       metadata: {
         ...(conversation.metadata as object || {}),
         call_type: call.type,
         vapi_ended_reason: call.endedReason,
-        vapi_cost_breakdown: call.costBreakdown ? JSON.parse(JSON.stringify(call.costBreakdown)) : undefined,
+        vapi_cost_breakdown: messageCostBreakdown ? JSON.parse(JSON.stringify(messageCostBreakdown)) : undefined,
         vapi_analysis: analysis ? JSON.parse(JSON.stringify(analysis)) : undefined,
         stereo_recording_url: typeof artifact?.stereoRecording === 'string' ? artifact.stereoRecording : undefined,
         artifact_messages: artifact?.messages ? JSON.parse(JSON.stringify(artifact.messages)) : undefined,
@@ -774,29 +787,19 @@ async function handleEndOfCallReport(
   console.log(`[VAPI Webhook] Summary: ${summary || "NOT PROVIDED"}`)
   console.log(`[VAPI Webhook] Sentiment: ${sentiment || "NOT PROVIDED"}`)
 
-  // Index UPDATED conversation to Algolia
-  if (conversation.agent) {
-    console.log(`[VAPI Webhook] Indexing UPDATED conversation to Algolia: ${conversation.id}`)
-    indexCallLogToAlgolia({
-      conversation: updatedConversation as unknown as Conversation,
-      workspaceId: workspaceId,
-      partnerId: partnerId,
-      agentName: conversation.agent.name || "Unknown Agent",
-      agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
-    }).then(() => {
-      console.log(`[VAPI Webhook] Algolia index SUCCESS for UPDATED: ${conversation.id}`)
-    }).catch((err) => {
-      console.error(`[VAPI Webhook] Algolia indexing FAILED for UPDATED: ${conversation.id}`, err)
-    })
-  } else {
-    console.warn(`[VAPI Webhook] Skipping Algolia index - no agent on conversation: ${conversation.id}`)
+  // Get actual workspace info for billing and indexing
+  const actualConversationWorkspaceId = (conversation as any).workspace?.id || workspaceId
+  const actualConversationPartnerId = (conversation as any).workspace?.partnerId || partnerId
+  
+  if (actualConversationWorkspaceId !== workspaceId) {
+    console.warn(`[VAPI Webhook] Workspace mismatch detected! URL: ${workspaceId}, Conversation: ${actualConversationWorkspaceId}`)
   }
 
-  // Process billing
+  // Process billing FIRST (so cost is calculated before indexing)
   const billingResult = await processCallCompletion({
     conversationId: conversation.id,
-    workspaceId: workspaceId,
-    partnerId: partnerId,
+    workspaceId: actualConversationWorkspaceId,
+    partnerId: actualConversationPartnerId,
     durationSeconds: durationSeconds,
     provider: "vapi",
     externalCallId: call.id,
@@ -806,6 +809,44 @@ async function handleEndOfCallReport(
     console.log(`[VAPI Webhook] Billing processed: ${billingResult.minutesAdded} minutes`)
   } else {
     console.error(`[VAPI Webhook] Billing failed: ${billingResult.error || billingResult.reason}`)
+  }
+
+  // Re-fetch conversation to get the updated cost from billing
+  const finalConversation = await prisma.conversation.findUnique({
+    where: { id: conversation.id },
+    include: {
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          provider: true,
+        },
+      },
+    },
+  })
+
+  // Index to Algolia AFTER billing (so cost is correct)
+  // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
+  if (finalConversation && conversation.agent) {
+    console.log(`[VAPI Webhook] Indexing UPDATED conversation to Algolia: ${conversation.id}, workspace: ${actualConversationWorkspaceId}, cost: ${finalConversation.totalCost}`)
+    try {
+      const indexResult = await indexCallLogToAlgolia({
+        conversation: finalConversation as unknown as Conversation,
+        workspaceId: actualConversationWorkspaceId, // Use conversation's actual workspace
+        partnerId: actualConversationPartnerId,
+        agentName: conversation.agent.name || "Unknown Agent",
+        agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
+      })
+      if (indexResult.success) {
+        console.log(`[VAPI Webhook] Algolia index SUCCESS for UPDATED: ${conversation.id}`)
+      } else {
+        console.warn(`[VAPI Webhook] Algolia indexing SKIPPED for UPDATED: ${conversation.id} - ${indexResult.reason}`)
+      }
+    } catch (err) {
+      console.error(`[VAPI Webhook] Algolia indexing FAILED for UPDATED: ${conversation.id}`, err)
+    }
+  } else {
+    console.warn(`[VAPI Webhook] Skipping Algolia index - no agent or conversation not found: ${conversation.id}`)
   }
 }
 
@@ -902,32 +943,49 @@ async function handleDirectFunctionCall(
 // HELPERS
 // =============================================================================
 
-async function findAgentByAssistantId(assistantId: string | undefined, workspaceId: string) {
+async function findAgentByAssistantId(assistantId: string | undefined, workspaceIdFromUrl: string) {
   if (!assistantId) {
     console.log(`[VAPI Webhook] findAgentByAssistantId: Missing assistantId`)
     return null
   }
 
-  console.log(`[VAPI Webhook] Looking for agent with assistantId: ${assistantId}, workspaceId: ${workspaceId}`)
+  console.log(`[VAPI Webhook] Looking for agent with assistantId: ${assistantId}, workspaceIdFromUrl: ${workspaceIdFromUrl}`)
 
   try {
     const supabase = getSupabaseAdmin()
 
-    const { data: agent, error } = await supabase
+    // First try to find agent in the specified workspace
+    let { data: agent, error } = await supabase
       .from("ai_agents")
-      .select("id, name, provider, config")
+      .select("id, name, provider, config, workspace_id")
       .eq("external_agent_id", assistantId)
-      .eq("workspace_id", workspaceId)
+      .eq("workspace_id", workspaceIdFromUrl)
       .is("deleted_at", null)
       .single()
 
-    if (error) {
+    // If not found, try to find agent in ANY workspace (fallback for mismatched URLs)
+    if (error || !agent) {
+      console.log(`[VAPI Webhook] Agent not found in workspace ${workspaceIdFromUrl}, searching all workspaces...`)
+      const fallbackResult = await supabase
+        .from("ai_agents")
+        .select("id, name, provider, config, workspace_id")
+        .eq("external_agent_id", assistantId)
+        .is("deleted_at", null)
+        .single()
+      
+      if (!fallbackResult.error && fallbackResult.data) {
+        agent = fallbackResult.data
+        console.log(`[VAPI Webhook] Found agent in DIFFERENT workspace: ${agent.workspace_id} (URL had: ${workspaceIdFromUrl})`)
+      }
+    }
+
+    if (error && !agent) {
       console.error(`[VAPI Webhook] Agent lookup error:`, error)
       return null
     }
 
     if (agent) {
-      console.log(`[VAPI Webhook] Found agent: ${agent.id}, name: ${agent.name}`)
+      console.log(`[VAPI Webhook] Found agent: ${agent.id}, name: ${agent.name}, workspace: ${agent.workspace_id}`)
     } else {
       console.error(`[VAPI Webhook] Agent NOT found for assistantId: ${assistantId}`)
     }

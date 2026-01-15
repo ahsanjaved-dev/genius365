@@ -53,6 +53,14 @@ interface TranscriptPlayerProps {
   transcriptMessages?: TranscriptMessage[]
   /** Optional className for the container */
   className?: string
+  /** Callback to navigate to the previous call */
+  onPreviousCall?: () => void
+  /** Callback to navigate to the next call */
+  onNextCall?: () => void
+  /** Whether there is a previous call to navigate to */
+  hasPreviousCall?: boolean
+  /** Whether there is a next call to navigate to */
+  hasNextCall?: boolean
 }
 
 // =============================================================================
@@ -65,23 +73,47 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`
 }
 
+/**
+ * Detect if message content indicates it's from the customer/user
+ * Some providers embed "Customer:" prefix in the message content
+ */
+function detectActualRole(content: string, originalRole: string): { role: "assistant" | "user", cleanContent: string } {
+  const trimmed = content.trim()
+  
+  // Check if content starts with "Customer:" or "User:" prefix
+  const customerMatch = trimmed.match(/^(Customer|User|Human):\s*(.*)$/i)
+  if (customerMatch && customerMatch[2]) {
+    return {
+      role: "user",
+      cleanContent: customerMatch[2].trim()
+    }
+  }
+  
+  // Check if content starts with "Agent:" or "Assistant:" prefix (and strip it)
+  const agentMatch = trimmed.match(/^(Agent|Assistant|Bot|AI):\s*(.*)$/i)
+  if (agentMatch && agentMatch[2]) {
+    return {
+      role: "assistant",
+      cleanContent: agentMatch[2].trim()
+    }
+  }
+  
+  // Return original role and content
+  return {
+    role: originalRole === "user" ? "user" : "assistant",
+    cleanContent: trimmed
+  }
+}
+
 function parseTranscriptToMessages(transcript: string): TranscriptMessage[] {
   // Try to parse lines like "Agent: Hello" or "User: Hi"
   const lines = transcript.split("\n").filter((line) => line.trim())
   return lines.map((line, index) => {
-    const match = line.match(/^(Agent|User|Assistant|Bot):\s*(.*)$/i)
-    if (match && match[1] && match[2] !== undefined) {
-      const role = match[1].toLowerCase() === "user" ? "user" : "assistant"
-      return {
-        role,
-        message: match[2],
-        secondsFromStart: index * 5, // Estimate 5 seconds per message
-      }
-    }
+    const { role, cleanContent } = detectActualRole(line, "assistant")
     return {
-      role: "assistant" as const,
-      message: line,
-      secondsFromStart: index * 5,
+      role,
+      message: cleanContent,
+      secondsFromStart: index * 5, // Estimate 5 seconds per message
     }
   })
 }
@@ -95,6 +127,10 @@ export function TranscriptPlayer({
   transcript,
   transcriptMessages,
   className,
+  onPreviousCall,
+  onNextCall,
+  hasPreviousCall = false,
+  hasNextCall = false,
 }: TranscriptPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -108,6 +144,10 @@ export function TranscriptPlayer({
   const [playbackRate, setPlaybackRate] = useState(1)
   const [activeMessageIndex, setActiveMessageIndex] = useState(-1)
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true)
+  
+  // Use ref to track auto-scroll state for immediate effect in callbacks
+  const isAutoScrollEnabledRef = useRef(isAutoScrollEnabled)
+  isAutoScrollEnabledRef.current = isAutoScrollEnabled
 
   // Parse messages
   const messages: TranscriptMessage[] = transcriptMessages?.length
@@ -116,17 +156,27 @@ export function TranscriptPlayer({
       ? parseTranscriptToMessages(transcript)
       : []
 
-  // Handle audio time update
+  // Track last scroll time to prevent too frequent scrolling
+  const lastScrollTimeRef = useRef<number>(0)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Handle audio time update with improved sync
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime)
+    // Use a more frequent update interval for better sync at all speeds
+    let animationFrameId: number | null = null
+    let lastUpdateTime = 0
+    
+    const updateTranscriptSync = () => {
+      if (!audio) return
+      
+      const currentAudioTime = audio.currentTime
+      setCurrentTime(currentAudioTime)
 
       // Find active message based on current time
       if (messages.length > 0) {
-        const time = audio.currentTime
         let newActiveIndex = -1
 
         for (let i = 0; i < messages.length; i++) {
@@ -136,23 +186,79 @@ export function TranscriptPlayer({
           const nextMsg = messages[i + 1]
           const endTime = msg.endTime ?? (nextMsg?.secondsFromStart ?? nextMsg?.time ?? duration)
 
-          if (time >= startTime && time < endTime) {
+          if (currentAudioTime >= startTime && currentAudioTime < endTime) {
             newActiveIndex = i
             break
+          }
+        }
+
+        // If we've passed all messages, show the last one
+        if (newActiveIndex === -1 && messages.length > 0) {
+          const lastMsg = messages[messages.length - 1]
+          const lastStartTime = lastMsg?.secondsFromStart ?? lastMsg?.time ?? 0
+          if (currentAudioTime >= lastStartTime) {
+            newActiveIndex = messages.length - 1
           }
         }
 
         if (newActiveIndex !== activeMessageIndex) {
           setActiveMessageIndex(newActiveIndex)
 
-          // Auto-scroll to active message
-          if (isAutoScrollEnabled && newActiveIndex >= 0 && messageRefs.current[newActiveIndex]) {
-            messageRefs.current[newActiveIndex]?.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            })
+          // Auto-scroll to active message with debouncing based on playback rate
+          // Use ref for immediate response when toggling auto-scroll off
+          if (isAutoScrollEnabledRef.current && newActiveIndex >= 0 && messageRefs.current[newActiveIndex]) {
+            const now = Date.now()
+            // Adjust scroll frequency based on playback rate - faster playback = more responsive scrolling
+            const minScrollInterval = Math.max(100, 300 / playbackRate)
+            
+            if (now - lastScrollTimeRef.current >= minScrollInterval) {
+              lastScrollTimeRef.current = now
+              
+              // Clear any pending scroll
+              if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current)
+              }
+              
+              // Use instant scroll for faster playback rates
+              const scrollBehavior = playbackRate >= 1.5 ? "auto" : "smooth"
+              
+              messageRefs.current[newActiveIndex]?.scrollIntoView({
+                behavior: scrollBehavior,
+                block: "center",
+              })
+            }
           }
         }
+      }
+    }
+
+    const handleTimeUpdate = () => {
+      // Throttle updates based on playback rate
+      const now = performance.now()
+      const updateInterval = Math.max(16, 50 / playbackRate) // More frequent at higher speeds
+      
+      if (now - lastUpdateTime >= updateInterval) {
+        lastUpdateTime = now
+        updateTranscriptSync()
+      }
+    }
+
+    // Use requestAnimationFrame for smoother updates at high playback speeds
+    const rafUpdate = () => {
+      if (audio && !audio.paused) {
+        updateTranscriptSync()
+        animationFrameId = requestAnimationFrame(rafUpdate)
+      }
+    }
+
+    const handlePlay = () => {
+      animationFrameId = requestAnimationFrame(rafUpdate)
+    }
+
+    const handlePause = () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
       }
     }
 
@@ -162,18 +268,37 @@ export function TranscriptPlayer({
 
     const handleEnded = () => {
       setIsPlaying(false)
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+      }
     }
 
     audio.addEventListener("timeupdate", handleTimeUpdate)
     audio.addEventListener("loadedmetadata", handleLoadedMetadata)
     audio.addEventListener("ended", handleEnded)
+    audio.addEventListener("play", handlePlay)
+    audio.addEventListener("pause", handlePause)
+
+    // Start RAF loop if already playing
+    if (!audio.paused) {
+      animationFrameId = requestAnimationFrame(rafUpdate)
+    }
 
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate)
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
       audio.removeEventListener("ended", handleEnded)
+      audio.removeEventListener("play", handlePlay)
+      audio.removeEventListener("pause", handlePause)
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
     }
-  }, [messages, activeMessageIndex, duration, isAutoScrollEnabled])
+  }, [messages, activeMessageIndex, duration, playbackRate])
 
   // Toggle play/pause
   const togglePlayPause = useCallback(() => {
@@ -270,10 +395,40 @@ export function TranscriptPlayer({
   return (
     <Card className={className}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Headphones className="h-5 w-5" />
-          Call Recording & Transcript
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Headphones className="h-5 w-5" />
+            Call Recording & Transcript
+          </CardTitle>
+          
+          {/* Call Navigation - Always visible */}
+          {(onPreviousCall || onNextCall) && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onPreviousCall}
+                disabled={!hasPreviousCall || !onPreviousCall}
+                title="Previous call"
+                className="h-8"
+              >
+                <SkipBack className="h-4 w-4 mr-1" />
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onNextCall}
+                disabled={!hasNextCall || !onNextCall}
+                title="Next call"
+                className="h-8"
+              >
+                Next
+                <SkipForward className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Audio Player */}
@@ -296,19 +451,9 @@ export function TranscriptPlayer({
               </div>
             </div>
 
-            {/* Controls */}
+            {/* Audio Controls */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {/* Skip back */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => skip(-10)}
-                  title="Skip back 10 seconds"
-                >
-                  <SkipBack className="h-4 w-4" />
-                </Button>
-
                 {/* Play/Pause */}
                 <Button
                   variant="default"
@@ -321,16 +466,6 @@ export function TranscriptPlayer({
                   ) : (
                     <Play className="h-5 w-5 ml-0.5" />
                   )}
-                </Button>
-
-                {/* Skip forward */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => skip(10)}
-                  title="Skip forward 10 seconds"
-                >
-                  <SkipForward className="h-4 w-4" />
                 </Button>
               </div>
 
@@ -387,14 +522,16 @@ export function TranscriptPlayer({
           </div>
         )}
 
-        {/* Transcript Messages */}
+        {/* Chat-style Transcript Messages */}
         {messages.length > 0 ? (
-          <ScrollArea className="h-[400px] pr-4" ref={scrollAreaRef}>
-            <div className="space-y-3">
+          <ScrollArea className="h-[400px]" ref={scrollAreaRef}>
+            <div className="flex flex-col gap-6 p-6 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
               {messages.map((msg, index) => {
-                const isUser = msg.role === "user"
+                const rawContent = msg.message || msg.content || ""
+                // Detect actual role from content (handles "Customer:" prefix in agent messages)
+                const { role: actualRole, cleanContent } = detectActualRole(rawContent, msg.role)
+                const isUser = actualRole === "user"
                 const isActive = index === activeMessageIndex
-                const content = msg.message || msg.content || ""
                 const timestamp = msg.secondsFromStart ?? msg.time
 
                 return (
@@ -405,55 +542,68 @@ export function TranscriptPlayer({
                     }}
                     onClick={() => handleMessageClick(index)}
                     className={cn(
-                      "flex gap-3 p-3 rounded-lg transition-all cursor-pointer",
-                      isUser
-                        ? "flex-row-reverse bg-primary/5"
-                        : "bg-muted/50",
-                      isActive && "ring-2 ring-primary bg-primary/10",
-                      !isActive && "hover:bg-muted"
+                      "flex flex-col cursor-pointer transition-all max-w-[80%]",
+                      isUser ? "ml-auto items-end" : "mr-auto items-start"
                     )}
                   >
-                    {/* Avatar */}
-                    <div
-                      className={cn(
-                        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-                        isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-secondary-foreground"
-                      )}
-                    >
-                      {isUser ? (
-                        <User className="h-4 w-4" />
-                      ) : (
-                        <Bot className="h-4 w-4" />
+                    {/* Icon Above Message */}
+                    <div className={cn(
+                      "flex items-center gap-2 mb-2",
+                      isUser ? "flex-row-reverse" : "flex-row"
+                    )}>
+                      {/* Avatar Icon */}
+                      <div
+                        className={cn(
+                          "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center shadow-lg",
+                          isUser
+                            ? "bg-gradient-to-br from-emerald-400 to-emerald-600"
+                            : "bg-gradient-to-br from-violet-500 to-purple-600"
+                        )}
+                      >
+                        {isUser ? (
+                          <User className="h-5 w-5 text-white" />
+                        ) : (
+                          <Bot className="h-5 w-5 text-white" />
+                        )}
+                      </div>
+                      
+                      {/* Sender Name */}
+                      <span className={cn(
+                        "text-xs font-semibold uppercase tracking-wide",
+                        isUser 
+                          ? "text-emerald-600 dark:text-emerald-400" 
+                          : "text-violet-600 dark:text-violet-400"
+                      )}>
+                        {isUser ? "Human" : "Agent"}
+                      </span>
+                      
+                      {/* Timestamp */}
+                      {timestamp !== undefined && (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatTime(timestamp)}
+                        </span>
                       )}
                     </div>
 
-                    {/* Content */}
-                    <div className={cn("flex-1 space-y-1", isUser && "text-right")}>
-                      <div className="flex items-center gap-2">
-                        {!isUser && (
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Agent
-                          </span>
-                        )}
-                        {timestamp !== undefined && (
-                          <Badge variant="outline" className="text-xs h-5">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {formatTime(timestamp)}
-                          </Badge>
-                        )}
-                        {isUser && (
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Customer
-                          </span>
-                        )}
-                      </div>
+                    {/* Message Bubble */}
+                    <div
+                      className={cn(
+                        "relative px-4 py-3 rounded-2xl shadow-md transition-all",
+                        // User messages: Green/Emerald - Right aligned
+                        isUser && "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-tr-sm",
+                        // Agent messages: White/Light - Left aligned  
+                        !isUser && "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-sm border border-slate-200 dark:border-slate-700",
+                        // Active highlight
+                        isActive && "ring-2 ring-offset-2 ring-offset-slate-100 dark:ring-offset-slate-900 ring-amber-400 scale-[1.02] shadow-lg",
+                        !isActive && "hover:shadow-lg hover:scale-[1.01]"
+                      )}
+                    >
                       <p className={cn(
                         "text-sm leading-relaxed",
                         isActive && "font-medium"
                       )}>
-                        {content}
+                        {cleanContent}
                       </p>
                     </div>
                   </div>
@@ -464,9 +614,11 @@ export function TranscriptPlayer({
         ) : transcript ? (
           /* Plain text transcript fallback */
           <ScrollArea className="h-[400px]">
-            <pre className="text-sm whitespace-pre-wrap font-sans p-4 bg-muted rounded-lg">
-              {transcript}
-            </pre>
+            <div className="p-6 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-slate-700 dark:text-slate-300">
+                {transcript}
+              </pre>
+            </div>
           </ScrollArea>
         ) : null}
       </CardContent>

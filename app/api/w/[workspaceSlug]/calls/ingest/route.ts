@@ -222,6 +222,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           partnerId: ctx.partner.id,
           agentName: typedAgent.name,
           agentProvider: typedAgent.provider,
+        }).then((result) => {
+          if (result.success) {
+            console.log(`[CallIngest] Algolia index SUCCESS (update): ${updatedConversation.id}`)
+          } else {
+            console.warn(`[CallIngest] Algolia indexing SKIPPED (update): ${updatedConversation.id} - ${result.reason}`)
+          }
         }).catch((err) => {
           console.error("[CallIngest] Algolia indexing failed (update):", err)
         })
@@ -280,6 +286,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       partnerId: ctx.partner.id,
       agentName: typedAgent.name,
       agentProvider: typedAgent.provider,
+    }).then((result) => {
+      if (result.success) {
+        console.log(`[CallIngest] Algolia index SUCCESS: ${conversation.id}`)
+      } else {
+        console.warn(`[CallIngest] Algolia indexing SKIPPED: ${conversation.id} - ${result.reason}`)
+      }
     }).catch((err) => {
       console.error("[CallIngest] Algolia indexing failed:", err)
     })

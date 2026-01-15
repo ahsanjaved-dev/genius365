@@ -18,6 +18,8 @@ export interface UseWorkspaceCallsParams {
   search?: string
   startDate?: string
   endDate?: string
+  /** Set to false to disable the query (e.g., when Algolia is configured) */
+  enabled?: boolean
 }
 
 export interface WorkspaceCallsStats {
@@ -33,7 +35,7 @@ export interface WorkspaceCallsStats {
 
 export function useWorkspaceCalls(params: UseWorkspaceCallsParams = {}) {
   const { workspaceSlug } = useParams()
-  const { page = 1, pageSize = 20, status, direction, callType, agentId, search, startDate, endDate } = params
+  const { page = 1, pageSize = 20, status, direction, callType, agentId, search, startDate, endDate, enabled = true } = params
 
   return useQuery<PaginatedResponse<ConversationWithAgent>>({
     queryKey: [
@@ -64,7 +66,7 @@ export function useWorkspaceCalls(params: UseWorkspaceCallsParams = {}) {
       const json = await res.json()
       return json.data
     },
-    enabled: !!workspaceSlug,
+    enabled: enabled && !!workspaceSlug,
     refetchInterval: 30000, // Refresh every 30 seconds
     staleTime: 10000, // Consider fresh for 10 seconds
   })

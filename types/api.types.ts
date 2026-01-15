@@ -36,7 +36,7 @@ export const agentDirectionSchema = z.enum(["inbound", "outbound"] as const)
 
 // Agent schema for workspace context (workspace comes from URL)
 export const createWorkspaceAgentSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
+  name: z.string().min(1, "Name is required").max(40, "Agent name must be 40 characters or less"),
   description: z.string().optional(),
   provider: z.enum(["vapi", "retell", "synthflow"] as const),
   voice_provider: z

@@ -26,7 +26,9 @@ import { useWorkspaceCalls, useWorkspaceCallsStats } from "@/lib/hooks/use-works
 import { useWorkspaceAgents } from "@/lib/hooks/use-workspace-agents"
 import { useIsAlgoliaConfigured } from "@/lib/hooks/use-algolia-search"
 import { useWorkspaceCallsRealtime } from "@/lib/hooks/use-realtime-call-status"
+import { useWorkspaceSettings } from "@/lib/hooks/use-workspace-settings"
 import { exportCallsToPDF, exportCallsToCSV } from "@/lib/utils/export-calls-pdf"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
   Phone,
@@ -45,6 +47,7 @@ import {
   FileJson,
   ExternalLink,
   Radio,
+  RotateCcw,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import type { ConversationWithAgent, Conversation } from "@/types/database.types"
@@ -77,6 +80,8 @@ export default function CallsPage() {
   const [algoliaResults, setAlgoliaResults] = useState<AlgoliaCallHit[]>([])
   const [algoliaTotal, setAlgoliaTotal] = useState(0)
   const [algoliaSearching, setAlgoliaSearching] = useState(false)
+  const [algoliaHasSearched, setAlgoliaHasSearched] = useState(false) // Track if initial search completed
+  const [algoliaSearchFailed, setAlgoliaSearchFailed] = useState(false) // Track if search failed
   
   // Fallback/DB state
   const [page, setPage] = useState(1)
@@ -95,11 +100,52 @@ export default function CallsPage() {
   
   // Real-time call status updates
   const [realtimeCallStatuses, setRealtimeCallStatuses] = useState<Map<string, string>>(new Map())
-
-  // Check if Algolia is configured
-  const { isConfigured: algoliaConfigured, isLoading: algoliaLoading } = useIsAlgoliaConfigured()
   
-  // Fetch calls for DB mode (only when Algolia is not configured)
+  // Refresh trigger for Algolia - increment this to force a refresh
+  const [algoliaRefreshTrigger, setAlgoliaRefreshTrigger] = useState(0)
+
+  // Check if Algolia is configured (must be before the auto-refresh useEffect)
+  const { isConfigured: algoliaConfigured, isLoading: algoliaLoading } = useIsAlgoliaConfigured()
+
+  // Auto-refresh interval for Algolia (in case realtime doesn't work)
+  // This ensures new calls appear even without Supabase Realtime
+  useEffect(() => {
+    if (!algoliaConfigured || algoliaLoading) return
+    
+    // Only refresh when page is visible to avoid unnecessary API calls
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[Calls] Page became visible, refreshing Algolia")
+        setAlgoliaRefreshTrigger((prev) => prev + 1)
+      }
+    }
+    
+    // Refresh every 15 seconds when page is visible
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        console.log("[Calls] Auto-refreshing Algolia results")
+        setAlgoliaRefreshTrigger((prev) => prev + 1)
+      }
+    }, 15000) // 15 seconds
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [algoliaConfigured, algoliaLoading])
+  
+  // Fetch workspace settings to get workspace ID for realtime subscription
+  const { data: workspaceData } = useWorkspaceSettings()
+  const workspaceId = workspaceData?.id || ""
+  
+  // Fetch calls from DB:
+  // - When Algolia is NOT configured: DB is the primary source
+  // - When Algolia IS configured: DB is a fallback (only used if Algolia returns empty or fails)
+  // We always fetch from DB to have fallback data ready, but use it conditionally
+  const shouldUseFallback = algoliaConfigured && algoliaHasSearched && (algoliaSearchFailed || algoliaResults.length === 0)
+  
   const { data, isLoading, error } = useWorkspaceCalls({
     page,
     pageSize,
@@ -109,10 +155,11 @@ export default function CallsPage() {
     callType: dbFilters.direction === "web" ? "web" : undefined,
     agentId: dbFilters.agentId !== "all" ? dbFilters.agentId : undefined,
     search: dbFilters.search || undefined,
+    // Enable DB fetch when:
+    // 1. Algolia is not configured (DB is primary)
+    // 2. OR Algolia is configured but we need fallback data
+    enabled: !algoliaLoading && (!algoliaConfigured || shouldUseFallback),
   })
-
-  // Get workspace ID for realtime subscription (from data or params)
-  const workspaceId = data?.data?.[0]?.workspace_id || workspaceSlug || ""
   
   // Subscribe to real-time call status updates for this workspace
   const { recentEvents, isConnected: realtimeConnected } = useWorkspaceCallsRealtime(
@@ -133,6 +180,12 @@ export default function CallsPage() {
           newMap.set(conversation.id as string, conversation.status as string)
           return newMap
         })
+        // Trigger Algolia refresh after a short delay to allow indexing to complete
+        // The webhook indexes to Algolia, then Supabase realtime fires - add small buffer
+        setTimeout(() => {
+          console.log("[Calls] Triggering Algolia refresh after call completion")
+          setAlgoliaRefreshTrigger((prev) => prev + 1)
+        }, 1500) // 1.5 second delay to ensure Algolia indexing is complete
       },
     }
   )
@@ -140,15 +193,30 @@ export default function CallsPage() {
   // Update realtime statuses when events come in
   useEffect(() => {
     if (recentEvents.length > 0) {
+      let hasNewCompletedCall = false
       setRealtimeCallStatuses((prev) => {
         const newMap = new Map(prev)
         recentEvents.forEach((event) => {
+          // Check if this is a newly completed call (status changed to completed)
+          const previousStatus = prev.get(event.conversationId)
+          if (event.status === "completed" && previousStatus !== "completed") {
+            hasNewCompletedCall = true
+          }
           newMap.set(event.conversationId, event.status)
         })
         return newMap
       })
+      
+      // Refresh Algolia if we detected new completed calls
+      // This catches cases where onCallComplete callback might not fire
+      if (hasNewCompletedCall && algoliaConfigured) {
+        setTimeout(() => {
+          console.log("[Calls] Triggering Algolia refresh from recentEvents")
+          setAlgoliaRefreshTrigger((prev) => prev + 1)
+        }, 2000) // Slightly longer delay for bulk updates
+      }
     }
-  }, [recentEvents])
+  }, [recentEvents, algoliaConfigured])
 
   const getCallTypeLabel = (call: ConversationWithAgent | AlgoliaCallHit): "web" | "inbound" | "outbound" => {
     if ("call_type" in call && call.call_type) {
@@ -174,10 +242,23 @@ export default function CallsPage() {
   const totalPages = data?.totalPages || 1
 
   // Handle Algolia results
-  const handleAlgoliaResults = useCallback((results: AlgoliaCallHit[], totalHits: number, isSearching: boolean) => {
+  const handleAlgoliaResults = useCallback((results: AlgoliaCallHit[], totalHits: number, isSearching: boolean, searchFailed?: boolean) => {
     setAlgoliaResults(results)
     setAlgoliaTotal(totalHits)
     setAlgoliaSearching(isSearching)
+    
+    // Track search completion and failure status
+    if (!isSearching) {
+      setAlgoliaHasSearched(true)
+      setAlgoliaSearchFailed(searchFailed ?? false)
+      
+      // Log for debugging
+      if (searchFailed) {
+        console.log("[Calls] Algolia search failed, will fallback to DB")
+      } else if (results.length === 0 && totalHits === 0) {
+        console.log("[Calls] Algolia returned 0 results, checking DB fallback")
+      }
+    }
   }, [])
 
   // Handle DB filter changes
@@ -392,11 +473,36 @@ export default function CallsPage() {
     return null
   }
 
-  // Use Algolia when configured for better search performance
-  // Falls back to DB when Algolia is not configured
-  const currentCalls = algoliaConfigured ? convertAlgoliaToConversation(algoliaResults) : dbCalls
-  const currentTotal = algoliaConfigured ? algoliaTotal : (data?.total || 0)
-  const isCurrentLoading = algoliaConfigured ? algoliaSearching : isLoading
+  // Determine which data source to use:
+  // 1. Algolia is configured AND has results → use Algolia
+  // 2. Algolia is configured BUT failed/empty → use DB as fallback
+  // 3. Algolia is NOT configured → use DB
+  const useAlgoliaData = algoliaConfigured && algoliaResults.length > 0 && !algoliaSearchFailed
+  const usingFallback = algoliaConfigured && (algoliaSearchFailed || (algoliaHasSearched && algoliaResults.length === 0))
+  
+  const currentCalls = useAlgoliaData ? convertAlgoliaToConversation(algoliaResults) : dbCalls
+  const currentTotal = useAlgoliaData ? algoliaTotal : (data?.total || 0)
+  // Only show loading spinner on INITIAL load, not during background refreshes
+  // This prevents the "flash" when auto-refresh happens
+  const isCurrentLoading = algoliaConfigured 
+    ? (!algoliaHasSearched) // Only loading until first search completes
+    : isLoading
+  
+  // Debug logging
+  useEffect(() => {
+    if (algoliaConfigured && algoliaHasSearched) {
+      console.log("[Calls] Data source:", {
+        algoliaConfigured,
+        algoliaHasSearched,
+        algoliaSearchFailed,
+        algoliaResultsCount: algoliaResults.length,
+        dbCallsCount: dbCalls.length,
+        useAlgoliaData,
+        usingFallback,
+        currentCallsCount: currentCalls.length,
+      })
+    }
+  }, [algoliaConfigured, algoliaHasSearched, algoliaSearchFailed, algoliaResults.length, dbCalls.length, useAlgoliaData, usingFallback, currentCalls.length])
 
   return (
     <div className="space-y-6">
@@ -463,9 +569,22 @@ export default function CallsPage() {
               </Button>
               <Button 
                 variant="outline" 
+                onClick={() => {
+                  console.log("[Calls] Manual refresh triggered")
+                  setAlgoliaRefreshTrigger((prev) => prev + 1)
+                  toast.info("Refreshing call list...")
+                }}
+                disabled={algoliaSearching}
+                title="Refresh search results"
+              >
+                <RotateCcw className={cn("mr-2 h-4 w-4", algoliaSearching && "animate-spin")} />
+                Refresh
+              </Button>
+              <Button 
+                variant="outline" 
                 onClick={handleResyncAlgolia} 
                 disabled={isResyncing}
-                title="Re-sync all call data to Algolia"
+                title="Re-index all call data to Algolia (slower)"
               >
                 {isResyncing ? (
                   <>
@@ -475,7 +594,7 @@ export default function CallsPage() {
                 ) : (
                   <>
                     <Activity className="mr-2 h-4 w-4" />
-                    Resync Search
+                    Resync All
                   </>
                 )}
               </Button>
@@ -568,11 +687,34 @@ export default function CallsPage() {
           </CardContent>
         </Card>
       ) : algoliaConfigured ? (
-        <AlgoliaSearchPanel
-          agents={agents}
-          onResultsChange={handleAlgoliaResults}
-          onViewCallDetail={handleViewCallDetail}
-        />
+        <>
+          <AlgoliaSearchPanel
+            agents={agents}
+            onResultsChange={handleAlgoliaResults}
+            onViewCallDetail={handleViewCallDetail}
+            refreshTrigger={algoliaRefreshTrigger}
+          />
+          {/* Fallback indicator when using DB instead of Algolia */}
+          {usingFallback && !isCurrentLoading && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm">
+              <Activity className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+              <span className="text-yellow-800 dark:text-yellow-200">
+                {algoliaSearchFailed 
+                  ? "Search service unavailable. Showing results from database."
+                  : "No indexed results found. Showing recent calls from database. New calls will be indexed automatically."}
+              </span>
+              <Button
+                variant="link"
+                size="sm"
+                className="text-yellow-700 dark:text-yellow-300 p-0 h-auto"
+                onClick={handleResyncAlgolia}
+                disabled={isResyncing}
+              >
+                {isResyncing ? "Syncing..." : "Sync now"}
+              </Button>
+            </div>
+          )}
+        </>
       ) : (
         <FallbackSearchPanel
           agents={agents}
@@ -731,7 +873,7 @@ export default function CallsPage() {
                     <TableCell>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <DollarSign className="h-4 w-4" />
-                        <span>${(call.total_cost || 0).toFixed(2)}</span>
+                        <span>${Number(call.total_cost || 0).toFixed(2)}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
