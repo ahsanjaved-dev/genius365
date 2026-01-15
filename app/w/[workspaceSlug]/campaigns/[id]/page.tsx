@@ -227,15 +227,15 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (recentUpdates.length > 0) {
       const newEvents = recentUpdates
-        .filter(update => update.call_status) // Only track status changes
+        .filter(update => update.newStatus) // Only track status changes
         .map(update => {
-          const recipient = recipients.find(r => r.id === update.id)
+          const recipient = recipients.find(r => r.id === update.recipientId)
           return recipientStatusToActivityEvent(
-            update.id,
+            update.recipientId,
             recipient?.first_name || null,
-            recipient?.phone_number || update.phone_number || "Unknown",
-            update.call_status,
-            update.external_call_id
+            recipient?.phone_number || update.phoneNumber || "Unknown",
+            update.newStatus,
+            update.data.external_call_id ?? undefined
           )
         })
       
@@ -627,9 +627,7 @@ export default function CampaignDetailPage() {
               successRate: processedCalls > 0 
                 ? Math.round(((campaign.successful_calls || 0) / processedCalls) * 100) 
                 : 0,
-              avgDurationSeconds: campaignProgress?.avgCallDurationMs 
-                ? campaignProgress.avgCallDurationMs / 1000 
-                : undefined,
+              avgDurationSeconds: undefined, // TODO: Add avgCallDurationMs to CampaignProgress if needed
             }}
           />
 
