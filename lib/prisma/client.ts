@@ -92,12 +92,30 @@ function createPrismaClient(): PrismaClient | null {
     return null
   }
 
-  return new PrismaClient({
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
-  })
+  // Log configuration status in production for debugging
+  if (process.env.NODE_ENV === "production") {
+    console.log("[Prisma] Initializing Prisma client...")
+    console.log("[Prisma] DATABASE_URL configured:", !!process.env.DATABASE_URL)
+    console.log("[Prisma] DIRECT_URL configured:", !!process.env.DIRECT_URL)
+  }
+
+  try {
+    const client = new PrismaClient({
+      log:
+        process.env.NODE_ENV === "development"
+          ? ["query", "error", "warn"]
+          : ["error"],
+    })
+    
+    if (process.env.NODE_ENV === "production") {
+      console.log("[Prisma] Prisma client created successfully")
+    }
+    
+    return client
+  } catch (error) {
+    console.error("[Prisma] Failed to create Prisma client:", error)
+    return null
+  }
 }
 
 // =============================================================================
