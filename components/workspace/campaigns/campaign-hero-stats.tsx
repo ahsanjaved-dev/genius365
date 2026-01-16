@@ -1,16 +1,11 @@
 "use client"
 
 /**
- * Campaign Hero Stats Component
+ * Campaign Hero Stats Component (OPTIMIZED)
  * 
- * A stunning stats overview with:
- * - Animated counters
- * - Gradient backgrounds
- * - Hover interactions
- * - Responsive layout
+ * Lightweight stats overview without heavy animations
  */
 
-import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import {
@@ -19,8 +14,6 @@ import {
   Users,
   CheckCircle2,
   TrendingUp,
-  Zap,
-  Activity,
 } from "lucide-react"
 
 interface HeroStatProps {
@@ -28,69 +21,46 @@ interface HeroStatProps {
   value: number
   icon: React.ReactNode
   gradient: string
-  textGradient: string
   suffix?: string
   trend?: { value: number; isPositive: boolean }
-  delay?: number
 }
 
-function HeroStat({
-  label,
-  value,
-  icon,
-  gradient,
-  textGradient,
-  suffix,
-  trend,
-  delay = 0,
-}: HeroStatProps) {
+function HeroStat({ label, value, icon, gradient, suffix, trend }: HeroStatProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+    <Card
+      className={cn(
+        "relative overflow-hidden p-6 border-0 bg-gradient-to-br",
+        gradient,
+        "hover:shadow-lg transition-shadow duration-200"
+      )}
     >
-      <Card
-        className={cn(
-          "relative overflow-hidden p-6 border-0",
-          "bg-gradient-to-br",
-          gradient,
-          "hover:shadow-xl transition-all duration-300"
-        )}
-      >
-        {/* Decorative element */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/5 rounded-full blur-xl translate-y-1/2 -translate-x-1/2" />
-
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">{icon}</div>
-            {trend && (
-              <div
-                className={cn(
-                  "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-white/20 backdrop-blur-sm",
-                  trend.isPositive ? "text-emerald-100" : "text-rose-100"
-                )}
-              >
-                <TrendingUp
-                  className={cn("h-3 w-3", !trend.isPositive && "rotate-180")}
-                />
-                {trend.value}%
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <p className={cn("text-4xl font-bold tracking-tight", textGradient)}>
-              {value.toLocaleString()}
-              {suffix && <span className="text-2xl ml-1">{suffix}</span>}
-            </p>
-            <p className="text-sm font-medium text-white/80">{label}</p>
-          </div>
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <div className="p-2 bg-white/20 rounded-lg">{icon}</div>
+          {trend && (
+            <div
+              className={cn(
+                "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-white/20",
+                trend.isPositive ? "text-emerald-100" : "text-rose-100"
+              )}
+            >
+              <TrendingUp
+                className={cn("h-3 w-3", !trend.isPositive && "rotate-180")}
+              />
+              {trend.value}%
+            </div>
+          )}
         </div>
-      </Card>
-    </motion.div>
+
+        <div className="space-y-1">
+          <p className="text-4xl font-bold tracking-tight text-white tabular-nums">
+            {value.toLocaleString()}
+            {suffix && <span className="text-2xl ml-1">{suffix}</span>}
+          </p>
+          <p className="text-sm font-medium text-white/80">{label}</p>
+        </div>
+      </div>
+    </Card>
   )
 }
 
@@ -133,16 +103,12 @@ export function CampaignHeroStats({
       value: totalCampaigns,
       icon: <Phone className="h-5 w-5 text-white" />,
       gradient: "from-indigo-500 to-purple-600",
-      textGradient: "text-white",
-      delay: 0,
     },
     {
       label: "Active Campaigns",
       value: activeCampaigns,
       icon: <PhoneCall className="h-5 w-5 text-white" />,
       gradient: "from-emerald-500 to-teal-600",
-      textGradient: "text-white",
-      delay: 0.1,
       trend: activeCampaigns > 0 ? { value: activeCampaigns, isPositive: true } : undefined,
     },
     {
@@ -150,16 +116,12 @@ export function CampaignHeroStats({
       value: totalRecipients,
       icon: <Users className="h-5 w-5 text-white" />,
       gradient: "from-blue-500 to-cyan-600",
-      textGradient: "text-white",
-      delay: 0.2,
     },
     {
       label: "Processed Calls",
       value: processedCalls,
       icon: <CheckCircle2 className="h-5 w-5 text-white" />,
       gradient: "from-violet-500 to-fuchsia-600",
-      textGradient: "text-white",
-      delay: 0.3,
       trend: successRate ? { value: successRate, isPositive: successRate >= 50 } : undefined,
     },
   ]
@@ -188,7 +150,7 @@ export function CampaignQuickStats({
   return (
     <div className={cn("flex items-center gap-4 text-sm", className)}>
       <div className="flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+        <div className="h-2 w-2 rounded-full bg-emerald-500" />
         <span className="font-medium">{active}</span>
         <span className="text-muted-foreground">active</span>
       </div>
@@ -207,4 +169,3 @@ export function CampaignQuickStats({
     </div>
   )
 }
-

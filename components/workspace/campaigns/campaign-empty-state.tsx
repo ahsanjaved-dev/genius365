@@ -1,15 +1,11 @@
 "use client"
 
 /**
- * Campaign Empty State Component
+ * Campaign Empty State Component (OPTIMIZED)
  * 
- * A beautiful, animated empty state with:
- * - Animated illustration
- * - Feature highlights
- * - Quick action button
+ * Lightweight empty state without heavy animations
  */
 
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -17,12 +13,9 @@ import {
   Phone,
   Plus,
   Users,
-  Zap,
   Clock,
   BarChart3,
   Bot,
-  PhoneCall,
-  CheckCircle2,
 } from "lucide-react"
 
 interface CampaignEmptyStateProps {
@@ -33,126 +26,17 @@ interface CampaignEmptyStateProps {
   className?: string
 }
 
-// Animated illustration
+// Static illustration
 function CampaignIllustration() {
   return (
-    <div className="relative w-48 h-48 mx-auto">
-      {/* Background circles */}
-      <motion.div
-        className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/10 to-purple-500/10"
-        animate={{
-          scale: [1, 1.1, 1],
-          opacity: [0.5, 0.8, 0.5],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-      <motion.div
-        className="absolute inset-4 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20"
-        animate={{
-          scale: [1.1, 1, 1.1],
-          opacity: [0.5, 0.8, 0.5],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.5,
-        }}
-      />
-
-      {/* Center icon */}
-      <motion.div
-        className="absolute inset-0 flex items-center justify-center"
-        animate={{
-          y: [0, -5, 0],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      >
-        <div className="p-6 bg-gradient-to-br from-primary to-purple-600 rounded-2xl shadow-xl shadow-primary/20">
-          <Phone className="h-12 w-12 text-white" />
+    <div className="relative w-32 h-32 mx-auto">
+      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/10 to-purple-500/10" />
+      <div className="absolute inset-4 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="p-5 bg-gradient-to-br from-primary to-purple-600 rounded-2xl shadow-xl shadow-primary/20">
+          <Phone className="h-10 w-10 text-white" />
         </div>
-      </motion.div>
-
-      {/* Floating elements */}
-      <motion.div
-        className="absolute top-4 right-4"
-        animate={{
-          y: [0, -8, 0],
-          x: [0, 4, 0],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.2,
-        }}
-      >
-        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg shadow-sm">
-          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="absolute bottom-4 left-4"
-        animate={{
-          y: [0, 8, 0],
-          x: [0, -4, 0],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.4,
-        }}
-      >
-        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shadow-sm">
-          <Users className="h-5 w-5 text-blue-600" />
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="absolute top-8 left-0"
-        animate={{
-          y: [0, 6, 0],
-          x: [0, -6, 0],
-        }}
-        transition={{
-          duration: 3.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.6,
-        }}
-      >
-        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shadow-sm">
-          <Bot className="h-5 w-5 text-purple-600" />
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="absolute bottom-8 right-0"
-        animate={{
-          y: [0, -6, 0],
-          x: [0, 6, 0],
-        }}
-        transition={{
-          duration: 3.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.8,
-        }}
-      >
-        <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shadow-sm">
-          <Zap className="h-5 w-5 text-amber-600" />
-        </div>
-      </motion.div>
+      </div>
     </div>
   )
 }
@@ -162,26 +46,19 @@ function FeatureCard({
   icon,
   title,
   description,
-  delay,
 }: {
   icon: React.ReactNode
   title: string
   description: string
-  delay: number
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-    >
+    <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
       <div className="p-2 bg-primary/10 rounded-lg shrink-0">{icon}</div>
       <div>
         <h4 className="font-medium text-sm">{title}</h4>
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -223,30 +100,20 @@ export function CampaignEmptyState({
           <CampaignIllustration />
 
           {/* Content */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-            className="text-center mt-8 mb-8"
-          >
+          <div className="text-center mt-8 mb-8">
             <h3 className="text-2xl font-bold tracking-tight">{title}</h3>
             <p className="text-muted-foreground mt-2 max-w-md mx-auto">{description}</p>
-          </motion.div>
+          </div>
 
           {/* Features grid */}
           <div className="grid sm:grid-cols-2 gap-3 mb-8">
-            {features.map((feature, index) => (
-              <FeatureCard key={feature.title} {...feature} delay={0.3 + index * 0.1} />
+            {features.map((feature) => (
+              <FeatureCard key={feature.title} {...feature} />
             ))}
           </div>
 
           {/* CTA */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.7 }}
-            className="flex justify-center"
-          >
+          <div className="flex justify-center">
             <Button
               size="lg"
               onClick={onCreateCampaign}
@@ -265,7 +132,7 @@ export function CampaignEmptyState({
                 </>
               )}
             </Button>
-          </motion.div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -294,4 +161,3 @@ export function CampaignEmptyStateCompact({
     </div>
   )
 }
-

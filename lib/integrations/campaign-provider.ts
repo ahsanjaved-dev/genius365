@@ -13,8 +13,66 @@ import {
   type VapiBatchCallItem,
   type VapiBatchResult,
 } from "./vapi/batch-calls"
+import { createClient } from "@supabase/supabase-js"
 
 import type { BusinessHoursConfig } from "@/types/database.types"
+
+// ============================================================================
+// SUPABASE CLIENT FOR STATUS CHECKS
+// ============================================================================
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
+
+/**
+ * Create a callback that checks if the campaign should continue processing
+ * This enables cancel support during batch execution
+ * 
+ * NOTE: VAPI doesn't support pause, so we only check for cancellation.
+ * "ready" and "active" both allow continuation (ready = initial state before status update)
+ */
+function createCampaignStatusChecker(campaignId: string) {
+  return async (): Promise<{ continue: boolean; reason?: string }> => {
+    try {
+      const adminClient = getSupabaseAdmin()
+      const { data: campaign, error } = await adminClient
+        .from("call_campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .single()
+
+      if (error || !campaign) {
+        console.warn(`[CampaignProvider] Could not check campaign status: ${error?.message}`)
+        return { continue: true } // Continue on error to avoid blocking
+      }
+
+      switch (campaign.status) {
+        case "active":
+        case "ready": // Allow "ready" - status is updated after batch starts
+          return { continue: true }
+        case "cancelled":
+          return { continue: false, reason: "Campaign was cancelled" }
+        case "completed":
+          return { continue: false, reason: "Campaign already completed" }
+        default:
+          // For any other status, continue to avoid blocking
+          console.warn(`[CampaignProvider] Unexpected status: ${campaign.status}, continuing...`)
+          return { continue: true }
+      }
+    } catch (err) {
+      console.warn(`[CampaignProvider] Error checking campaign status:`, err)
+      return { continue: true } // Continue on error
+    }
+  }
+}
 
 // ============================================================================
 // TYPES
@@ -164,6 +222,7 @@ async function executeVapiBatch(
   }
   
   // Build VAPI batch config
+  // Note: delayBetweenCallsMs is no longer used - we now process in parallel chunks
   const vapiBatchConfig: VapiBatchConfig = {
     apiKey: vapiConfig.apiKey,
     assistantId: campaign.agent.external_agent_id,
@@ -173,9 +232,10 @@ async function executeVapiBatch(
     batchRef,
     businessHoursConfig: campaign.business_hours_config,
     timezone: campaign.timezone,
-    delayBetweenCallsMs: 1500, // 1.5 second delay between calls
     // Skip business hours check when user explicitly clicks "Start Now"
     skipBusinessHoursCheck: startNow,
+    // Enable pause/cancel support - checks campaign status between chunks
+    shouldContinue: createCampaignStatusChecker(campaign.id),
   }
   
   // Convert recipients to VAPI format

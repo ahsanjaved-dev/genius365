@@ -62,9 +62,6 @@ export async function cleanupStaleCalls(
     thresholdTime.setMinutes(thresholdTime.getMinutes() - thresholdMinutes)
     const thresholdISO = thresholdTime.toISOString()
 
-    console.log(`[StaleCallCleanup] Checking campaign ${campaignId} for stale calls older than ${thresholdMinutes} minutes`)
-    console.log(`[StaleCallCleanup] Threshold timestamp: ${thresholdISO}`)
-
     // Find stale "calling" recipients
     const { data: staleRecipients, error: findError } = await supabase
       .from("call_recipients")
@@ -74,7 +71,6 @@ export async function cleanupStaleCalls(
       .lt("call_started_at", thresholdISO)
 
     if (findError) {
-      console.error("[StaleCallCleanup] Error finding stale recipients:", findError)
       return {
         success: false,
         campaignId,
@@ -86,12 +82,9 @@ export async function cleanupStaleCalls(
     }
 
     const staleCount = staleRecipients?.length || 0
-    console.log(`[StaleCallCleanup] Found ${staleCount} stale recipients`)
 
     if (staleCount === 0) {
-      // Check if campaign should be completed
       const campaignCompleted = await checkAndCompleteCampaign(supabase, campaignId)
-      
       return {
         success: true,
         campaignId,
@@ -101,50 +94,43 @@ export async function cleanupStaleCalls(
       }
     }
 
-    // Update stale recipients to "failed" with timeout reason
-    let updatedCount = 0
-    for (const recipient of staleRecipients!) {
-      const { error: updateError } = await supabase
-        .from("call_recipients")
-        .update({
-          call_status: "failed",
-          call_outcome: "error",
-          call_ended_at: new Date().toISOString(),
-          last_error: `Call timed out - no response received within ${thresholdMinutes} minutes`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", recipient.id)
+    // BULK update stale recipients to "failed" with timeout reason
+    const staleIds = staleRecipients!.map(r => r.id)
+    const { error: updateError, count } = await supabase
+      .from("call_recipients")
+      .update({
+        call_status: "failed",
+        call_outcome: "error",
+        call_ended_at: new Date().toISOString(),
+        last_error: `Call timed out - no response received within ${thresholdMinutes} minutes`,
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", staleIds)
 
-      if (updateError) {
-        console.error(`[StaleCallCleanup] Error updating recipient ${recipient.id}:`, updateError)
-      } else {
-        updatedCount++
-        console.log(`[StaleCallCleanup] Marked recipient ${recipient.id} (${recipient.phone_number}) as failed (timeout)`)
-      }
-    }
+    const updatedCount = updateError ? 0 : (count || staleCount)
 
     // Update campaign statistics
-    const { data: campaign } = await supabase
-      .from("call_campaigns")
-      .select("completed_calls, failed_calls")
-      .eq("id", campaignId)
-      .single()
-
-    if (campaign) {
-      await supabase
+    if (updatedCount > 0) {
+      const { data: campaign } = await supabase
         .from("call_campaigns")
-        .update({
-          completed_calls: (campaign.completed_calls || 0) + updatedCount,
-          failed_calls: (campaign.failed_calls || 0) + updatedCount,
-          updated_at: new Date().toISOString(),
-        })
+        .select("completed_calls, failed_calls")
         .eq("id", campaignId)
+        .single()
+
+      if (campaign) {
+        await supabase
+          .from("call_campaigns")
+          .update({
+            completed_calls: (campaign.completed_calls || 0) + updatedCount,
+            failed_calls: (campaign.failed_calls || 0) + updatedCount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campaignId)
+      }
     }
 
     // Check if campaign should be completed
     const campaignCompleted = await checkAndCompleteCampaign(supabase, campaignId)
-
-    console.log(`[StaleCallCleanup] Cleanup complete: ${updatedCount}/${staleCount} recipients updated`)
 
     return {
       success: true,
@@ -154,7 +140,6 @@ export async function cleanupStaleCalls(
       campaignCompleted,
     }
   } catch (error) {
-    console.error("[StaleCallCleanup] Exception:", error)
     return {
       success: false,
       campaignId,
@@ -183,7 +168,6 @@ async function checkAndCompleteCampaign(
       .in("call_status", ["pending", "queued", "calling"])
 
     if (countError) {
-      console.error("[StaleCallCleanup] Error counting in-progress recipients:", countError)
       return false
     }
 
@@ -196,8 +180,6 @@ async function checkAndCompleteCampaign(
         .single()
 
       if (campaign?.status === "active") {
-        console.log(`[StaleCallCleanup] Campaign ${campaignId} has no more recipients to process - marking as completed`)
-
         await supabase
           .from("call_campaigns")
           .update({
@@ -209,13 +191,10 @@ async function checkAndCompleteCampaign(
 
         return true
       }
-    } else {
-      console.log(`[StaleCallCleanup] Campaign ${campaignId} still has ${inProgressCount} recipients in progress`)
     }
 
     return false
-  } catch (error) {
-    console.error("[StaleCallCleanup] Error checking campaign completion:", error)
+  } catch {
     return false
   }
 }
@@ -240,7 +219,6 @@ export async function cleanupAllActiveCampaigns(): Promise<{
       .eq("status", "active")
 
     if (findError || !activeCampaigns) {
-      console.error("[StaleCallCleanup] Error finding active campaigns:", findError)
       return {
         success: false,
         campaignsProcessed: 0,
@@ -248,8 +226,6 @@ export async function cleanupAllActiveCampaigns(): Promise<{
         totalCampaignsCompleted: 0,
       }
     }
-
-    console.log(`[StaleCallCleanup] Found ${activeCampaigns.length} active campaigns to check`)
 
     let totalStale = 0
     let totalCompleted = 0
@@ -266,8 +242,7 @@ export async function cleanupAllActiveCampaigns(): Promise<{
       totalStaleRecipients: totalStale,
       totalCampaignsCompleted: totalCompleted,
     }
-  } catch (error) {
-    console.error("[StaleCallCleanup] Error in cleanupAllActiveCampaigns:", error)
+  } catch {
     return {
       success: false,
       campaignsProcessed: 0,

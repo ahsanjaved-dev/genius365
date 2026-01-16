@@ -101,10 +101,8 @@ function createPrismaClient(): PrismaClient | null {
 
   try {
     const client = new PrismaClient({
-      log:
-        process.env.NODE_ENV === "development"
-          ? ["query", "error", "warn"]
-          : ["error"],
+      // Only log errors - query logging is too verbose and hurts performance
+      log: ["error"],
     })
     
     if (process.env.NODE_ENV === "production") {

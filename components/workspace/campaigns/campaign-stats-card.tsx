@@ -1,28 +1,18 @@
 "use client"
 
 /**
- * Campaign Stats Card Component
+ * Campaign Stats Card Component (OPTIMIZED)
  * 
- * A beautiful, animated stats display with:
- * - Animated counters
- * - Trend indicators
- * - Sparkline visualization
- * - Color-coded metrics
+ * Lightweight stats display without heavy animations
+ * Uses CSS transitions for subtle hover effects
  */
 
 import { cn } from "@/lib/utils"
-import { motion } from "framer-motion"
 import {
   Users,
   Clock,
   CheckCircle2,
   XCircle,
-  Phone,
-  PhoneCall,
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  Timer,
 } from "lucide-react"
 
 interface StatCardProps {
@@ -31,74 +21,31 @@ interface StatCardProps {
   icon: React.ReactNode
   color: string
   bgColor: string
-  trend?: number // percentage change
   suffix?: string
-  delay?: number
 }
 
-function AnimatedValue({ value, suffix = "" }: { value: number; suffix?: string }) {
+function StatCard({ label, value, icon, color, bgColor, suffix }: StatCardProps) {
   return (
-    <motion.span
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="tabular-nums"
-    >
-      {value.toLocaleString()}
-      {suffix}
-    </motion.span>
-  )
-}
-
-function StatCard({ label, value, icon, color, bgColor, trend, suffix, delay = 0 }: StatCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
+    <div
       className={cn(
         "relative overflow-hidden rounded-xl border bg-card p-4",
-        "hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5"
+        "hover:shadow-md transition-shadow duration-200"
       )}
     >
-      {/* Decorative gradient */}
-      <div
-        className={cn(
-          "absolute top-0 right-0 w-24 h-24 rounded-full blur-3xl opacity-20",
-          bgColor
-        )}
-      />
-
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-2">
           <div className={cn("p-2 rounded-lg", bgColor)}>
             <span className={color}>{icon}</span>
           </div>
-          {trend !== undefined && trend !== 0 && (
-            <div
-              className={cn(
-                "flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full",
-                trend > 0
-                  ? "text-green-600 bg-green-100 dark:bg-green-900/30"
-                  : "text-red-600 bg-red-100 dark:bg-red-900/30"
-              )}
-            >
-              {trend > 0 ? (
-                <TrendingUp className="h-3 w-3" />
-              ) : (
-                <TrendingDown className="h-3 w-3" />
-              )}
-              {Math.abs(trend)}%
-            </div>
-          )}
         </div>
 
-        <p className="text-2xl font-bold tracking-tight">
-          <AnimatedValue value={value} suffix={suffix} />
+        <p className="text-2xl font-bold tracking-tight tabular-nums">
+          {value.toLocaleString()}
+          {suffix}
         </p>
         <p className="text-sm text-muted-foreground mt-1">{label}</p>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -108,30 +55,17 @@ interface CampaignStatsGridProps {
   completedCalls: number
   successfulCalls: number
   failedCalls: number
-  callsPerMinute?: number
-  avgDuration?: number // seconds
   className?: string
 }
 
 export function CampaignStatsGrid({
   totalRecipients,
   pendingCalls,
-  completedCalls,
   successfulCalls,
   failedCalls,
-  callsPerMinute,
-  avgDuration,
   className,
 }: CampaignStatsGridProps) {
-  const stats: Array<{
-    label: string
-    value: number
-    icon: React.ReactNode
-    color: string
-    bgColor: string
-    trend?: number
-    suffix?: string
-  }> = [
+  const stats: StatCardProps[] = [
     {
       label: "Total Recipients",
       value: totalRecipients,
@@ -152,7 +86,6 @@ export function CampaignStatsGrid({
       icon: <CheckCircle2 className="h-5 w-5" />,
       color: "text-emerald-600 dark:text-emerald-400",
       bgColor: "bg-emerald-100 dark:bg-emerald-900/30",
-      trend: completedCalls > 0 ? Math.round((successfulCalls / completedCalls) * 100) : undefined,
     },
     {
       label: "Failed",
@@ -163,34 +96,10 @@ export function CampaignStatsGrid({
     },
   ]
 
-  // Add optional metrics
-  if (callsPerMinute !== undefined && callsPerMinute > 0) {
-    stats.push({
-      label: "Calls/Minute",
-      value: callsPerMinute,
-      icon: <Activity className="h-5 w-5" />,
-      color: "text-purple-600 dark:text-purple-400",
-      bgColor: "bg-purple-100 dark:bg-purple-900/30",
-    })
-  }
-
-  if (avgDuration !== undefined && avgDuration > 0) {
-    const minutes = Math.floor(avgDuration / 60)
-    const seconds = avgDuration % 60
-    stats.push({
-      label: "Avg Duration",
-      value: minutes * 60 + seconds,
-      icon: <Timer className="h-5 w-5" />,
-      color: "text-cyan-600 dark:text-cyan-400",
-      bgColor: "bg-cyan-100 dark:bg-cyan-900/30",
-      suffix: "s",
-    })
-  }
-
   return (
-    <div className={cn("grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4", className)}>
-      {stats.map((stat, index) => (
-        <StatCard key={stat.label} {...stat} delay={index * 0.1} />
+    <div className={cn("grid grid-cols-2 md:grid-cols-4 gap-4", className)}>
+      {stats.map((stat) => (
+        <StatCard key={stat.label} {...stat} />
       ))}
     </div>
   )
@@ -242,4 +151,3 @@ export function CampaignStatsCompact({
     </div>
   )
 }
-

@@ -17,8 +17,7 @@ export { CampaignAnalytics, CampaignAnalyticsBadge } from "./campaign-analytics"
 
 // Live updates
 export { CampaignLiveDashboard } from "./campaign-live-dashboard"
-export { CampaignActivityFeed, recipientStatusToActivityEvent } from "./campaign-activity-feed"
-export type { ActivityEvent, ActivityEventType } from "./campaign-activity-feed"
+// Note: CampaignActivityFeed is deprecated for performance reasons
 
 // UI States
 export { CampaignEmptyState, CampaignEmptyStateCompact } from "./campaign-empty-state"

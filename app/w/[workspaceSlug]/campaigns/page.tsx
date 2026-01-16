@@ -36,16 +36,11 @@ import {
   useResumeCampaign,
 } from "@/lib/hooks/use-campaigns"
 import { useRealtimeCampaignList } from "@/lib/hooks/use-realtime-campaign"
-import { AnimatePresence, motion } from "framer-motion"
 import {
   Phone,
   Plus,
   Loader2,
   RefreshCw,
-  Users,
-  CheckCircle2,
-  PhoneCall,
-  Radio,
   Filter,
   Search,
 } from "lucide-react"
@@ -145,19 +140,26 @@ export default function CampaignsPage() {
     }
     
     setStartingCampaignId(campaign.id)
-    // Show overlay for campaigns with many recipients
-    if (campaign.total_recipients > 10) {
-      setActionOverlay({ action: "start", campaign })
-    }
+    
+    // Show immediate feedback toast - don't block with overlay
+    const toastId = toast.loading("Starting campaign...", {
+      description: `${campaign.total_recipients} recipients will be called`
+    })
     
     try {
       const result = await startMutation.mutateAsync(campaign.id)
-      toast.success(result.message || "Campaign started successfully")
+      // Update toast to success
+      toast.success(result.message || "Campaign started!", {
+        id: toastId,
+        description: "Calls are being processed in the background. Status will update in real-time.",
+        duration: 4000,
+      })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start campaign")
+      toast.error(error instanceof Error ? error.message : "Failed to start campaign", {
+        id: toastId,
+      })
     } finally {
       setStartingCampaignId(null)
-      setActionOverlay({ action: null, campaign: null })
     }
   }
 
@@ -211,20 +213,12 @@ export default function CampaignsPage() {
           <div className="flex items-center gap-3">
             <h1 className="page-title">Campaigns</h1>
             {/* Real-time connection indicator */}
-            {realtimeConnected ? (
+            {realtimeConnected && (
               <Badge variant="outline" className="text-green-600 border-green-600/50">
-                <span className="relative flex h-2 w-2 mr-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
+                <span className="h-2 w-2 rounded-full bg-green-500 mr-1.5" />
                 Live
               </Badge>
-            ) : workspaceId ? (
-              <Badge variant="outline" className="text-muted-foreground">
-                <Radio className="h-3 w-3 mr-1.5 animate-pulse" />
-                Connecting...
-              </Badge>
-            ) : null}
+            )}
           </div>
           <p className="text-muted-foreground mt-1">
             Create and manage outbound calling campaigns for your AI agents.
@@ -371,26 +365,21 @@ export default function CampaignsPage() {
           </CardContent>
         </Card>
       ) : (
-        <motion.div 
-          className="space-y-4"
-          initial={false}
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredCampaigns.map((campaign) => (
-              <CampaignCardEnhanced
-                key={campaign.id}
-                campaign={campaign}
-                onStart={handleStart}
-                onPause={handlePause}
-                onResume={handleResume}
-                onDelete={setDeleteTarget}
-                isStarting={startingCampaignId === campaign.id}
-                isPausing={pausingCampaignId === campaign.id}
-                isResuming={resumingCampaignId === campaign.id}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
+        <div className="space-y-4">
+          {filteredCampaigns.map((campaign) => (
+            <CampaignCardEnhanced
+              key={campaign.id}
+              campaign={campaign}
+              onStart={handleStart}
+              onPause={handlePause}
+              onResume={handleResume}
+              onDelete={setDeleteTarget}
+              isStarting={startingCampaignId === campaign.id}
+              isPausing={pausingCampaignId === campaign.id}
+              isResuming={resumingCampaignId === campaign.id}
+            />
+          ))}
+        </div>
       )}
 
       {/* Delete Confirmation */}
