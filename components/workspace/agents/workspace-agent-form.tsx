@@ -54,7 +54,7 @@ interface WorkspaceAgentFormProps {
 }
 
 const formSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255),
+  name: z.string().min(1, "Name is required").max(40, "Agent name must be 40 characters or less"),
   description: z.string().optional(),
   provider: z.enum(["vapi", "retell"] as const),
   voice_provider: z
@@ -317,10 +317,24 @@ export function WorkspaceAgentForm({
             <Input
               id="name"
               placeholder="e.g., Sales Assistant"
+              maxLength={40}
               {...register("name")}
               disabled={isSubmitting}
             />
-            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+            <div className="flex justify-between items-center">
+              {errors.name ? (
+                <p className="text-sm text-destructive">{errors.name.message}</p>
+              ) : (
+                <span />
+              )}
+              <span className={cn(
+                "text-xs",
+                (watch("name")?.length || 0) >= 35 ? "text-amber-500" : "text-muted-foreground",
+                (watch("name")?.length || 0) >= 40 && "text-destructive"
+              )}>
+                {watch("name")?.length || 0}/40
+              </span>
+            </div>
           </div>
 
           <div className="space-y-2">

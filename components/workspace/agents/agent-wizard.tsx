@@ -262,6 +262,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     if (step === 1) {
       if (!formData.name.trim()) {
         newErrors.name = "Agent name is required"
+      } else if (formData.name.trim().length > 40) {
+        newErrors.name = "Agent name must be 40 characters or less"
       }
       // Voice is required
       if (!formData.enableVoice) {
@@ -472,11 +474,30 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => updateFormData("name", e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value.length <= 40) {
+                    updateFormData("name", value)
+                  }
+                }}
                 placeholder="e.g., Customer Support Bot"
+                maxLength={40}
                 className={errors.name ? "border-destructive" : ""}
               />
-              {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+              <div className="flex justify-between items-center">
+                {errors.name ? (
+                  <p className="text-sm text-destructive">{errors.name}</p>
+                ) : (
+                  <span />
+                )}
+                <span className={cn(
+                  "text-xs",
+                  formData.name.length >= 35 ? "text-amber-500" : "text-muted-foreground",
+                  formData.name.length >= 40 && "text-destructive"
+                )}>
+                  {formData.name.length}/40
+                </span>
+              </div>
             </div>
 
             {/* Description */}

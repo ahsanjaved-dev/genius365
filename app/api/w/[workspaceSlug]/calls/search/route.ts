@@ -2,6 +2,10 @@ import { NextRequest } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, serverError } from "@/lib/api/helpers"
 import { getWorkspaceAlgoliaConfig } from "@/lib/algolia/client"
+import { configureCallLogsIndex } from "@/lib/algolia/call-logs"
+
+// Track if we've configured the index in this process
+const indexConfiguredSet = new Set<string>()
 
 interface RouteContext {
   params: Promise<{ workspaceSlug: string }>
@@ -21,9 +25,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return unauthorized()
     }
 
+    console.log(`[Algolia Search] Workspace: ${workspaceSlug} -> ID: ${ctx.workspace.id}`)
+
     const config = await getWorkspaceAlgoliaConfig(ctx.workspace.id)
     if (!config) {
+      console.log(`[Algolia Search] No Algolia config for workspace ${ctx.workspace.id}`)
       return apiError("Algolia not configured for this workspace", 400)
+    }
+
+    // Ensure index is configured (once per process)
+    if (!indexConfiguredSet.has(ctx.workspace.id)) {
+      console.log(`[Algolia Search] Configuring index for workspace ${ctx.workspace.id}`)
+      await configureCallLogsIndex(ctx.workspace.id)
+      indexConfiguredSet.add(ctx.workspace.id)
     }
 
     const body = await request.json()
@@ -31,6 +45,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     // Build filter string - workspace_id is ALWAYS required
     const filterParts: string[] = [`workspace_id:${ctx.workspace.id}`]
+    
+    console.log(`[Algolia Search] Filter: workspace_id:${ctx.workspace.id}, query: "${query}", type: ${type}`)
 
     if (filters.status) {
       filterParts.push(`status:${filters.status}`)
@@ -135,6 +151,28 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const result = await response.json()
+
+    console.log(`[Algolia Search] Results: ${result.nbHits || 0} hits, page ${result.page || 0}, hitsLength: ${result.hits?.length || 0}`)
+    
+    // Debug: Log first and last hit timestamps to verify sorting
+    try {
+      if (result.hits && result.hits.length > 0) {
+        const firstHit = result.hits[0]
+        const lastHit = result.hits[result.hits.length - 1]
+        const firstDate = new Date(firstHit.created_at_timestamp).toISOString()
+        const lastDate = new Date(lastHit.created_at_timestamp).toISOString()
+        console.log(`[Algolia Search] SORTING CHECK - First: ${firstHit.objectID?.slice(0,8)}... at ${firstDate}`)
+        console.log(`[Algolia Search] SORTING CHECK - Last: ${lastHit.objectID?.slice(0,8)}... at ${lastDate}`)
+        
+        // Check if the problematic call is in results
+        const newCallCheck = result.hits.find((h: any) => h.objectID?.includes('256e9383'))
+        if (newCallCheck) {
+          console.log(`[Algolia Search] FOUND new call 256e9383: ts=${newCallCheck.created_at_timestamp} (${new Date(newCallCheck.created_at_timestamp).toISOString()})`)
+        }
+      }
+    } catch (e) {
+      console.error(`[Algolia Search] Debug log error:`, e)
+    }
 
     return apiResponse({
       hits: result.hits || [],

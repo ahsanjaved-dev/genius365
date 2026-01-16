@@ -32,16 +32,31 @@ export interface WorkspaceAlgoliaContext {
 
 // Simple in-memory cache (server-only usage). Safe to no-op if it gets cleared.
 const configCache = new Map<string, AlgoliaConfig | null>()
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes for successful config
+const CACHE_TTL_NULL_MS = 30 * 1000 // 30 seconds for null results (allow retry sooner)
 const cacheTimestamps = new Map<string, number>()
 
 /**
+ * Force clear all caches - useful for debugging
+ */
+export function forceClealAllCaches(): void {
+  configCache.clear()
+  cacheTimestamps.clear()
+  console.log("[Algolia] All caches force-cleared")
+}
+
+/**
  * Check if cached config is still valid
+ * Uses shorter TTL for null results to allow faster recovery
  */
 function isCacheValid(key: string): boolean {
   const timestamp = cacheTimestamps.get(key)
   if (!timestamp) return false
-  return Date.now() - timestamp < CACHE_TTL_MS
+  
+  const cachedValue = configCache.get(key)
+  const ttl = cachedValue === null ? CACHE_TTL_NULL_MS : CACHE_TTL_MS
+  
+  return Date.now() - timestamp < ttl
 }
 
 /**

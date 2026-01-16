@@ -14,10 +14,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { createClient } from "@supabase/supabase-js"
 import { prisma } from "@/lib/prisma"
 import { processCallCompletion } from "@/lib/billing/usage"
-import { indexCallLogToAlgolia } from "@/lib/algolia"
+import { indexCallLogToAlgolia, configureCallLogsIndex } from "@/lib/algolia"
 import type { AgentProvider, Conversation } from "@/types/database.types"
 
 export const dynamic = "force-dynamic"
@@ -628,6 +627,9 @@ async function forwardToUserWebhook(
 /**
  * Handle status-update event from VAPI
  * Creates conversation on first status update (call start)
+ *
+ * NOTE: This handler does NOT index to Algolia. Only end-of-call-report
+ * events trigger Algolia indexing for call logs display.
  */
 async function handleStatusUpdate(payload: VapiWebhookPayload) {
   const { call } = payload.message
@@ -743,12 +745,18 @@ async function handleStatusUpdate(payload: VapiWebhookPayload) {
 /**
  * Handle end-of-call-report event from VAPI
  * Contains complete call summary with transcript, recording, analysis
+ *
+ * IMPORTANT: This is the ONLY VAPI event that triggers Algolia indexing.
+ * Only completed calls with full data are indexed for call logs display.
  */
 async function handleEndOfCallReport(payload: VapiWebhookPayload) {
   // IMPORTANT: VAPI sends data at BOTH message.call AND ROOT level!
   // Root level: messages, recordingUrl, stereoRecordingUrl, summary, analysis
   // Message level: message.call contains call metadata
+  // NOTE: cost and costBreakdown are at MESSAGE level, NOT inside call!
   const call = payload.message?.call || payload.call
+  const messageCost = (payload.message as any)?.cost as number | undefined
+  const messageCostBreakdown = (payload.message as any)?.costBreakdown as object | undefined
 
   if (!call) {
     console.error("[VAPI Webhook] No call object found in payload")
@@ -778,7 +786,8 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
     phoneNumber: call?.phoneNumber?.number,
     startedAt: call?.startedAt,
     endedAt: call?.endedAt,
-    cost: call?.cost,
+    costFromCall: call?.cost, // Legacy - may not be present
+    costFromMessage: messageCost, // Correct location at message level
   })
 
   if (!prisma || !call?.id) {
@@ -868,8 +877,8 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
         sentiment: sentiment,
         phoneNumber: call.customer?.number || call.phoneNumber?.number || null,
         callerName: call.customer?.name || call.phoneNumber?.name || null,
-        totalCost: call.cost || 0,
-        costBreakdown: call.costBreakdown ?? {},
+        totalCost: messageCost || 0, // Use message.cost (at message level, not call level)
+        costBreakdown: messageCostBreakdown ?? {},
         metadata: {
           provider: "vapi",
           call_type: call.type,
@@ -949,8 +958,8 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
         sentiment: sentiment,
         phoneNumber: call.customer?.number || call.phoneNumber?.number || conversation.phoneNumber,
         callerName: call.customer?.name || call.phoneNumber?.name || conversation.callerName,
-        totalCost: call.cost || conversation.totalCost,
-        costBreakdown: call.costBreakdown ?? conversation.costBreakdown ?? {},
+        totalCost: messageCost || conversation.totalCost, // Use message.cost (at message level, not call level)
+        costBreakdown: messageCostBreakdown ?? conversation.costBreakdown ?? {},
         metadata: {
           ...((conversation.metadata as object) || {}),
           call_type: call.type,
@@ -975,20 +984,7 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
     return
   }
 
-  // Index to Algolia
-  if (conversation.agent) {
-    indexCallLogToAlgolia({
-      conversation: conversation as unknown as Conversation,
-      workspaceId: conversation.workspace.id,
-      partnerId: conversation.workspace.partnerId,
-      agentName: conversation.agent.name || "Unknown Agent",
-      agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
-    }).catch((err) => {
-      console.error("[VAPI Webhook] Algolia indexing failed:", err)
-    })
-  }
-
-  // Process billing - use validated timestamps
+  // Process billing FIRST - so cost is calculated before Algolia indexing
   const billingStartedAt = call.startedAt ? new Date(call.startedAt) : null
   const billingEndedAt = call.endedAt ? new Date(call.endedAt) : null
 
@@ -1008,7 +1004,7 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
       : 0
   const durationSeconds = Math.max(0, Math.floor(billingDurationMs / 1000))
 
-  const result = await processCallCompletion({
+  const billingResult = await processCallCompletion({
     conversationId: conversation.id,
     workspaceId: conversation.workspace.id,
     partnerId: conversation.workspace.partnerId,
@@ -1017,15 +1013,56 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
     externalCallId: call.id,
   })
 
-  if (result.success) {
+  if (billingResult.success) {
     console.log(
       `[VAPI Webhook] Billing processed for call ${call.id}: ` +
-        `${result.minutesAdded} minutes, $${(result.amountDeducted || 0) / 100} deducted`
+        `${billingResult.minutesAdded} minutes, $${(billingResult.amountDeducted || 0) / 100} deducted`
     )
   } else {
     console.error(
-      `[VAPI Webhook] Billing failed for call ${call.id}: ${result.error || result.reason}`
+      `[VAPI Webhook] Billing failed for call ${call.id}: ${billingResult.error || billingResult.reason}`
     )
+  }
+
+  // Re-fetch conversation to get the updated cost from billing
+  const finalConversation = await prisma.conversation.findUnique({
+    where: { id: conversation.id },
+    include: {
+      workspace: { select: { id: true, partnerId: true } },
+      agent: { select: { id: true, name: true, provider: true } },
+    },
+  })
+
+  // Index to Algolia AFTER billing - so cost is correct
+  // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
+  if (finalConversation && finalConversation.agent) {
+    try {
+      // Configure index settings if not already done (idempotent operation)
+      await configureCallLogsIndex(finalConversation.workspace!.id)
+
+      console.log(
+        `[VAPI Webhook] Indexing call ${call.id} to Algolia with cost: ${finalConversation.totalCost}`
+      )
+
+      // Now index the call log with the correct cost
+      const indexResult = await indexCallLogToAlgolia({
+        conversation: finalConversation as unknown as Conversation,
+        workspaceId: finalConversation.workspace!.id,
+        partnerId: finalConversation.workspace!.partnerId,
+        agentName: finalConversation.agent?.name || "Unknown Agent",
+        agentProvider: (finalConversation.agent?.provider as AgentProvider) || "vapi",
+      })
+
+      if (indexResult.success) {
+        console.log(`[VAPI Webhook] Successfully indexed call ${call.id} to Algolia`)
+      } else {
+        console.warn(
+          `[VAPI Webhook] Algolia indexing skipped for call ${call.id}: ${indexResult.reason}`
+        )
+      }
+    } catch (err) {
+      console.error("[VAPI Webhook] Algolia indexing failed:", err)
+    }
   }
 
   // Forward to user's webhook
@@ -1040,183 +1077,12 @@ async function handleEndOfCallReport(payload: VapiWebhookPayload) {
     sentiment: call.analysis?.sentiment,
     status: "completed",
     ended_reason: call.endedReason,
-    cost: call.cost,
+    cost: messageCost, // Use message.cost (at message level, not call level)
   })
-
-  // =========================================================================
-  // UPDATE CAMPAIGN RECIPIENT STATUS (for real-time UI updates)
-  // =========================================================================
-  // This updates call_recipients table which triggers Supabase Realtime events
-  const callOutcome = mapEndedReasonToOutcome(call.endedReason)
-  await updateCampaignRecipientStatus(
-    call.id,
-    callOutcome,
-    durationSeconds,
-    call.cost
-  )
 }
 
 /**
- * Map VAPI ended reason to call outcome
- */
-function mapEndedReasonToOutcome(endedReason?: string): string {
-  if (!endedReason) return "completed"
-
-  const reason = endedReason.toLowerCase()
-
-  if (reason.includes("customer-ended") || reason.includes("assistant-ended")) {
-    return "completed"
-  }
-  if (reason.includes("no-answer") || reason.includes("no_answer")) {
-    return "no_answer"
-  }
-  if (reason.includes("busy")) {
-    return "busy"
-  }
-  if (reason.includes("voicemail")) {
-    return "voicemail"
-  }
-  if (reason.includes("failed") || reason.includes("error")) {
-    return "failed"
-  }
-  if (reason.includes("cancelled") || reason.includes("canceled")) {
-    return "cancelled"
-  }
-
-  return "completed"
-}
-
-/**
- * Update campaign recipient status when a call completes
- * Uses Supabase client to ensure Realtime events are triggered for UI updates
- */
-async function updateCampaignRecipientStatus(
-  externalCallId: string,
-  callOutcome: string,
-  durationSeconds: number,
-  cost?: number
-): Promise<void> {
-  try {
-    const supabase = getSupabaseAdmin()
-
-    // Find recipient by external_call_id
-    const { data: recipient, error: findError } = await supabase
-      .from("call_recipients")
-      .select("id, campaign_id")
-      .eq("external_call_id", externalCallId)
-      .single()
-
-    if (findError || !recipient) {
-      // Not a campaign call or not found - this is normal for non-campaign calls
-      if (findError?.code !== "PGRST116") { // PGRST116 = no rows returned
-        console.log(`[VAPI Webhook] No campaign recipient found for call ${externalCallId}`)
-      }
-      return
-    }
-
-    console.log(
-      `[VAPI Webhook] Updating campaign recipient ${recipient.id} with outcome: ${callOutcome}`
-    )
-
-    // Determine final status based on outcome
-    // "completed" means successful call, anything else is "failed"
-    const finalStatus = callOutcome === "completed" ? "completed" : "failed"
-
-    // Update recipient status - this triggers Supabase Realtime!
-    const { error: updateError } = await supabase
-      .from("call_recipients")
-      .update({
-        call_status: finalStatus,
-        call_outcome: callOutcome,
-        call_ended_at: new Date().toISOString(),
-        call_duration_seconds: durationSeconds,
-        call_cost: cost || 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recipient.id)
-
-    if (updateError) {
-      console.error("[VAPI Webhook] Error updating recipient:", updateError)
-      return
-    }
-
-    // Update campaign statistics - also triggers Realtime!
-    // First, get current campaign stats
-    const { data: campaign, error: campaignError } = await supabase
-      .from("call_campaigns")
-      .select("completed_calls, successful_calls, failed_calls, pending_calls")
-      .eq("id", recipient.campaign_id)
-      .single()
-
-    if (campaignError || !campaign) {
-      console.error("[VAPI Webhook] Error fetching campaign:", campaignError)
-      return
-    }
-
-    // Calculate new stats
-    const newCompletedCalls = (campaign.completed_calls || 0) + 1
-    const newSuccessfulCalls = callOutcome === "completed" 
-      ? (campaign.successful_calls || 0) + 1 
-      : campaign.successful_calls || 0
-    const newFailedCalls = callOutcome !== "completed" 
-      ? (campaign.failed_calls || 0) + 1 
-      : campaign.failed_calls || 0
-    const newPendingCalls = Math.max(0, (campaign.pending_calls || 0) - 1)
-
-    // Update campaign stats
-    const { error: statsError } = await supabase
-      .from("call_campaigns")
-      .update({
-        completed_calls: newCompletedCalls,
-        successful_calls: newSuccessfulCalls,
-        failed_calls: newFailedCalls,
-        pending_calls: newPendingCalls,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recipient.campaign_id)
-
-    if (statsError) {
-      console.error("[VAPI Webhook] Error updating campaign stats:", statsError)
-    }
-
-    // Check if campaign is complete (no more pending or calling recipients)
-    const { count: remainingCount, error: countError } = await supabase
-      .from("call_recipients")
-      .select("*", { count: "exact", head: true })
-      .eq("campaign_id", recipient.campaign_id)
-      .in("call_status", ["pending", "calling", "queued"])
-
-    if (countError) {
-      console.error("[VAPI Webhook] Error counting remaining recipients:", countError)
-      return
-    }
-
-    if (remainingCount === 0) {
-      console.log(
-        `[VAPI Webhook] Campaign ${recipient.campaign_id} completed - all recipients processed`
-      )
-      
-      // Mark campaign as completed
-      await supabase
-        .from("call_campaigns")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", recipient.campaign_id)
-        .eq("status", "active")
-    }
-
-    console.log(`[VAPI Webhook] Campaign recipient ${recipient.id} updated successfully`)
-  } catch (error) {
-    console.error("[VAPI Webhook] Error updating campaign recipient:", error)
-    // Don't throw - this is a secondary operation
-  }
-}
-
-/**
- * Handle function-calls event that comes via message payload
+ * Handle function-calls event within message payload
  */
 async function handleFunctionCallInMessage(payload: VapiWebhookPayload) {
   const { call } = payload.message

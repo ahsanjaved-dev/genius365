@@ -311,16 +311,24 @@ async function handleCallEnded(
   console.log(`[Retell Webhook] Updated conversation: ${conversation.id}`)
 
   // Index to Algolia
+  // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
   if (conversation.agent) {
-    indexCallLogToAlgolia({
-      conversation: updatedConversation as unknown as Conversation,
-      workspaceId: workspaceId,
-      partnerId: partnerId,
-      agentName: conversation.agent.name || "Unknown Agent",
-      agentProvider: (conversation.agent.provider as AgentProvider) || "retell",
-    }).catch((err) => {
+    try {
+      const indexResult = await indexCallLogToAlgolia({
+        conversation: updatedConversation as unknown as Conversation,
+        workspaceId: workspaceId,
+        partnerId: partnerId,
+        agentName: conversation.agent.name || "Unknown Agent",
+        agentProvider: (conversation.agent.provider as AgentProvider) || "retell",
+      })
+      if (indexResult.success) {
+        console.log(`[Retell Webhook] Algolia index SUCCESS for call: ${call.call_id}`)
+      } else {
+        console.warn(`[Retell Webhook] Algolia indexing SKIPPED for call: ${call.call_id} - ${indexResult.reason}`)
+      }
+    } catch (err) {
       console.error("[Retell Webhook] Algolia indexing failed:", err)
-    })
+    }
   }
 
   // Process billing

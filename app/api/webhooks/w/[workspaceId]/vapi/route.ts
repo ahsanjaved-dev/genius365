@@ -289,19 +289,7 @@ function verifyVapiSignature(
 // =============================================================================
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  // IMMEDIATE LOG - Before any async operations
-  console.log(`[VAPI Webhook W] ===== WEBHOOK HIT - ENTRY POINT =====`)
-  console.log(`[VAPI Webhook W] Request URL: ${request.url}`)
-  console.log(`[VAPI Webhook W] Timestamp: ${new Date().toISOString()}`)
-  
-  let workspaceId: string
-  try {
-    const resolvedParams = await params
-    workspaceId = resolvedParams.workspaceId
-  } catch (paramError) {
-    console.error(`[VAPI Webhook W] ERROR awaiting params:`, paramError)
-    return NextResponse.json({ error: "Failed to resolve params" }, { status: 500 })
-  }
+  const { workspaceId } = await params
 
   console.log(`[VAPI Webhook W/${workspaceId}] ===== WEBHOOK RECEIVED =====`)
   console.log(`[VAPI Webhook W/${workspaceId}] URL: ${request.url}`)
@@ -348,43 +336,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     console.log(`[VAPI Webhook W/${workspaceId}] Received webhook`)
 
-    // Validate workspace exists - try Prisma first, fallback to Supabase
-    let workspace: { id: string; partnerId: string } | null = null
-    
-    if (prisma) {
-      try {
-        workspace = await prisma.workspace.findUnique({
-          where: { id: workspaceId },
-          select: { id: true, partnerId: true },
-        })
-      } catch (prismaError) {
-        console.error(`[VAPI Webhook W/${workspaceId}] Prisma query failed:`, prismaError)
-      }
-    } else {
-      console.warn(`[VAPI Webhook W/${workspaceId}] Prisma not available, trying Supabase...`)
+    // Validate workspace exists
+    if (!prisma) {
+      console.error("[VAPI Webhook] Prisma not configured")
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
     }
 
-    // Fallback to Supabase if Prisma failed or unavailable
-    if (!workspace) {
-      try {
-        const supabase = getSupabaseAdmin()
-        const { data, error } = await supabase
-          .from("workspaces")
-          .select("id, partner_id")
-          .eq("id", workspaceId)
-          .single()
-        
-        if (data && !error) {
-          workspace = { id: data.id, partnerId: data.partner_id }
-          console.log(`[VAPI Webhook W/${workspaceId}] Found workspace via Supabase`)
-        }
-      } catch (supabaseError) {
-        console.error(`[VAPI Webhook W/${workspaceId}] Supabase fallback failed:`, supabaseError)
-      }
-    }
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, partnerId: true },
+    })
 
     if (!workspace) {
-      console.error(`[VAPI Webhook W/${workspaceId}] Workspace not found via any method`)
+      console.error(`[VAPI Webhook] Workspace not found: ${workspaceId}`)
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 })
     }
 
@@ -461,11 +425,10 @@ async function handleStatusUpdate(
 
   if (!prisma) return
   
-  // Find or create conversation
+  // Find existing conversation (don't filter by workspace - externalId is unique)
   let conversation = await prisma.conversation.findFirst({
     where: {
       externalId: call.id,
-      workspaceId: workspaceId,
     },
   })
 
@@ -474,10 +437,16 @@ async function handleStatusUpdate(
     const agent = await findAgentByAssistantId(call.assistantId, workspaceId)
     
     if (agent) {
+      // Use agent's actual workspace_id (not the one from URL - could be mismatched!)
+      const agentWorkspaceId = agent.workspace_id || workspaceId
+      if (agentWorkspaceId !== workspaceId) {
+        console.warn(`[VAPI Webhook] StatusUpdate: Workspace ID mismatch! URL: ${workspaceId}, Agent: ${agentWorkspaceId}`)
+      }
+      
       conversation = await prisma.conversation.create({
         data: {
           externalId: call.id,
-          workspaceId: workspaceId,
+          workspaceId: agentWorkspaceId, // Use agent's actual workspace
           agentId: agent.id,
           direction: mapCallDirection(call.type),
           status: mapVapiStatus(status),
@@ -491,7 +460,7 @@ async function handleStatusUpdate(
           },
         },
       })
-      console.log(`[VAPI Webhook] Created conversation: ${conversation.id}`)
+      console.log(`[VAPI Webhook] Created conversation: ${conversation.id} in workspace: ${agentWorkspaceId}`)
     }
   }
 
@@ -519,8 +488,10 @@ async function handleEndOfCallReport(
   console.log("[VAPI Webhook] RAW PAYLOAD KEYS:", Object.keys(payload))
   console.log("[VAPI Webhook] MESSAGE KEYS:", Object.keys(payload.message || {}))
   
-  const message = payload.message
-  const { call, artifact, analysis } = message
+  // Extract from message - note: cost/costBreakdown are at MESSAGE level, not inside call!
+  const { call, artifact, analysis } = payload.message
+  const messageCost = (payload.message as any).cost as number | undefined
+  const messageCostBreakdown = (payload.message as any).costBreakdown as object | undefined
 
   if (!call?.id || !prisma) {
     console.error("[VAPI Webhook] No call ID or Prisma not configured")
@@ -529,15 +500,10 @@ async function handleEndOfCallReport(
 
   // Get assistantId from either direct field or nested assistant object
   const assistantId = call.assistantId || call.assistant?.id
-  
-  // endedReason can be at message level or call level - check both
-  const endedReason = call.endedReason || (message as any).endedReason
 
   console.log(`[VAPI Webhook] End of call report: ${call.id}`, {
     type: call.type,
     assistantId: assistantId,
-    endedReason: endedReason || "NOT PROVIDED",
-    cost: call.cost || (message as any).cost,
   })
 
   // Log message.artifact data (CORRECT location per VAPI docs!)
@@ -563,11 +529,11 @@ async function handleEndOfCallReport(
   console.log("  - customer.number:", call.customer?.number)
   console.log("  - customer.name:", call.customer?.name)
 
-  // Find existing conversation
+  // Find existing conversation (don't filter by workspace - externalId is unique)
+  // This allows us to find the conversation even if webhook URL has wrong workspace_id
   let conversation = await prisma.conversation.findFirst({
     where: {
       externalId: call.id,
-      workspaceId: workspaceId,
     },
     include: {
       agent: {
@@ -576,6 +542,13 @@ async function handleEndOfCallReport(
           name: true,
           provider: true,
           config: true,
+          workspaceId: true, // Include for workspace validation
+        },
+      },
+      workspace: {
+        select: {
+          id: true,
+          partnerId: true, // Get actual partner_id from workspace
         },
       },
     },
@@ -588,6 +561,12 @@ async function handleEndOfCallReport(
     if (!agent) {
       console.error(`[VAPI Webhook] Agent not found for assistantId: ${assistantId}`)
       return
+    }
+
+    // Use agent's actual workspace_id (not the one from URL - could be mismatched!)
+    const actualWorkspaceId = agent.workspace_id || workspaceId
+    if (actualWorkspaceId !== workspaceId) {
+      console.warn(`[VAPI Webhook] Workspace ID mismatch! URL: ${workspaceId}, Agent: ${actualWorkspaceId}. Using agent's workspace.`)
     }
 
     // Calculate duration with timestamp validation
@@ -655,7 +634,7 @@ async function handleEndOfCallReport(
     conversation = await prisma.conversation.create({
       data: {
         externalId: call.id,
-        workspaceId: workspaceId,
+        workspaceId: actualWorkspaceId, // Use agent's actual workspace
         agentId: agent.id,
         direction: mapCallDirection(call.type),
         status: "completed",
@@ -667,13 +646,13 @@ async function handleEndOfCallReport(
         summary: summary,
         sentiment: sentiment,
         phoneNumber: call.customer?.number || null,
-        callerName: call.customer?.name || null,
-        totalCost: call.cost || 0,
+        callerName: call.customer?.name || null, // VAPI uses customer.name, not caller_name
+        totalCost: messageCost || 0, // Use message.cost (at message level, not call level)
         metadata: {
           provider: "vapi",
           call_type: call.type,
           ended_reason: call.endedReason,
-          vapi_cost_breakdown: call.costBreakdown ? JSON.parse(JSON.stringify(call.costBreakdown)) : undefined,
+          vapi_cost_breakdown: messageCostBreakdown ? JSON.parse(JSON.stringify(messageCostBreakdown)) : undefined,
           vapi_analysis: analysis ? JSON.parse(JSON.stringify(analysis)) : undefined,
           assistant_id: assistantId,
           stereo_recording_url: typeof artifact?.stereoRecording === 'string' ? artifact.stereoRecording : undefined,
@@ -681,12 +660,19 @@ async function handleEndOfCallReport(
         },
       },
       include: {
+        workspace: {
+          select: {
+            id: true,
+            partnerId: true,
+          },
+        },
         agent: {
           select: {
             id: true,
             name: true,
             provider: true,
             config: true,
+            workspaceId: true,
           },
         },
       },
@@ -698,23 +684,8 @@ async function handleEndOfCallReport(
       console.log(`[VAPI Webhook] Transcript length: ${transcript?.length || 0} chars`)
       console.log(`[VAPI Webhook] Summary: ${summary || "NOT PROVIDED"}`)
       console.log(`[VAPI Webhook] Sentiment: ${sentiment || "NOT PROVIDED"}`)
-
-      // Index newly created conversation to Algolia
-      if (conversation.agent) {
-        const conversationId = conversation.id
-        console.log(`[VAPI Webhook] Indexing NEW conversation to Algolia: ${conversationId}`)
-        indexCallLogToAlgolia({
-          conversation: conversation as unknown as Conversation,
-          workspaceId: workspaceId,
-          partnerId: partnerId,
-          agentName: conversation.agent.name || "Unknown Agent",
-          agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
-        }).then(() => {
-          console.log(`[VAPI Webhook] Algolia index SUCCESS for NEW: ${conversationId}`)
-        }).catch((err) => {
-          console.error(`[VAPI Webhook] Algolia indexing FAILED for NEW: ${conversationId}`, err)
-        })
-      }
+      // Note: Algolia indexing will happen AFTER billing is processed (below)
+      // This ensures the cost is calculated before indexing
     }
   }
 
@@ -795,14 +766,14 @@ async function handleEndOfCallReport(
       recordingUrl: recordingUrl || conversation.recordingUrl,
       phoneNumber: call.customer?.number || conversation.phoneNumber,
       callerName: call.customer?.name || conversation.callerName,
-      totalCost: call.cost || conversation.totalCost,
+      totalCost: messageCost || conversation.totalCost, // Use message.cost (at message level, not call level)
       summary: summary || conversation.summary,
       sentiment: sentiment || conversation.sentiment,
       metadata: {
         ...(conversation.metadata as object || {}),
         call_type: call.type,
         vapi_ended_reason: call.endedReason,
-        vapi_cost_breakdown: call.costBreakdown ? JSON.parse(JSON.stringify(call.costBreakdown)) : undefined,
+        vapi_cost_breakdown: messageCostBreakdown ? JSON.parse(JSON.stringify(messageCostBreakdown)) : undefined,
         vapi_analysis: analysis ? JSON.parse(JSON.stringify(analysis)) : undefined,
         stereo_recording_url: typeof artifact?.stereoRecording === 'string' ? artifact.stereoRecording : undefined,
         artifact_messages: artifact?.messages ? JSON.parse(JSON.stringify(artifact.messages)) : undefined,
@@ -816,29 +787,19 @@ async function handleEndOfCallReport(
   console.log(`[VAPI Webhook] Summary: ${summary || "NOT PROVIDED"}`)
   console.log(`[VAPI Webhook] Sentiment: ${sentiment || "NOT PROVIDED"}`)
 
-  // Index UPDATED conversation to Algolia
-  if (conversation.agent) {
-    console.log(`[VAPI Webhook] Indexing UPDATED conversation to Algolia: ${conversation.id}`)
-    indexCallLogToAlgolia({
-      conversation: updatedConversation as unknown as Conversation,
-      workspaceId: workspaceId,
-      partnerId: partnerId,
-      agentName: conversation.agent.name || "Unknown Agent",
-      agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
-    }).then(() => {
-      console.log(`[VAPI Webhook] Algolia index SUCCESS for UPDATED: ${conversation.id}`)
-    }).catch((err) => {
-      console.error(`[VAPI Webhook] Algolia indexing FAILED for UPDATED: ${conversation.id}`, err)
-    })
-  } else {
-    console.warn(`[VAPI Webhook] Skipping Algolia index - no agent on conversation: ${conversation.id}`)
+  // Get actual workspace info for billing and indexing
+  const actualConversationWorkspaceId = (conversation as any).workspace?.id || workspaceId
+  const actualConversationPartnerId = (conversation as any).workspace?.partnerId || partnerId
+  
+  if (actualConversationWorkspaceId !== workspaceId) {
+    console.warn(`[VAPI Webhook] Workspace mismatch detected! URL: ${workspaceId}, Conversation: ${actualConversationWorkspaceId}`)
   }
 
-  // Process billing
+  // Process billing FIRST (so cost is calculated before indexing)
   const billingResult = await processCallCompletion({
     conversationId: conversation.id,
-    workspaceId: workspaceId,
-    partnerId: partnerId,
+    workspaceId: actualConversationWorkspaceId,
+    partnerId: actualConversationPartnerId,
     durationSeconds: durationSeconds,
     provider: "vapi",
     externalCallId: call.id,
@@ -850,14 +811,43 @@ async function handleEndOfCallReport(
     console.error(`[VAPI Webhook] Billing failed: ${billingResult.error || billingResult.reason}`)
   }
 
-  // =========================================================================
-  // UPDATE CAMPAIGN RECIPIENT STATUS (for real-time UI updates)
-  // This updates call_recipients table which triggers Supabase Realtime events
-  // =========================================================================
-  // Determine if there was a transcript (indicates actual conversation happened)
-  const hasTranscript = !!(transcript && transcript.length > 0)
-  const callOutcome = mapEndedReasonToOutcome(endedReason, durationSeconds, hasTranscript)
-  await updateCampaignRecipientStatus(call.id, callOutcome, durationSeconds, call.cost)
+  // Re-fetch conversation to get the updated cost from billing
+  const finalConversation = await prisma.conversation.findUnique({
+    where: { id: conversation.id },
+    include: {
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          provider: true,
+        },
+      },
+    },
+  })
+
+  // Index to Algolia AFTER billing (so cost is correct)
+  // IMPORTANT: Must await to ensure indexing completes before serverless function terminates
+  if (finalConversation && conversation.agent) {
+    console.log(`[VAPI Webhook] Indexing UPDATED conversation to Algolia: ${conversation.id}, workspace: ${actualConversationWorkspaceId}, cost: ${finalConversation.totalCost}`)
+    try {
+      const indexResult = await indexCallLogToAlgolia({
+        conversation: finalConversation as unknown as Conversation,
+        workspaceId: actualConversationWorkspaceId, // Use conversation's actual workspace
+        partnerId: actualConversationPartnerId,
+        agentName: conversation.agent.name || "Unknown Agent",
+        agentProvider: (conversation.agent.provider as AgentProvider) || "vapi",
+      })
+      if (indexResult.success) {
+        console.log(`[VAPI Webhook] Algolia index SUCCESS for UPDATED: ${conversation.id}`)
+      } else {
+        console.warn(`[VAPI Webhook] Algolia indexing SKIPPED for UPDATED: ${conversation.id} - ${indexResult.reason}`)
+      }
+    } catch (err) {
+      console.error(`[VAPI Webhook] Algolia indexing FAILED for UPDATED: ${conversation.id}`, err)
+    }
+  } else {
+    console.warn(`[VAPI Webhook] Skipping Algolia index - no agent or conversation not found: ${conversation.id}`)
+  }
 }
 
 async function handleFunctionCall(payload: VapiWebhookPayload, workspaceId: string) {
@@ -953,32 +943,49 @@ async function handleDirectFunctionCall(
 // HELPERS
 // =============================================================================
 
-async function findAgentByAssistantId(assistantId: string | undefined, workspaceId: string) {
+async function findAgentByAssistantId(assistantId: string | undefined, workspaceIdFromUrl: string) {
   if (!assistantId) {
     console.log(`[VAPI Webhook] findAgentByAssistantId: Missing assistantId`)
     return null
   }
 
-  console.log(`[VAPI Webhook] Looking for agent with assistantId: ${assistantId}, workspaceId: ${workspaceId}`)
+  console.log(`[VAPI Webhook] Looking for agent with assistantId: ${assistantId}, workspaceIdFromUrl: ${workspaceIdFromUrl}`)
 
   try {
     const supabase = getSupabaseAdmin()
 
-    const { data: agent, error } = await supabase
+    // First try to find agent in the specified workspace
+    let { data: agent, error } = await supabase
       .from("ai_agents")
-      .select("id, name, provider, config")
+      .select("id, name, provider, config, workspace_id")
       .eq("external_agent_id", assistantId)
-      .eq("workspace_id", workspaceId)
+      .eq("workspace_id", workspaceIdFromUrl)
       .is("deleted_at", null)
       .single()
 
-    if (error) {
+    // If not found, try to find agent in ANY workspace (fallback for mismatched URLs)
+    if (error || !agent) {
+      console.log(`[VAPI Webhook] Agent not found in workspace ${workspaceIdFromUrl}, searching all workspaces...`)
+      const fallbackResult = await supabase
+        .from("ai_agents")
+        .select("id, name, provider, config, workspace_id")
+        .eq("external_agent_id", assistantId)
+        .is("deleted_at", null)
+        .single()
+      
+      if (!fallbackResult.error && fallbackResult.data) {
+        agent = fallbackResult.data
+        console.log(`[VAPI Webhook] Found agent in DIFFERENT workspace: ${agent.workspace_id} (URL had: ${workspaceIdFromUrl})`)
+      }
+    }
+
+    if (error && !agent) {
       console.error(`[VAPI Webhook] Agent lookup error:`, error)
       return null
     }
 
     if (agent) {
-      console.log(`[VAPI Webhook] Found agent: ${agent.id}, name: ${agent.name}`)
+      console.log(`[VAPI Webhook] Found agent: ${agent.id}, name: ${agent.name}, workspace: ${agent.workspace_id}`)
     } else {
       console.error(`[VAPI Webhook] Agent NOT found for assistantId: ${assistantId}`)
     }
@@ -1004,256 +1011,5 @@ function mapVapiStatus(status: string | undefined): "initiated" | "ringing" | "i
     "ended": "completed",
   }
   return statusMap[status || ""] || "initiated"
-}
-
-/**
- * Map VAPI ended reason to call outcome
- * 
- * VAPI endedReason values:
- * - assistant-ended-call: Assistant ended the call (answered)
- * - customer-ended-call: Customer hung up (answered)
- * - silence-timed-out: No speech detected after answer
- * - customer-did-not-answer: No answer
- * - voicemail-reached: Went to voicemail
- * - customer-busy: Line busy
- * - assistant-error: Error occurred
- * - dial-busy-or-failed: Couldn't connect
- * - phone-call-provider-closed-websocket: Provider issue
- * - pipeline-error: System error
- * - max-duration-reached: Hit time limit (was answered)
- * - exceeded-max-cost: Cost limit hit
- * 
- * @param endedReason - VAPI's endedReason string
- * @param durationSeconds - Call duration to help determine if answered
- * @param hasTranscript - Whether there was a transcript (indicates conversation happened)
- */
-function mapEndedReasonToOutcome(
-  endedReason?: string,
-  durationSeconds?: number,
-  hasTranscript?: boolean
-): string {
-  console.log(`[VAPI Webhook] Mapping endedReason: "${endedReason}", duration: ${durationSeconds}s, hasTranscript: ${hasTranscript}`)
-
-  if (!endedReason) {
-    // No ended reason - check duration to guess
-    if (durationSeconds && durationSeconds > 10) {
-      return "answered"
-    }
-    return "no_answer"
-  }
-
-  const reason = endedReason.toLowerCase()
-
-  // Definitely answered - conversation happened
-  if (
-    reason.includes("customer-ended-call") || 
-    reason.includes("assistant-ended-call") ||
-    reason.includes("max-duration-reached") ||
-    reason.includes("exceeded-max-cost")
-  ) {
-    return "answered"
-  }
-
-  // Definitely not answered
-  if (
-    reason.includes("customer-did-not-answer") ||
-    reason.includes("no-answer") ||
-    reason.includes("no_answer")
-  ) {
-    return "no_answer"
-  }
-
-  // Busy signal
-  if (
-    reason.includes("customer-busy") ||
-    reason.includes("busy") ||
-    reason.includes("dial-busy")
-  ) {
-    return "busy"
-  }
-
-  // Voicemail
-  if (
-    reason.includes("voicemail") ||
-    reason.includes("machine-detected") ||
-    reason.includes("answering-machine")
-  ) {
-    return "voicemail"
-  }
-
-  // Errors and failures
-  if (
-    reason.includes("failed") ||
-    reason.includes("error") ||
-    reason.includes("pipeline-error") ||
-    reason.includes("websocket")
-  ) {
-    return "error"
-  }
-
-  // Cancelled
-  if (reason.includes("cancelled") || reason.includes("canceled")) {
-    return "declined"
-  }
-
-  // Silence timeout - call was answered but no conversation
-  if (reason.includes("silence-timed-out")) {
-    // If there's a transcript or significant duration, count as answered
-    if (hasTranscript || (durationSeconds && durationSeconds > 15)) {
-      return "answered"
-    }
-    return "no_answer"
-  }
-
-  // Unknown reason - use duration and transcript to determine
-  // If call lasted more than 10 seconds or has transcript, likely answered
-  if (hasTranscript || (durationSeconds && durationSeconds > 10)) {
-    console.log(`[VAPI Webhook] Unknown endedReason "${endedReason}" - assuming answered based on duration/transcript`)
-    return "answered"
-  }
-
-  // Default to no_answer for short calls with unknown reasons
-  console.log(`[VAPI Webhook] Unknown endedReason "${endedReason}" - assuming no_answer (short duration, no transcript)`)
-  return "no_answer"
-}
-
-/**
- * Update campaign recipient status when a call completes
- * Uses Supabase client to ensure Realtime events are triggered for UI updates
- */
-async function updateCampaignRecipientStatus(
-  externalCallId: string,
-  callOutcome: string,
-  durationSeconds: number,
-  cost?: number
-): Promise<void> {
-  try {
-    const supabase = getSupabaseAdmin()
-
-    // Find recipient by external_call_id
-    const { data: recipient, error: findError } = await supabase
-      .from("call_recipients")
-      .select("id, campaign_id")
-      .eq("external_call_id", externalCallId)
-      .single()
-
-    if (findError || !recipient) {
-      // Not a campaign call or not found - this is normal for non-campaign calls
-      if (findError?.code !== "PGRST116") { // PGRST116 = no rows returned
-        console.log(`[VAPI Webhook] No campaign recipient found for call ${externalCallId}`)
-      }
-      return
-    }
-
-    console.log(
-      `[VAPI Webhook] Updating campaign recipient ${recipient.id} with outcome: ${callOutcome}`
-    )
-
-    // Determine final status based on outcome
-    // "answered" means successful call, anything else depends on outcome
-    const isSuccessful = callOutcome === "answered"
-    const finalStatus = isSuccessful ? "completed" : "failed"
-
-    // Update recipient status - this triggers Supabase Realtime!
-    const { error: updateError } = await supabase
-      .from("call_recipients")
-      .update({
-        call_status: finalStatus,
-        call_outcome: callOutcome,
-        call_ended_at: new Date().toISOString(),
-        call_duration_seconds: durationSeconds,
-        call_cost: cost || 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recipient.id)
-
-    if (updateError) {
-      console.error("[VAPI Webhook] Error updating recipient:", updateError)
-      return
-    }
-
-    console.log(`[VAPI Webhook] Campaign recipient ${recipient.id} updated: status=${finalStatus}, outcome=${callOutcome}`)
-
-    // Update campaign statistics
-    const { data: campaign, error: campaignError } = await supabase
-      .from("call_campaigns")
-      .select("completed_calls, successful_calls, failed_calls, pending_calls, total_recipients, status")
-      .eq("id", recipient.campaign_id)
-      .single()
-
-    if (campaignError || !campaign) {
-      console.error("[VAPI Webhook] Error fetching campaign:", campaignError)
-      return
-    }
-
-    // Calculate new stats
-    const newCompletedCalls = (campaign.completed_calls || 0) + 1
-    const newSuccessfulCalls = isSuccessful 
-      ? (campaign.successful_calls || 0) + 1 
-      : campaign.successful_calls || 0
-    const newFailedCalls = !isSuccessful 
-      ? (campaign.failed_calls || 0) + 1 
-      : campaign.failed_calls || 0
-    
-    // Note: pending_calls is decremented when calls START, not when they end
-    // So we don't change it here
-
-    // Update campaign stats
-    const { error: statsError } = await supabase
-      .from("call_campaigns")
-      .update({
-        completed_calls: newCompletedCalls,
-        successful_calls: newSuccessfulCalls,
-        failed_calls: newFailedCalls,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recipient.campaign_id)
-
-    if (statsError) {
-      console.error("[VAPI Webhook] Error updating campaign stats:", statsError)
-    } else {
-      console.log(`[VAPI Webhook] Campaign stats updated: completed=${newCompletedCalls}, successful=${newSuccessfulCalls}, failed=${newFailedCalls}`)
-    }
-
-    // Check if campaign is complete (all recipients processed)
-    const { count: remainingCount, error: countError } = await supabase
-      .from("call_recipients")
-      .select("*", { count: "exact", head: true })
-      .eq("campaign_id", recipient.campaign_id)
-      .in("call_status", ["pending", "calling", "queued"])
-
-    if (countError) {
-      console.error("[VAPI Webhook] Error counting remaining recipients:", countError)
-      return
-    }
-
-    console.log(`[VAPI Webhook] Remaining recipients to process: ${remainingCount}`)
-
-    if (remainingCount === 0 && campaign.status === "active") {
-      console.log(
-        `[VAPI Webhook] Campaign ${recipient.campaign_id} completed - all recipients processed`
-      )
-      
-      // Mark campaign as completed
-      const { error: completeError } = await supabase
-        .from("call_campaigns")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", recipient.campaign_id)
-        .eq("status", "active") // Only if still active
-
-      if (completeError) {
-        console.error("[VAPI Webhook] Error marking campaign complete:", completeError)
-      } else {
-        console.log(`[VAPI Webhook] Campaign ${recipient.campaign_id} marked as completed`)
-      }
-    }
-  } catch (error) {
-    console.error("[VAPI Webhook] Error updating campaign recipient:", error)
-    // Don't throw - this is a secondary operation
-  }
 }
 

@@ -20,9 +20,6 @@ import {
   ChevronRight,
   Filter,
   RotateCcw,
-  Zap,
-  Sparkles,
-  Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -140,35 +137,6 @@ export function FallbackSearchPanel({
   return (
     <Card className={cn("", className)}>
       <CardContent className="pt-6 space-y-4">
-        {/* Algolia Upgrade Banner */}
-        {showAlgoliaBanner && (
-          <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border border-blue-200 dark:border-blue-800">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <Zap className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-blue-700 dark:text-blue-300 flex items-center gap-1">
-                <Sparkles className="h-4 w-4" />
-                Upgrade to Instant Search
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Get autocomplete, real-time suggestions, and lightning-fast search results
-              </p>
-            </div>
-            {onConfigureAlgolia && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={onConfigureAlgolia}
-                className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              >
-                <Settings className="h-4 w-4 mr-1" />
-                Configure
-              </Button>
-            )}
-          </div>
-        )}
-
         {/* Search Input */}
         <form onSubmit={handleSearchSubmit} className="relative">
           <div className="relative">

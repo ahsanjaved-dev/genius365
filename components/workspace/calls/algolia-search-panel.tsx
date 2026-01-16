@@ -48,9 +48,11 @@ import type { AlgoliaSuggestion, AlgoliaSearchResults, AlgoliaCallHit } from "@/
 
 interface AlgoliaSearchPanelProps {
   agents: Array<{ id: string; name: string }>
-  onResultsChange: (results: AlgoliaCallHit[], totalHits: number, isSearching: boolean) => void
+  onResultsChange: (results: AlgoliaCallHit[], totalHits: number, isSearching: boolean, searchFailed?: boolean) => void
   onViewCallDetail?: (conversationId: string) => void // Navigate to call detail
   className?: string
+  /** Change this value to trigger a refresh of search results (e.g., when a new call completes) */
+  refreshTrigger?: number
 }
 
 interface AlgoliaFilters {
@@ -70,6 +72,7 @@ export function AlgoliaSearchPanel({
   onResultsChange,
   onViewCallDetail,
   className,
+  refreshTrigger,
 }: AlgoliaSearchPanelProps) {
   // Search state
   const [query, setQuery] = useState("")
@@ -141,7 +144,8 @@ export function AlgoliaSearchPanel({
     if (!isConfigured) return
 
     setIsLoading(true)
-    onResultsChangeRef.current([], 0, true)
+    // Don't clear results here - keep existing data visible while loading
+    // The parent will show old data until new results arrive
 
     const searchFilters: SearchParams["filters"] = {}
     
@@ -174,24 +178,30 @@ export function AlgoliaSearchPanel({
       })
 
       if (results) {
-        onResultsChangeRef.current(results.hits, results.nbHits, false)
+        // Search succeeded - pass false for searchFailed
+        onResultsChangeRef.current(results.hits, results.nbHits, false, false)
+      } else {
+        // Search returned null - treat as failure
+        onResultsChangeRef.current([], 0, false, true)
       }
     } catch (error) {
       console.error("[Algolia] Search error:", error)
-      onResultsChangeRef.current([], 0, false)
+      // Search failed - pass true for searchFailed to trigger DB fallback
+      onResultsChangeRef.current([], 0, false, true)
     } finally {
       setIsLoading(false)
     }
   }, [isConfigured, currentPage, hitsPerPage, filters, search])
 
   // Trigger initial search and on filter/pagination changes
+  // Also triggers when refreshTrigger changes (e.g., when a new call completes via realtime)
   useEffect(() => {
     if (isConfigured) {
       performSearch(debouncedQuery)
     }
     // Only trigger on filter/pagination changes, not on performSearch reference changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfigured, debouncedQuery, currentPage, hitsPerPage, filters.status, filters.direction, filters.agentId, filters.startDate, filters.endDate])
+  }, [isConfigured, debouncedQuery, currentPage, hitsPerPage, filters.status, filters.direction, filters.agentId, filters.startDate, filters.endDate, refreshTrigger])
 
   // Handle search submission
   const handleSubmit = (e: React.FormEvent) => {

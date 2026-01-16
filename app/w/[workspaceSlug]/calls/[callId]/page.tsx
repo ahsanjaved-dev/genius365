@@ -184,6 +184,12 @@ export default function CallDetailPage() {
   const [call, setCall] = useState<ConversationWithAgent | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Navigation state for prev/next calls
+  const [adjacentCalls, setAdjacentCalls] = useState<{ prev: string | null; next: string | null }>({
+    prev: null,
+    next: null,
+  })
 
   // Subscribe to real-time updates for this call
   const { status: realtimeStatus, conversation: realtimeData, isConnected } = useCallStatusRealtime(
@@ -217,12 +223,96 @@ export default function CallDetailPage() {
       }
 
       const result = await response.json()
+      console.log("[CallDetail] Call data fetched, setting call and fetching adjacent calls")
       setCall(result.data)
+      
+      // Fetch adjacent calls for navigation
+      console.log("[CallDetail] About to call fetchAdjacentCalls")
+      fetchAdjacentCalls()
     } catch (err) {
       console.error("[CallDetail] Error fetching call:", err)
       setError("Failed to load call details")
     } finally {
       setIsLoading(false)
+    }
+  }
+  
+  // Fetch adjacent calls (prev/next) for navigation
+  const fetchAdjacentCalls = async () => {
+    console.log("[CallDetail] fetchAdjacentCalls STARTED", { workspaceSlug, callId })
+    try {
+      // Fetch a page of calls to find the current call's position
+      const url = `/api/w/${workspaceSlug}/calls?pageSize=100`
+      console.log("[CallDetail] Fetching from URL:", url)
+      const response = await fetch(url)
+      if (!response.ok) {
+        console.error("[CallDetail] Failed to fetch calls list:", response.status)
+        return
+      }
+      
+      const result = await response.json()
+      console.log("[CallDetail] Raw API result:", JSON.stringify(result, null, 2).slice(0, 500))
+      
+      // API returns { data: { data: [...], total, ... } } - handle both shapes
+      let calls: ConversationWithAgent[] = []
+      if (result.data?.data && Array.isArray(result.data.data)) {
+        calls = result.data.data
+      } else if (Array.isArray(result.data)) {
+        calls = result.data
+      } else if (result.data && typeof result.data === 'object') {
+        // Maybe it's the object with data property
+        const innerData = (result.data as any).data
+        if (Array.isArray(innerData)) {
+          calls = innerData
+        }
+      }
+      
+      console.log("[CallDetail] Parsed calls array length:", calls.length)
+      console.log("[CallDetail] Looking for callId:", callId)
+      
+      if (calls.length === 0) {
+        console.log("[CallDetail] No calls found in response")
+        return
+      }
+      
+      // Log first few call IDs to debug
+      console.log("[CallDetail] First 5 call IDs:", calls.slice(0, 5).map(c => c.id))
+      
+      // Find current call index
+      const currentIndex = calls.findIndex(c => c.id === callId)
+      console.log("[CallDetail] Current call index:", currentIndex)
+      
+      if (currentIndex === -1) {
+        console.log("[CallDetail] Current call not found in list. All IDs:", calls.map(c => c.id))
+        return
+      }
+      
+      // Get adjacent call IDs (calls are sorted by created_at desc, so "prev" is newer, "next" is older)
+      const prevCall = currentIndex > 0 ? calls[currentIndex - 1] : null
+      const nextCall = currentIndex < calls.length - 1 ? calls[currentIndex + 1] : null
+      
+      console.log("[CallDetail] Setting adjacent calls:", { prev: prevCall?.id, next: nextCall?.id })
+      
+      setAdjacentCalls({
+        prev: prevCall?.id || null,
+        next: nextCall?.id || null,
+      })
+    } catch (err) {
+      console.error("[CallDetail] Error fetching adjacent calls:", err)
+    }
+  }
+  
+  // Navigate to previous call
+  const handlePreviousCall = () => {
+    if (adjacentCalls.prev) {
+      router.push(`/w/${workspaceSlug}/calls/${adjacentCalls.prev}`)
+    }
+  }
+  
+  // Navigate to next call
+  const handleNextCall = () => {
+    if (adjacentCalls.next) {
+      router.push(`/w/${workspaceSlug}/calls/${adjacentCalls.next}`)
     }
   }
 
@@ -231,6 +321,11 @@ export default function CallDetailPage() {
       fetchCallData()
     }
   }, [callId, workspaceSlug])
+  
+  // Debug: log adjacent calls state changes
+  useEffect(() => {
+    console.log("[CallDetail] adjacentCalls state updated:", adjacentCalls)
+  }, [adjacentCalls])
 
   // Merge realtime updates with fetched data
   const currentStatus = realtimeStatus || call?.status
@@ -437,6 +532,10 @@ export default function CallDetailPage() {
         recordingUrl={currentCall.recording_url}
         transcript={currentCall.transcript}
         transcriptMessages={transcriptMessages}
+        onPreviousCall={handlePreviousCall}
+        onNextCall={handleNextCall}
+        hasPreviousCall={!!adjacentCalls.prev}
+        hasNextCall={!!adjacentCalls.next}
       />
 
       {/* Additional Details */}
