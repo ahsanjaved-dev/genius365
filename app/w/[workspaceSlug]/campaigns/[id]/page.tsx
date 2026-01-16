@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -47,37 +47,26 @@ import {
 } from "@/components/workspace/campaigns/campaign-status-badge"
 import { ImportRecipientsDialog } from "@/components/workspace/campaigns/import-recipients-dialog"
 import { AddRecipientDialog } from "@/components/workspace/campaigns/add-recipient-dialog"
-import { CampaignAnalytics, type CampaignAnalyticsData } from "@/components/workspace/campaigns/campaign-analytics"
-import { 
-  CampaignActivityFeed, 
-  type ActivityEvent,
-  recipientStatusToActivityEvent,
-} from "@/components/workspace/campaigns/campaign-activity-feed"
+import { CampaignAnalytics } from "@/components/workspace/campaigns/campaign-analytics"
 import { WebhookStatusAlert } from "@/components/workspace/campaigns/webhook-status-alert"
+import { CampaignLiveDashboard } from "@/components/workspace/campaigns/campaign-live-dashboard"
+import { CampaignProgressRing } from "@/components/workspace/campaigns/campaign-progress-ring"
+import { CampaignStatsGrid } from "@/components/workspace/campaigns/campaign-stats-card"
 import {
   useCampaign,
   useCampaignRecipients,
-  useUpdateCampaign,
   useDeleteRecipient,
   usePauseCampaign,
   useResumeCampaign,
   useStartCampaign,
   useCleanupCampaign,
+  useProcessStuckCampaigns,
 } from "@/lib/hooks/use-campaigns"
-import {
-  useRealtimeCampaignRecipients,
-  useRealtimeCampaignStatus,
-  type RecipientCallStatus as RealtimeRecipientStatus,
-} from "@/lib/hooks/use-realtime-campaign"
-import { useCampaignPolling } from "@/lib/hooks/use-campaign-polling"
-import { useCampaignProgress } from "@/lib/hooks/use-campaign-progress"
 import {
   ArrowLeft,
   Loader2,
   Bot,
   Users,
-  CheckCircle2,
-  XCircle,
   Clock,
   Play,
   Pause,
@@ -88,7 +77,6 @@ import {
   MoreVertical,
   RefreshCw,
   Calendar,
-  Radio,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -130,7 +118,6 @@ export default function CampaignDetailPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<CallRecipient | null>(null)
-  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
 
   const {
     data: campaignData,
@@ -142,161 +129,96 @@ export default function CampaignDetailPage() {
     isLoading: recipientsLoading,
     refetch: refetchRecipients,
   } = useCampaignRecipients(campaignId, { status: statusFilter, page, pageSize })
-  const updateMutation = useUpdateCampaign()
   const deleteRecipientMutation = useDeleteRecipient()
   const pauseMutation = usePauseCampaign()
   const resumeMutation = useResumeCampaign()
   const startMutation = useStartCampaign()
   const cleanupMutation = useCleanupCampaign()
+  const processStuckMutation = useProcessStuckCampaigns()
 
   const campaign = campaignData?.data
+  
+  // =========================================================================
+  // POLLING FALLBACK: Continue stuck campaigns every 30 seconds
+  // This ensures campaigns don't get stuck if webhook chain breaks
+  // =========================================================================
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  
+  useEffect(() => {
+    const isActive = campaign?.status === "active"
+    const hasPendingCalls = (campaign?.pending_calls || 0) > 0
+    
+    // Only poll if campaign is active and has pending calls
+    if (isActive && hasPendingCalls) {
+      console.log("[CampaignDetail] Starting polling fallback for stuck campaigns...")
+      
+      pollingIntervalRef.current = setInterval(async () => {
+        console.log("[CampaignDetail] Polling - checking for stuck campaigns...")
+        try {
+          const result = await processStuckMutation.mutateAsync()
+          if (result.totalStarted > 0) {
+            console.log(`[CampaignDetail] Polling restarted ${result.totalStarted} calls!`)
+            // Refresh data when calls are restarted
+            refetchCampaign()
+            refetchRecipients()
+          }
+        } catch (error) {
+          console.error("[CampaignDetail] Polling error:", error)
+        }
+      }, 30000) // Poll every 30 seconds
+      
+      return () => {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current)
+          pollingIntervalRef.current = null
+        }
+      }
+    }
+    
+    // Cleanup if not active
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+    }
+  }, [campaign?.status, campaign?.pending_calls])
   const recipients = recipientsData?.data || []
   const totalRecipients = recipientsData?.total || 0
   const totalPages = recipientsData?.totalPages || 1
 
-  // Progress tracking with ETA
-  const { progress: campaignProgress } = useCampaignProgress({
-    campaignId,
-    pollingInterval: campaign?.status === "active" ? 3000 : 10000,
-    onlyWhenActive: false,
-  })
-
-  // Real-time updates for campaign recipients
-  const {
-    isConnected: realtimeConnected,
-    recipientStatuses: realtimeStatuses,
-    recentUpdates,
-  } = useRealtimeCampaignRecipients({
-    campaignId,
-    workspaceId: campaign?.workspace_id,
-    onCallComplete: useCallback((recipient: { phone_number: string; call_outcome?: string | null }) => {
-      toast.success(`Call completed: ${recipient.phone_number}`, {
-        description: recipient.call_outcome === "answered" ? "Answered" : recipient.call_outcome || "Completed",
-      })
-    }, []),
-    onCallFailed: useCallback((recipient: { phone_number: string; error_message?: string | null }) => {
-      toast.error(`Call failed: ${recipient.phone_number}`, {
-        description: recipient.error_message || "Call could not be completed",
-      })
-    }, []),
-  })
-
-  // Real-time campaign status updates
-  const { status: realtimeCampaignStatus } = useRealtimeCampaignStatus({
-    campaignId,
-    onStatusChange: useCallback((newStatus: string, oldStatus: string | null) => {
-      if (newStatus === "completed") {
-        toast.success("Campaign completed!", {
-          description: "All calls have been processed.",
-        })
-      } else if (newStatus === "paused" && oldStatus === "active") {
-        toast.info("Campaign paused")
-      }
-      refetchCampaign()
-    }, [refetchCampaign]),
-  })
-
-  // Polling fallback for when realtime updates aren't being received
-  // (e.g., webhook URL mismatch, network issues)
-  const {
-    isPolling,
-    realtimeHealthy,
-    pollNow,
-    reportRealtimeUpdate,
-  } = useCampaignPolling({
-    campaignId,
-    workspaceId: campaign?.workspace_id,
-    enabled: campaign?.status === "active", // Only poll for active campaigns
-    pollingInterval: 10000, // Poll every 10 seconds if realtime fails
-    realtimeTimeoutMs: 30000, // Start polling after 30s without realtime updates
-    onPollUpdate: useCallback(() => {
-      // Refetch data when polling detects changes
-      refetchCampaign()
-      refetchRecipients()
-    }, [refetchCampaign, refetchRecipients]),
-  })
-
-  // Report realtime updates to polling hook (so it knows realtime is working)
-  useEffect(() => {
-    if (recentUpdates.length > 0) {
-      reportRealtimeUpdate()
-    }
-  }, [recentUpdates, reportRealtimeUpdate])
-
-  // Convert realtime updates to activity events
-  useEffect(() => {
-    if (recentUpdates.length > 0) {
-      const newEvents = recentUpdates
-        .filter(update => update.newStatus) // Only track status changes
-        .map(update => {
-          const recipient = recipients.find(r => r.id === update.recipientId)
-          return recipientStatusToActivityEvent(
-            update.recipientId,
-            recipient?.first_name || null,
-            recipient?.phone_number || update.phoneNumber || "Unknown",
-            update.newStatus,
-            update.data.external_call_id ?? undefined
-          )
-        })
-      
-      if (newEvents.length > 0) {
-        setActivityEvents(prev => [...prev, ...newEvents].slice(-100)) // Keep last 100 events
-      }
-    }
-  }, [recentUpdates, recipients])
-
-  // Get real-time status for a recipient (fallback to API status)
-  const getRecipientStatus = useCallback((recipient: CallRecipient): RecipientCallStatus => {
-    return (realtimeStatuses.get(recipient.id) as RecipientCallStatus) || recipient.call_status
-  }, [realtimeStatuses])
+  // useCallback must be called before any early returns to follow React hooks rules
+  const handleRefresh = useCallback(() => {
+    refetchCampaign()
+    refetchRecipients()
+  }, [refetchCampaign, refetchRecipients])
 
   // Generate page numbers for pagination
   const getPageNumbers = () => {
     const pages = []
-    const showPages = 5 // Number of page buttons to show
+    const showPages = 5
 
     if (totalPages <= showPages) {
-      // Show all pages if total is less than showPages
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i)
       }
     } else {
-      // Always show first page
       pages.push(1)
-
-      // Calculate range around current page
       let start = Math.max(2, page - 1)
       let end = Math.min(totalPages - 1, page + 1)
 
-      // Adjust if at the beginning
       if (page <= 3) {
         end = Math.min(4, totalPages - 1)
       }
-
-      // Adjust if at the end
       if (page >= totalPages - 2) {
         start = Math.max(2, totalPages - 3)
       }
 
-      // Add ellipsis after first page if needed
-      if (start > 2) {
-        pages.push(-1) // -1 represents ellipsis
-      }
-
-      // Add middle pages
-      for (let i = start; i <= end; i++) {
-        pages.push(i)
-      }
-
-      // Add ellipsis before last page if needed
-      if (end < totalPages - 1) {
-        pages.push(-2) // -2 represents ellipsis
-      }
-
-      // Always show last page
+      if (start > 2) pages.push(-1)
+      for (let i = start; i <= end; i++) pages.push(i)
+      if (end < totalPages - 1) pages.push(-2)
       pages.push(totalPages)
     }
-
     return pages
   }
 
@@ -319,25 +241,16 @@ export default function CampaignDetailPage() {
     )
   }
 
-  // Progress is based on all processed calls (completed + failed)
-  // completed_calls now includes both successful and failed calls from the API
   const processedCalls = campaign.completed_calls || 0
-  const progress =
-    campaign.total_recipients > 0
-      ? Math.round((processedCalls / campaign.total_recipients) * 100)
-      : 0
+  const progress = campaign.total_recipients > 0
+    ? Math.round((processedCalls / campaign.total_recipients) * 100)
+    : 0
 
-  // Ready campaigns can be started with "Start Now"
   const canStart = campaign.status === "ready" && campaign.total_recipients > 0
-  // Paused campaigns can be resumed
   const canResume = campaign.status === "paused" && campaign.total_recipients > 0
-  // Active campaigns can be paused
   const canPause = campaign.status === "active"
-  // Scheduled campaigns are waiting for their scheduled time (auto-start)
   const isScheduled = campaign.status === "scheduled"
-  // Ready campaigns are waiting for user to click "Start Now"
   const isReady = campaign.status === "ready"
-  // Editable means recipients can be added/removed (only incomplete drafts)
   const isEditable = campaign.status === "draft"
 
   const handlePause = async () => {
@@ -361,12 +274,22 @@ export default function CampaignDetailPage() {
   }
 
   const handleStart = async () => {
+    const toastId = toast.loading("Starting campaign...", {
+      description: `${campaign?.total_recipients || 0} recipients will be called`
+    })
+    
     try {
-      await startMutation.mutateAsync(campaignId)
-      toast.success("Campaign started! Calls are now being processed.")
+      const result = await startMutation.mutateAsync(campaignId)
+      toast.success(result.message || "Campaign started!", {
+        id: toastId,
+        description: "Calls are being processed in the background",
+        duration: 4000,
+      })
       refetchCampaign()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start campaign")
+      toast.error(error instanceof Error ? error.message : "Failed to start campaign", {
+        id: toastId,
+      })
     }
   }
 
@@ -393,7 +316,6 @@ export default function CampaignDetailPage() {
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
-    // Scroll to top of table when page changes
     document
       .querySelector("[data-recipients-table]")
       ?.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -401,7 +323,7 @@ export default function CampaignDetailPage() {
 
   const handlePageSizeChange = (newPageSize: string) => {
     setPageSize(Number(newPageSize))
-    setPage(1) // Reset to first page when changing page size
+    setPage(1)
   }
 
   return (
@@ -435,15 +357,11 @@ export default function CampaignDetailPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => {
-              refetchCampaign()
-              refetchRecipients()
-            }}
+            onClick={handleRefresh}
             title="Refresh"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          {/* Sync button for active campaigns - cleans up stale calls */}
           {campaign.status === "active" && (
             <Button
               variant="outline"
@@ -459,14 +377,13 @@ export default function CampaignDetailPage() {
                   if (result.campaignCompleted) {
                     toast.success("Campaign completed!")
                   }
-                  refetchCampaign()
-                  refetchRecipients()
+                  handleRefresh()
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Failed to sync")
                 }
               }}
               disabled={cleanupMutation.isPending}
-              title="Sync stale calls - marks stuck calls as failed"
+              title="Sync stale calls"
             >
               {cleanupMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -476,12 +393,8 @@ export default function CampaignDetailPage() {
               Sync
             </Button>
           )}
-          {/* Start Now button for ready campaigns */}
           {canStart && (
-            <Button 
-              onClick={handleStart}
-              disabled={startMutation.isPending}
-            >
+            <Button onClick={handleStart} disabled={startMutation.isPending}>
               {startMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -491,11 +404,7 @@ export default function CampaignDetailPage() {
             </Button>
           )}
           {canPause && (
-            <Button 
-              variant="outline" 
-              onClick={handlePause}
-              disabled={pauseMutation.isPending}
-            >
+            <Button variant="outline" onClick={handlePause} disabled={pauseMutation.isPending}>
               {pauseMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -505,26 +414,21 @@ export default function CampaignDetailPage() {
             </Button>
           )}
           {canResume && (
-            <Button 
-              onClick={handleResume}
-              disabled={resumeMutation.isPending}
-            >
+            <Button onClick={handleResume} disabled={resumeMutation.isPending}>
               {resumeMutation.isPending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Play className="h-4 w-4 mr-2" />
               )}
-              Resume Campaign
+              Resume
             </Button>
           )}
-          {/* Badge for ready campaigns waiting to start */}
           {isReady && !startMutation.isPending && (
             <Badge variant="outline" className="px-3 py-1">
               <Clock className="h-3 w-3 mr-1" />
               Ready to start
             </Badge>
           )}
-          {/* Badge for scheduled campaigns showing start time */}
           {isScheduled && (
             <Badge variant="outline" className="px-3 py-1">
               <Clock className="h-3 w-3 mr-1" />
@@ -536,210 +440,156 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
-      {/* Webhook Status Alert - Shows if there are webhook URL mismatches */}
+      {/* Webhook Status Alert */}
       {(campaign.status === "active" || campaign.status === "ready") && (
         <WebhookStatusAlert showOnlyOnIssues={true} />
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{campaign.total_recipients}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-yellow-600" />
-              <div>
-                <p className="text-2xl font-bold">{campaign.pending_calls}</p>
-                <p className="text-xs text-muted-foreground">Pending</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-2xl font-bold">{campaign.successful_calls}</p>
-                <p className="text-xs text-muted-foreground">Answered</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" />
-              <div>
-                <p className="text-2xl font-bold">{campaign.failed_calls}</p>
-                <p className="text-xs text-muted-foreground">Failed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div>
-              <p className="text-2xl font-bold">{progress}%</p>
-              <p className="text-xs text-muted-foreground">Progress</p>
-              <Progress value={progress} className="h-2 mt-2" />
-              <p className="text-xs text-muted-foreground mt-1">{processedCalls} / {campaign.total_recipients}</p>
-              {campaign.status === "active" && campaignProgress && (
-                <div className="mt-2 pt-2 border-t space-y-1">
-                  {campaignProgress.etaDisplay && (
-                    <p className="text-xs text-blue-600 font-medium">
-                      {campaignProgress.etaDisplay}
-                    </p>
-                  )}
-                  {campaignProgress.callsPerMinute > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {campaignProgress.callsPerMinute} calls/min
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Analytics & Activity Row - Only show for active/completed campaigns */}
-      {(campaign.status === "active" || campaign.status === "completed" || campaign.status === "paused") && (
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Campaign Analytics */}
-          <CampaignAnalytics
-            data={{
-              total: campaign.total_recipients,
-              completed: processedCalls,
-              successful: campaign.successful_calls || 0,
-              failed: campaign.failed_calls || 0,
-              pending: campaign.pending_calls || 0,
-              successRate: processedCalls > 0 
-                ? Math.round(((campaign.successful_calls || 0) / processedCalls) * 100) 
-                : 0,
-              avgDurationSeconds: undefined, // TODO: Add avgCallDurationMs to CampaignProgress if needed
-            }}
-          />
-
-          {/* Live Activity Feed */}
-          <CampaignActivityFeed
-            events={activityEvents}
-            autoScroll={campaign.status === "active"}
-            compact={campaign.status !== "active"}
-          />
-        </div>
+      {/* Live Dashboard for Active Campaigns */}
+      {campaign.status === "active" && (
+        <CampaignLiveDashboard
+          campaignId={campaign.id}
+          campaignName={campaign.name}
+          status="active"
+          totalRecipients={campaign.total_recipients}
+          pendingCalls={campaign.pending_calls}
+          completedCalls={processedCalls}
+          successfulCalls={campaign.successful_calls || 0}
+          failedCalls={campaign.failed_calls || 0}
+          onPause={handlePause}
+          onRefresh={handleRefresh}
+          isPausing={pauseMutation.isPending}
+        />
       )}
 
-      {/* Schedule & Settings Row */}
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Schedule Card */}
+      {/* Stats Grid */}
+      <CampaignStatsGrid
+        totalRecipients={campaign.total_recipients}
+        pendingCalls={campaign.pending_calls}
+        completedCalls={processedCalls}
+        successfulCalls={campaign.successful_calls || 0}
+        failedCalls={campaign.failed_calls || 0}
+      />
+
+      {/* Progress Card */}
+      {campaign.total_recipients > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Start</span>
-              <div>
-                {campaign.schedule_type === "immediate" ? (
-                  <Badge>Immediate</Badge>
-                ) : (
-                  <span className="text-sm font-medium">
-                    {campaign.scheduled_start_at
-                      ? new Date(campaign.scheduled_start_at).toLocaleString()
-                      : "Not set"}
-                  </span>
-                )}
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-center gap-6">
+              <CampaignProgressRing
+                value={progress}
+                size={140}
+                strokeWidth={12}
+                isActive={campaign.status === "active"}
+                showPercentage={true}
+                showCount={true}
+                total={campaign.total_recipients}
+                processed={processedCalls}
+                variant={campaign.status === "active" ? "success" : campaign.status === "paused" ? "warning" : "default"}
+              />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Campaign Progress</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {processedCalls.toLocaleString()} of {campaign.total_recipients.toLocaleString()} recipients processed
+                  </p>
+                </div>
+                <Progress value={progress} className="h-3" />
               </div>
             </div>
-
-            {/* Enhanced Business Hours Display */}
-            {campaign.business_hours_config &&
-            (campaign.business_hours_config as BusinessHoursConfig).enabled ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Business Hours</span>
-                  <Badge variant="secondary">Enabled</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Timezone</span>
-                  <span className="text-sm">
-                    {(campaign.business_hours_config as BusinessHoursConfig).timezone}
-                  </span>
-                </div>
-                <div className="pt-2 border-t">
-                  <p className="text-xs text-muted-foreground mb-2">Active Days:</p>
-                  <div className="flex gap-1">
-                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, idx) => {
-                      const dayKey = [
-                        "monday",
-                        "tuesday",
-                        "wednesday",
-                        "thursday",
-                        "friday",
-                        "saturday",
-                        "sunday",
-                      ][idx]
-                      const schedule = (campaign.business_hours_config as BusinessHoursConfig)
-                        ?.schedule
-                      const slots = schedule?.[dayKey as keyof typeof schedule] || []
-                      const isActive = slots.length > 0
-
-                      return (
-                        <div
-                          key={day}
-                          className={`text-xs px-2 py-1 rounded ${
-                            isActive
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                          title={
-                            isActive ? slots.map((s) => `${s.start}-${s.end}`).join(", ") : "Off"
-                          }
-                        >
-                          {day}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </>
-            ) : campaign.business_hours_only ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Business Hours</span>
-                  <span className="text-sm">
-                    {campaign.business_hours_start} - {campaign.business_hours_end}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Timezone</span>
-                  <span className="text-sm">{campaign.timezone}</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Business Hours</span>
-                <span className="text-sm text-muted-foreground">24/7</span>
-              </div>
-            )}
           </CardContent>
         </Card>
+      )}
 
-      </div>
+      {/* Analytics for completed/paused campaigns */}
+      {(campaign.status === "completed" || campaign.status === "paused") && processedCalls > 0 && (
+        <CampaignAnalytics
+          data={{
+            total: campaign.total_recipients,
+            completed: processedCalls,
+            successful: campaign.successful_calls || 0,
+            failed: campaign.failed_calls || 0,
+            pending: campaign.pending_calls || 0,
+            successRate: processedCalls > 0 
+              ? Math.round(((campaign.successful_calls || 0) / processedCalls) * 100) 
+              : 0,
+            avgDurationSeconds: undefined,
+          }}
+        />
+      )}
+
+      {/* Schedule Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Schedule
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Start</span>
+            <div>
+              {campaign.schedule_type === "immediate" ? (
+                <Badge>Immediate</Badge>
+              ) : (
+                <span className="text-sm font-medium">
+                  {campaign.scheduled_start_at
+                    ? new Date(campaign.scheduled_start_at).toLocaleString()
+                    : "Not set"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {campaign.business_hours_config &&
+          (campaign.business_hours_config as BusinessHoursConfig).enabled ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Business Hours</span>
+                <Badge variant="secondary">Enabled</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Timezone</span>
+                <span className="text-sm">
+                  {(campaign.business_hours_config as BusinessHoursConfig).timezone}
+                </span>
+              </div>
+              <div className="pt-2 border-t">
+                <p className="text-xs text-muted-foreground mb-2">Active Days:</p>
+                <div className="flex gap-1">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, idx) => {
+                    const dayKey = [
+                      "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+                    ][idx]
+                    const schedule = (campaign.business_hours_config as BusinessHoursConfig)?.schedule
+                    const slots = schedule?.[dayKey as keyof typeof schedule] || []
+                    const isActive = slots.length > 0
+
+                    return (
+                      <div
+                        key={day}
+                        className={`text-xs px-2 py-1 rounded ${
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {day}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Business Hours</span>
+              <span className="text-sm text-muted-foreground">24/7</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recipients Table */}
       <Card data-recipients-table>
@@ -749,31 +599,6 @@ export default function CampaignDetailPage() {
               <CardTitle className="flex items-center gap-2">
                 <Phone className="h-5 w-5" />
                 Recipients
-                {/* Connection status indicator - shows realtime + polling fallback */}
-                {realtimeConnected && realtimeHealthy ? (
-                  <span className="flex items-center gap-1 text-xs font-normal text-green-600">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                    </span>
-                    Live
-                  </span>
-                ) : isPolling ? (
-                  <span className="flex items-center gap-1 text-xs font-normal text-yellow-600" title="Using polling fallback - realtime updates may be delayed">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    Polling
-                  </span>
-                ) : realtimeConnected ? (
-                  <span className="flex items-center gap-1 text-xs font-normal text-yellow-600" title="Connected but no recent updates">
-                    <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
-                    Waiting...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                    <span className="h-2 w-2 rounded-full bg-gray-300"></span>
-                    Connecting...
-                  </span>
-                )}
               </CardTitle>
               <CardDescription>{totalRecipients} phone numbers</CardDescription>
             </div>
@@ -792,7 +617,7 @@ export default function CampaignDetailPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Filter and Page Size Controls */}
+          {/* Filter Controls */}
           <div className="flex items-center justify-between gap-4 mb-4">
             <Select
               value={statusFilter}
@@ -914,7 +739,7 @@ export default function CampaignDetailPage() {
                 </Table>
               </div>
 
-              {/* Enhanced Pagination with shadcn */}
+              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
@@ -927,9 +752,7 @@ export default function CampaignDetailPage() {
                       <PaginationItem>
                         <PaginationPrevious
                           onClick={() => page > 1 && handlePageChange(page - 1)}
-                          className={
-                            page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"
-                          }
+                          className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
                         />
                       </PaginationItem>
 
@@ -958,11 +781,7 @@ export default function CampaignDetailPage() {
                       <PaginationItem>
                         <PaginationNext
                           onClick={() => page < totalPages && handlePageChange(page + 1)}
-                          className={
-                            page === totalPages
-                              ? "pointer-events-none opacity-50"
-                              : "cursor-pointer"
-                          }
+                          className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
                         />
                       </PaginationItem>
                     </PaginationContent>
@@ -975,12 +794,7 @@ export default function CampaignDetailPage() {
       </Card>
 
       {/* Dialogs */}
-      <ImportRecipientsDialog
-        campaignId={campaignId}
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
-
+      <ImportRecipientsDialog campaignId={campaignId} open={importOpen} onOpenChange={setImportOpen} />
       <AddRecipientDialog campaignId={campaignId} open={addOpen} onOpenChange={setAddOpen} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

@@ -93,7 +93,7 @@ export async function GET(
     // Get all VAPI agents in this workspace
     const { data: agents, error: agentsError } = await supabase
       .from("ai_agents")
-      .select("id, name, provider, external_agent_id, workspace_id, sync_status, last_sync_at")
+      .select("id, name, provider, external_agent_id, workspace_id, sync_status, last_synced_at")
       .eq("workspace_id", ctx.workspace.id)
       .eq("provider", "vapi")
       .is("deleted_at", null)
@@ -160,7 +160,7 @@ export async function GET(
           name: agent.name,
           externalAgentId: agent.external_agent_id,
           syncStatus: agent.sync_status,
-          lastSyncAt: agent.last_sync_at,
+          lastSyncAt: agent.last_synced_at,
           currentWebhookUrl: null,
           expectedWebhookUrl,
           webhookMatch: false,

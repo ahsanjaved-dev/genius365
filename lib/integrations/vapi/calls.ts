@@ -172,14 +172,6 @@ export async function createOutboundCall(params: {
   const normalizedNumber = normalizeToE164(customerNumber)
 
   try {
-    console.log(
-      "[VapiCalls] Creating outbound call from",
-      phoneNumberId,
-      "to",
-      normalizedNumber,
-      `(original: ${customerNumber})`
-    )
-
     const payload: Record<string, unknown> = {
       assistantId,
       phoneNumberId,
@@ -188,8 +180,6 @@ export async function createOutboundCall(params: {
         ...(customerName && { name: customerName }),
       },
     }
-
-    console.log("[VapiCalls] Outbound call payload:", JSON.stringify(payload, null, 2))
 
     const response = await fetch(`${VAPI_BASE_URL}/call`, {
       method: "POST",
@@ -202,7 +192,6 @@ export async function createOutboundCall(params: {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error("[VapiCalls] Create error:", errorData)
       
       // Handle message being an array (VAPI returns validation errors as array)
       let errorMessage: string
@@ -212,6 +201,9 @@ export async function createOutboundCall(params: {
         errorMessage = errorData.message || `VAPI API error: ${response.status} ${response.statusText}`
       }
       
+      console.error(`[VapiCalls] createOutboundCall FAILED: ${response.status} - ${errorMessage}`)
+      console.error(`[VapiCalls] Error details:`, JSON.stringify(errorData))
+      
       return {
         success: false,
         error: errorMessage,
@@ -219,14 +211,11 @@ export async function createOutboundCall(params: {
     }
 
     const data: VapiCall = await response.json()
-    console.log("[VapiCalls] Outbound call created:", data.id, "status:", data.status)
-    console.log("[VapiCalls] Call object:", JSON.stringify(data, null, 2))
     return {
       success: true,
       data,
     }
   } catch (error) {
-    console.error("[VapiCalls] Create exception:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error creating outbound call",
@@ -247,8 +236,6 @@ export async function getVapiCallDetails(params: {
   const { apiKey, callId } = params
 
   try {
-    console.log("[VapiCalls] Fetching call details:", callId)
-
     const response = await fetch(`${VAPI_BASE_URL}/call/${callId}`, {
       method: "GET",
       headers: {
@@ -264,7 +251,6 @@ export async function getVapiCallDetails(params: {
       } catch {
         errorData = { message: errorText || `HTTP ${response.status}` }
       }
-      console.error("[VapiCalls] Get call error:", response.status, errorData)
       return {
         success: false,
         error: (errorData.message as string) || `Vapi API error: ${response.status}`,
@@ -272,20 +258,11 @@ export async function getVapiCallDetails(params: {
     }
 
     const data: VapiCallDetails = await response.json()
-    console.log("[VapiCalls] Call details retrieved:", {
-      callId: data.id,
-      status: data.status,
-      endedAt: data.endedAt,
-      hasTranscript: !!data.artifact?.transcript,
-      hasCost: data.cost !== undefined,
-    })
-
     return {
       success: true,
       data,
     }
   } catch (error) {
-    console.error("[VapiCalls] Get call exception:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error fetching call details",

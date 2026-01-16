@@ -10,7 +10,6 @@ import {
 } from "@/lib/api/helpers"
 import { updateCampaignSchema } from "@/types/database.types"
 import { terminateCampaignBatch } from "@/lib/integrations/campaign-provider"
-import { cleanupStaleCalls } from "@/lib/campaigns/stale-call-cleanup"
 
 /**
  * Calculate accurate campaign stats from actual recipient data
@@ -88,21 +87,6 @@ export async function GET(
 
     if (error || !campaign) {
       return notFound("Campaign")
-    }
-
-    // Auto-cleanup stale calls for active campaigns (non-blocking)
-    // This runs in the background and doesn't delay the response
-    if (campaign.status === "active") {
-      cleanupStaleCalls(id).then(result => {
-        if (result.staleRecipientsUpdated > 0) {
-          console.log(`[CampaignAPI] Auto-cleanup: ${result.staleRecipientsUpdated} stale calls cleaned up for campaign ${id}`)
-        }
-        if (result.campaignCompleted) {
-          console.log(`[CampaignAPI] Auto-cleanup: Campaign ${id} marked as completed`)
-        }
-      }).catch(err => {
-        console.error(`[CampaignAPI] Auto-cleanup error for campaign ${id}:`, err)
-      })
     }
 
     // Calculate accurate stats from actual recipient data

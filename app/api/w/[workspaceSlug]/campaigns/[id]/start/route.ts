@@ -10,6 +10,12 @@ import type { CampaignData, RecipientData } from "@/lib/integrations/campaign-pr
 import type { BusinessHoursConfig } from "@/types/database.types"
 
 // ============================================================================
+// VERCEL CONFIG
+// ============================================================================
+// We now return immediately, so shorter timeout is fine
+export const maxDuration = 60
+
+// ============================================================================
 // SUPABASE CLIENT
 // ============================================================================
 
@@ -34,11 +40,6 @@ async function getCLIForAgent(
   partnerId: string,
   adminClient: ReturnType<typeof getSupabaseAdmin>
 ): Promise<string | null> {
-  // Priority:
-  // 1. Agent's external_phone_number
-  // 2. Agent's assigned_phone_number_id (lookup)
-  // 3. Shared outbound from integration config
-
   if (agent.external_phone_number) {
     return agent.external_phone_number
   }
@@ -55,7 +56,6 @@ async function getCLIForAgent(
     }
   }
 
-  // Check integration for shared outbound number
   const supabase = getSupabaseAdmin()
   const { data: assignment } = await supabase
     .from("workspace_integration_assignments")
@@ -79,7 +79,7 @@ async function getCLIForAgent(
 }
 
 // ============================================================================
-// HELPER: Get VAPI Config for Fallback
+// HELPER: Get VAPI Config
 // ============================================================================
 
 interface VapiIntegrationDetails {
@@ -88,13 +88,12 @@ interface VapiIntegrationDetails {
   config: any
 }
 
-async function getVapiConfigForFallback(
+async function getVapiConfig(
   agent: any,
   workspaceId: string,
   adminClient: ReturnType<typeof getSupabaseAdmin>
 ): Promise<VapiIntegrationDetails | null> {
   try {
-    // Get workspace to find partner_id
     const { data: workspace } = await adminClient
       .from("workspaces")
       .select("partner_id")
@@ -103,7 +102,6 @@ async function getVapiConfigForFallback(
 
     if (!workspace?.partner_id) return null
 
-    // Check for assigned integration
     const { data: assignment } = await adminClient
       .from("workspace_integration_assignments")
       .select(`
@@ -125,14 +123,11 @@ async function getVapiConfigForFallback(
         const vapiConfig = partnerIntegration.config || {}
         
         if (apiKeys?.default_secret_key) {
-          // Get VAPI phone number ID
           let phoneNumberId: string | null = null
           
-          // Priority: shared outbound phone number ID > agent's assigned phone > agent's external
           if (vapiConfig.shared_outbound_phone_number_id) {
             phoneNumberId = vapiConfig.shared_outbound_phone_number_id
           } else if (agent.assigned_phone_number_id) {
-            // Lookup the phone number's external_id (VAPI phone number ID)
             const { data: phoneNumber } = await adminClient
               .from("phone_numbers")
               .select("external_id")
@@ -199,16 +194,140 @@ async function getVapiConfigForFallback(
   }
 }
 
+// ============================================================================
+// BACKGROUND CALL PROCESSOR
+// ============================================================================
+
 /**
- * POST /api/w/[workspaceSlug]/campaigns/[id]/start
+ * Process calls in background (fire-and-forget)
+ * Updates recipient statuses as calls are made
+ */
+async function processCallsInBackground(
+  campaignId: string,
+  workspaceId: string,
+  campaignData: CampaignData,
+  recipients: RecipientData[],
+  vapiConfig: CampaignProviderConfig["vapi"]
+) {
+  const adminClient = getSupabaseAdmin()
+  
+  console.log(`[CampaignStart:BG] Starting background processing for ${recipients.length} recipients`)
+  
+  try {
+    // Start the batch processing
+    const providerResult = await startCampaignBatch(
+      campaignData,
+      recipients,
+      vapiConfig,
+      { startNow: true }
+    )
+
+    console.log(`[CampaignStart:BG] Batch complete:`, {
+      success: providerResult.success,
+      successfulCalls: providerResult.vapiResults?.successfulCalls ?? 0,
+      failedCalls: providerResult.vapiResults?.failedCalls ?? 0,
+    })
+
+    // Update recipient statuses based on results
+    if (providerResult.vapiResults?.results) {
+      const callResults = providerResult.vapiResults.results
+      const successfulCalls = callResults.filter(r => r.success && r.callId)
+      const failedCalls = callResults.filter(r => !r.success)
+      const now = new Date().toISOString()
+
+      // Update successful calls to "calling" status
+      if (successfulCalls.length > 0) {
+        const batchSize = 50
+        for (let i = 0; i < successfulCalls.length; i += batchSize) {
+          const batch = successfulCalls.slice(i, i + batchSize)
+          await Promise.all(batch.map(result =>
+            adminClient
+              .from("call_recipients")
+              .update({
+                call_status: "calling",
+                external_call_id: result.callId,
+                call_started_at: now,
+                attempts: 1,
+                last_attempt_at: now,
+                updated_at: now,
+              })
+              .eq("id", result.recipientId)
+          ))
+        }
+        console.log(`[CampaignStart:BG] Updated ${successfulCalls.length} recipients to "calling"`)
+      }
+
+      // Update failed calls
+      if (failedCalls.length > 0) {
+        const batchSize = 50
+        for (let i = 0; i < failedCalls.length; i += batchSize) {
+          const batch = failedCalls.slice(i, i + batchSize)
+          await Promise.all(batch.map(result =>
+            adminClient
+              .from("call_recipients")
+              .update({
+                call_status: "failed",
+                last_error: result.error || "Call creation failed",
+                attempts: 1,
+                last_attempt_at: now,
+                updated_at: now,
+              })
+              .eq("id", result.recipientId)
+          ))
+        }
+        console.log(`[CampaignStart:BG] Updated ${failedCalls.length} recipients to "failed"`)
+      }
+
+      // Update campaign stats
+      await adminClient
+        .from("call_campaigns")
+        .update({
+          pending_calls: recipients.length - successfulCalls.length - failedCalls.length,
+          failed_calls: failedCalls.length,
+          updated_at: now,
+        })
+        .eq("id", campaignId)
+    }
+
+    // If all calls failed, mark campaign as failed/completed
+    if (!providerResult.success && providerResult.vapiResults?.failedCalls === recipients.length) {
+      await adminClient
+        .from("call_campaigns")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", campaignId)
+      console.log(`[CampaignStart:BG] All calls failed, campaign marked as completed`)
+    }
+
+  } catch (error) {
+    console.error(`[CampaignStart:BG] Background processing error:`, error)
+    
+    // Update campaign with error
+    await adminClient
+      .from("call_campaigns")
+      .update({
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", campaignId)
+  }
+}
+
+// ============================================================================
+// POST /api/w/[workspaceSlug]/campaigns/[id]/start
+// ============================================================================
+
+/**
+ * Start a campaign
  * 
- * Start a campaign that is in "ready" status.
- * 
- * Flow:
- * 1. Try Inspra API first (primary)
- * 2. If Inspra fails, automatically fallback to VAPI
- * 3. Campaign status changes to "active"
- * 4. Calls begin immediately (respecting business hours)
+ * OPTIMIZED FLOW:
+ * 1. Validate campaign and prerequisites
+ * 2. Update campaign status to "active" IMMEDIATELY
+ * 3. Return success response to frontend (fast!)
+ * 4. Process calls in background (fire-and-forget)
+ * 5. Webhooks will update call statuses in real-time
  */
 export async function POST(
   request: NextRequest,
@@ -219,11 +338,10 @@ export async function POST(
     const ctx = await getWorkspaceContext(workspaceSlug)
     if (!ctx) return unauthorized()
 
-    // Check paywall
     const paywallError = await checkWorkspacePaywall(ctx.workspace.id, workspaceSlug)
     if (paywallError) return paywallError
 
-    // Get campaign with agent (full details needed)
+    // Get campaign with agent
     const { data: campaign, error: campaignError } = await ctx.adminClient
       .from("call_campaigns")
       .select(`
@@ -247,7 +365,7 @@ export async function POST(
       return notFound("Campaign")
     }
 
-    // Validate campaign can be started
+    // Validate campaign status
     if (campaign.status === "active") {
       return apiError("Campaign is already active")
     }
@@ -260,7 +378,6 @@ export async function POST(
       return apiError("Scheduled campaigns start automatically at the scheduled time")
     }
 
-    // Only allow starting from "ready" or "draft" status
     if (campaign.status !== "ready" && campaign.status !== "draft") {
       return apiError(`Cannot start campaign with status: ${campaign.status}`)
     }
@@ -281,43 +398,59 @@ export async function POST(
       return apiError("No outbound phone number configured for the agent")
     }
 
-    // Fetch all recipients for this campaign
-    const { data: recipients, error: recipientsError } = await ctx.adminClient
+    // Get VAPI config
+    const vapiDetails = await getVapiConfig(agent, ctx.workspace.id, ctx.adminClient)
+    if (!vapiDetails?.apiKey || !vapiDetails?.phoneNumberId) {
+      return apiError("VAPI integration not configured properly")
+    }
+
+    const vapiConfig: CampaignProviderConfig["vapi"] = {
+      apiKey: vapiDetails.apiKey,
+      phoneNumberId: vapiDetails.phoneNumberId,
+    }
+
+    // Get pending recipients count
+    const { count: recipientCount } = await ctx.adminClient
       .from("call_recipients")
-      .select("*")
+      .select("*", { count: "exact", head: true })
       .eq("campaign_id", id)
       .eq("call_status", "pending")
 
-    if (recipientsError) {
-      console.error("[CampaignStart] Error fetching recipients:", recipientsError)
-      return serverError("Failed to fetch recipients")
-    }
-
-    if (!recipients || recipients.length === 0) {
+    if (!recipientCount || recipientCount === 0) {
       return apiError("No pending recipients to call. Add recipients first.")
     }
 
     // =========================================================================
-    // GET VAPI CONFIG FOR FALLBACK
+    // STEP 1: UPDATE CAMPAIGN TO "ACTIVE" IMMEDIATELY
     // =========================================================================
     
-    const vapiDetails = await getVapiConfigForFallback(agent, ctx.workspace.id, ctx.adminClient)
-    const vapiConfig: CampaignProviderConfig["vapi"] = vapiDetails?.apiKey && vapiDetails?.phoneNumberId
-      ? {
-          apiKey: vapiDetails.apiKey,
-          phoneNumberId: vapiDetails.phoneNumberId,
-        }
-      : undefined
+    const now = new Date().toISOString()
+    const { data: updatedCampaign, error: updateError } = await ctx.adminClient
+      .from("call_campaigns")
+      .update({
+        status: "active",
+        started_at: now,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .select(`
+        *,
+        agent:ai_agents!agent_id(id, name, provider, is_active, external_agent_id)
+      `)
+      .single()
 
-    console.log("[CampaignStart] VAPI fallback available:", !!vapiConfig)
+    if (updateError) {
+      console.error("[CampaignStart] Error updating campaign status:", updateError)
+      return serverError("Failed to update campaign status")
+    }
+
+    console.log("[CampaignStart] Campaign status updated to ACTIVE:", id)
 
     // =========================================================================
-    // START CAMPAIGN VIA UNIFIED PROVIDER (Inspra first, VAPI fallback)
+    // STEP 2: RETURN RESPONSE IMMEDIATELY (don't wait for calls)
     // =========================================================================
-
-    console.log("[CampaignStart] Starting campaign via unified provider...")
-
-    // Build campaign data
+    
+    // Build campaign data for background processing
     const campaignData: CampaignData = {
       id: campaign.id,
       workspace_id: ctx.workspace.id,
@@ -334,9 +467,15 @@ export async function POST(
       timezone: campaign.timezone,
     }
 
-    // Map recipients (include ID for tracking)
-    const recipientData: RecipientData[] = recipients.map((r: any) => ({
-      id: r.id,  // Include DB ID for tracking call results
+    // Fetch all recipients for background processing
+    const { data: recipients } = await ctx.adminClient
+      .from("call_recipients")
+      .select("*")
+      .eq("campaign_id", id)
+      .eq("call_status", "pending")
+
+    const recipientData: RecipientData[] = (recipients || []).map((r: any) => ({
+      id: r.id,
       phone_number: r.phone_number,
       first_name: r.first_name,
       last_name: r.last_name,
@@ -351,133 +490,33 @@ export async function POST(
       country: r.country,
     }))
 
-    // Start via unified provider
-    const providerResult = await startCampaignBatch(
-      campaignData,
-      recipientData,
-      vapiConfig,
-      { startNow: true }
-    )
-
-    if (!providerResult.success) {
-      console.error("[CampaignStart] Failed to start campaign:", providerResult.error)
-      return serverError(`Failed to start campaign: ${providerResult.error || "Provider error"}`)
-    }
-
-    console.log("[CampaignStart] Campaign started via:", providerResult.provider)
-    if (providerResult.fallbackUsed) {
-      console.log("[CampaignStart] Fallback was used. Primary error:", providerResult.primaryError)
-    }
-
     // =========================================================================
-    // UPDATE RECIPIENT STATUS (VAPI)
-    // When using VAPI, we have immediate call results to update
+    // STEP 3: FIRE-AND-FORGET BACKGROUND PROCESSING
     // =========================================================================
     
-    if (providerResult.provider === "vapi" && providerResult.vapiResults?.results) {
-      console.log("[CampaignStart] Updating recipient status from VAPI results...")
-      
-      const callResults = providerResult.vapiResults.results
-      const successfulCalls = callResults.filter(r => r.success && r.callId)
-      const failedCalls = callResults.filter(r => !r.success)
-      
-      // Update successful calls - set status to "calling" and store external call ID
-      for (const result of successfulCalls) {
-        try {
-          await ctx.adminClient
-            .from("call_recipients")
-            .update({
-              call_status: "calling",
-              external_call_id: result.callId,
-              call_started_at: new Date().toISOString(),
-            })
-            .eq("id", result.recipientId)
-            .eq("campaign_id", id)
-            
-          console.log(`[CampaignStart] Updated recipient ${result.recipientId}: calling, callId=${result.callId}`)
-        } catch (err) {
-          console.error(`[CampaignStart] Failed to update recipient ${result.recipientId}:`, err)
-        }
-      }
-      
-      // Update failed calls - set status to "failed" with error
-      for (const result of failedCalls) {
-        try {
-          await ctx.adminClient
-            .from("call_recipients")
-            .update({
-              call_status: "failed",
-              last_error: result.error || "Call creation failed",
-            })
-            .eq("id", result.recipientId)
-            .eq("campaign_id", id)
-            
-          console.log(`[CampaignStart] Updated recipient ${result.recipientId}: failed, error=${result.error}`)
-        } catch (err) {
-          console.error(`[CampaignStart] Failed to update recipient ${result.recipientId}:`, err)
-        }
-      }
-      
-      console.log(`[CampaignStart] Recipient updates complete: ${successfulCalls.length} in_progress, ${failedCalls.length} failed`)
-    }
-
-    // =========================================================================
-    // UPDATE CAMPAIGN STATUS TO ACTIVE
-    // =========================================================================
-
-    // Calculate actual counts based on VAPI results
-    const successCount = providerResult.vapiResults?.successfulCalls ?? recipients.length
-    const failedCount = providerResult.vapiResults?.failedCalls ?? 0
-    const pendingCount = recipients.length - successCount - failedCount
-
-    const { data: updatedCampaign, error: updateError } = await ctx.adminClient
-      .from("call_campaigns")
-      .update({
-        status: "active",
-        started_at: new Date().toISOString(),
-        pending_calls: pendingCount,
-        successful_calls: successCount > 0 ? 0 : 0,  // Will be updated by webhook when calls complete
-        failed_calls: failedCount,  // Immediately failed calls
-      })
-      .eq("id", id)
-      .select(`
-        *,
-        agent:ai_agents!agent_id(id, name, provider, is_active, external_agent_id)
-      `)
-      .single()
-
-    if (updateError) {
-      console.error("[CampaignStart] Error updating campaign status:", updateError)
-      return serverError("Failed to update campaign status")
-    }
-
-    console.log("[CampaignStart] Campaign started:", {
-      campaignId: id,
-      batchRef: providerResult.batchRef,
-      pendingRecipients: recipients.length,
-      provider: providerResult.provider,
-      fallbackUsed: providerResult.fallbackUsed,
+    // Start processing in background (don't await!)
+    processCallsInBackground(
+      id,
+      ctx.workspace.id,
+      campaignData,
+      recipientData,
+      vapiConfig
+    ).catch(err => {
+      console.error("[CampaignStart] Background processing failed:", err)
     })
+
+    console.log("[CampaignStart] Returning immediate response, processing continues in background")
 
     return apiResponse({
       success: true,
       campaign: updatedCampaign,
-      batchRef: providerResult.batchRef,
-      recipientCount: recipients.length,
-      message: `Campaign started via ${providerResult.provider}! Calls are now being processed.`,
-      provider: {
-        used: providerResult.provider,
-        fallbackUsed: providerResult.fallbackUsed,
-        primaryError: providerResult.primaryError,
+      recipientCount: recipientData.length,
+      message: "Campaign started! Calls are being queued in the background.",
+      processing: {
+        status: "started",
+        totalRecipients: recipientData.length,
+        note: "Call statuses will update in real-time via webhooks",
       },
-      // Include VAPI-specific results if using VAPI
-      ...(providerResult.vapiResults && {
-        vapiResults: {
-          successfulCalls: providerResult.vapiResults.successfulCalls,
-          failedCalls: providerResult.vapiResults.failedCalls,
-          skippedCalls: providerResult.vapiResults.skippedCalls,
-        },
-      }),
     })
   } catch (error) {
     console.error("[CampaignStart] Exception:", error)

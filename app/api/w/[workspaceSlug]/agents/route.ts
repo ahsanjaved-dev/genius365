@@ -131,8 +131,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       : inputConfig.system_prompt
 
     // Check if workspace has an assigned integration for the provider
+    // Use Prisma if available, otherwise fallback to Supabase admin client
     let hasAssignedIntegration = false
+    
     if (prisma) {
+      // Prisma path (preferred)
       const assignment = await prisma.workspaceIntegrationAssignment.findFirst({
         where: {
           workspaceId: ctx.workspace.id,
@@ -152,6 +155,35 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         const apiKeys = assignment.partnerIntegration.apiKeys as any
         hasAssignedIntegration = !!apiKeys?.default_secret_key
       }
+      console.log(`[AgentCreate] Prisma check - hasAssignedIntegration: ${hasAssignedIntegration}`)
+    } else {
+      // Supabase fallback - critical for production when DATABASE_URL may not be set
+      console.log(`[AgentCreate] Prisma not available, using Supabase fallback`)
+      const { data: assignment, error: assignmentError } = await ctx.adminClient
+        .from("workspace_integration_assignments")
+        .select(`
+          partner_integration:partner_integrations (
+            id,
+            api_keys,
+            is_active
+          )
+        `)
+        .eq("workspace_id", ctx.workspace.id)
+        .eq("provider", validation.data.provider)
+        .single()
+      
+      if (assignmentError && assignmentError.code !== "PGRST116") {
+        console.error("[AgentCreate] Error fetching integration assignment:", assignmentError)
+      }
+      
+      if (assignment?.partner_integration) {
+        const partnerIntegration = assignment.partner_integration as any
+        if (partnerIntegration.is_active) {
+          const apiKeys = partnerIntegration.api_keys as any
+          hasAssignedIntegration = !!apiKeys?.default_secret_key
+        }
+      }
+      console.log(`[AgentCreate] Supabase check - hasAssignedIntegration: ${hasAssignedIntegration}`)
     }
 
     const agentConfig = {
@@ -224,11 +256,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           syncedAgent = syncResult.agent as any
         } else if (!syncResult.success) {
           console.error("[AgentCreate] VAPI sync failed:", syncResult.error)
-          // Update sync status to error
+          // Update sync status to error (use last_sync_error - correct column name)
           await ctx.adminClient
             .from("ai_agents")
-            .update({ sync_status: "error", sync_error: syncResult.error })
+            .update({ sync_status: "error", last_sync_error: syncResult.error })
             .eq("id", agent.id)
+          // Update local copy for response
+          syncedAgent = { ...agent, sync_status: "error", last_sync_error: syncResult.error } as any
+        } else {
+          // Sync returned success but no agent - shouldn't happen, log warning
+          console.warn("[AgentCreate] VAPI sync returned success but no agent data")
         }
       } else if (validation.data.provider === "retell") {
         const syncResult = await safeRetellSync(agent as AIAgent, "create")
@@ -236,11 +273,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           syncedAgent = syncResult.agent as any
         } else if (!syncResult.success) {
           console.error("[AgentCreate] Retell sync failed:", syncResult.error)
-          // Update sync status to error
+          // Update sync status to error (use last_sync_error - correct column name)
           await ctx.adminClient
             .from("ai_agents")
-            .update({ sync_status: "error", sync_error: syncResult.error })
+            .update({ sync_status: "error", last_sync_error: syncResult.error })
             .eq("id", agent.id)
+          // Update local copy for response
+          syncedAgent = { ...agent, sync_status: "error", last_sync_error: syncResult.error } as any
+        } else {
+          // Sync returned success but no agent - shouldn't happen, log warning
+          console.warn("[AgentCreate] Retell sync returned success but no agent data")
         }
       }
     }

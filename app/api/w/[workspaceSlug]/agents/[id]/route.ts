@@ -125,8 +125,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const existingAgent = existing as AIAgent
     
     // NEW ORG-LEVEL FLOW: Check if workspace has an assigned integration
+    // Use Prisma if available, otherwise fallback to Supabase admin client
     let hasAssignedIntegration = false
+    
     if (prisma) {
+      // Prisma path (preferred)
       const assignment = await prisma.workspaceIntegrationAssignment.findFirst({
         where: {
           workspaceId: ctx.workspace.id,
@@ -146,6 +149,35 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         const apiKeys = assignment.partnerIntegration.apiKeys as any
         hasAssignedIntegration = !!apiKeys?.default_secret_key
       }
+      console.log(`[AgentUpdate] Prisma check - hasAssignedIntegration: ${hasAssignedIntegration}`)
+    } else {
+      // Supabase fallback - critical for production when DATABASE_URL may not be set
+      console.log(`[AgentUpdate] Prisma not available, using Supabase fallback`)
+      const { data: assignment, error: assignmentError } = await ctx.adminClient
+        .from("workspace_integration_assignments")
+        .select(`
+          partner_integration:partner_integrations (
+            id,
+            api_keys,
+            is_active
+          )
+        `)
+        .eq("workspace_id", ctx.workspace.id)
+        .eq("provider", existingAgent.provider)
+        .single()
+      
+      if (assignmentError && assignmentError.code !== "PGRST116") {
+        console.error("[AgentUpdate] Error fetching integration assignment:", assignmentError)
+      }
+      
+      if (assignment?.partner_integration) {
+        const partnerIntegration = assignment.partner_integration as any
+        if (partnerIntegration.is_active) {
+          const apiKeys = partnerIntegration.api_keys as any
+          hasAssignedIntegration = !!apiKeys?.default_secret_key
+        }
+      }
+      console.log(`[AgentUpdate] Supabase check - hasAssignedIntegration: ${hasAssignedIntegration}`)
     }
     
     // Legacy: Detect API key changes from old config-based flow

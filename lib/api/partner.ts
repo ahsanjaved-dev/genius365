@@ -149,11 +149,8 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
     const devCacheKey = CacheKeys.partner(`dev:${env.devPartnerSlug}`)
     const devCached = await cacheGet<ResolvedPartner>(devCacheKey)
     if (devCached) {
-      console.log(`[Partner] DEV MODE: Cache hit for slug: ${env.devPartnerSlug}`)
       return devCached
     }
-
-    console.log(`[Partner] DEV MODE: Resolving partner by DEV_PARTNER_SLUG: ${env.devPartnerSlug}`)
 
     const { data: devPartner, error: devError } = await adminClient
       .from("partners")
@@ -165,11 +162,8 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
     if (devPartner && !devError) {
       const resolved = toResolvedPartner(devPartner as Partner)
       await cacheSet(devCacheKey, resolved, CacheTTL.PARTNER)
-      console.log(`[Partner] DEV MODE: Resolved to: ${resolved.name} (${resolved.slug})`)
       return resolved
     }
-
-    console.warn(`[Partner] DEV MODE: Partner slug "${env.devPartnerSlug}" not found, continuing normal resolution`)
   }
 
   // ============================================================================
@@ -180,11 +174,8 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
   // Check cache first
   const cached = await cacheGet<ResolvedPartner>(cacheKey)
   if (cached) {
-    console.log(`[Partner] Cache hit for hostname: ${hostname}`)
     return cached
   }
-
-  console.log(`[Partner] Resolving partner for hostname: ${hostname}`)
 
   // Step 1: Try to find partner by exact hostname match in partner_domains
   // Try multiple hostname variations (with/without port) for dev compatibility
@@ -226,18 +217,14 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
     if (domainMatch?.partner && !domainError) {
       const resolved = toResolvedPartner(domainMatch.partner as unknown as Partner)
       await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
-      console.log(`[Partner] Resolved by hostname (${hostnameVariant}): ${resolved.name} (${resolved.slug})`)
       return resolved
     }
   }
 
   // Step 2: [DEV MODE] Try to extract subdomain and match by partner slug
-  // This allows accessing partners via subdomain.localhost:3000 without hosts file setup
   if (env.isDev) {
     const subdomain = extractSubdomain(hostname)
     if (subdomain) {
-      console.log(`[Partner] DEV MODE: Trying to resolve by extracted subdomain: ${subdomain}`)
-
       const { data: slugMatch, error: slugError } = await adminClient
         .from("partners")
         .select("*")
@@ -248,15 +235,12 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
       if (slugMatch && !slugError) {
         const resolved = toResolvedPartner(slugMatch as Partner)
         await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
-        console.log(`[Partner] DEV MODE: Resolved by subdomain slug: ${resolved.name} (${resolved.slug})`)
         return resolved
       }
     }
   }
 
   // Step 3: Fallback to platform partner
-  console.log(`[Partner] No exact match for ${hostname}, falling back to platform partner`)
-
   const { data: platformPartner, error: platformError } = await adminClient
     .from("partners")
     .select("*")
@@ -264,13 +248,11 @@ export async function getPartnerFromHost(): Promise<ResolvedPartner> {
     .single()
 
   if (platformError || !platformPartner) {
-    console.error("[Partner] No platform partner configured!", platformError)
     throw new Error("Platform partner not configured. Please run the seed script.")
   }
 
   const resolved = toResolvedPartner(platformPartner as Partner)
   await cacheSet(cacheKey, resolved, CacheTTL.PARTNER)
-  console.log(`[Partner] Resolved to platform partner: ${resolved.name}`)
   return resolved
 }
 
