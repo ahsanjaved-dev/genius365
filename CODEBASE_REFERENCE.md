@@ -1,6 +1,6 @@
 # Genius365 Codebase Reference (Single-file, LLM-friendly, developer-friendly)
 
-> **Last Updated**: January 15, 2026  
+> **Last Updated**: January 16, 2026  
 > **Audience**: Developers + AI assistants (LLM-friendly)  
 > **Scope**: Repo at `genius365/` (Next.js App Router + Supabase + Prisma + Stripe + VAPI/Retell + optional Algolia)
 
@@ -92,6 +92,8 @@ If you're trying to answer a question quickly, start here:
 - **Provider sync (Retell)**: `lib/integrations/retell/agent/sync.ts`
 - **Test call sessions**: `app/api/w/[workspaceSlug]/agents/[id]/test-call/route.ts`
 - **Outbound calls**: `app/api/w/[workspaceSlug]/agents/[id]/outbound-call/route.ts`
+- **Webhook status** (check webhook URL configuration): `app/api/w/[workspaceSlug]/agents/webhook-status/route.ts`
+- **Resync webhooks** (fix production webhook URLs): `app/api/w/[workspaceSlug]/agents/resync-webhooks/route.ts`
 
 ### Org-Level Integrations (NEW)
 
@@ -113,7 +115,10 @@ If you're trying to answer a question quickly, start here:
 
 ### Other Modules
 
-- **Campaigns**: `app/api/w/[workspaceSlug]/campaigns/*`, cron: `app/api/cron/master/route.ts`, `lib/campaigns/cleanup-expired.ts`
+- **Campaigns**: `app/api/w/[workspaceSlug]/campaigns/*`
+  - Cron processing: `app/api/cron/process-campaigns/route.ts`, `app/api/cron/master/route.ts`
+  - Queue-based processing: `lib/campaigns/queue-processor.ts`, `lib/campaigns/call-queue-manager.ts`
+  - Batch calling: `lib/campaigns/batch-caller.ts`, `lib/campaigns/batch-caller-optimized.ts`
 - **Knowledge base**: `app/api/w/[workspaceSlug]/knowledge-base/*`
 - **Client invitations**: `app/api/partner/client-invitations/route.ts`
 - **Function tools system (VAPI/Retell mapping)**: `lib/integrations/function_tools/*`, editor UI: `components/workspace/agents/function-tool-editor.tsx`
@@ -212,7 +217,15 @@ genius365/
   - `workspace-selector.tsx`
   - `paywall-banner.tsx`
   - `agents/*` (wizard + tool editor + agent cards)
-  - `campaigns/*` (wizard + wizard-optimized + steps + dialogs + draft card)
+  - `campaigns/*` (comprehensive campaign UI):
+    - Wizards: `campaign-wizard.tsx`, `campaign-wizard-optimized.tsx`, `campaign-wizard-dynamic.tsx`
+    - Cards: `campaign-card.tsx`, `campaign-card-enhanced.tsx`, `wizard-draft-card.tsx`
+    - Dashboard: `campaign-live-dashboard.tsx`, `campaign-hero-stats.tsx`, `campaign-analytics.tsx`
+    - Components: `campaign-status-badge.tsx`, `campaign-progress-ring.tsx`, `campaign-stats-card.tsx`
+    - Dialogs: `add-recipient-dialog.tsx`, `import-recipients-dialog.tsx`
+    - Feedback: `campaign-action-overlay.tsx`, `campaign-activity-feed.tsx`, `campaign-toast.tsx`
+    - Alerts: `webhook-status-alert.tsx`
+    - Steps: `steps/*.tsx` (step-details, step-import, step-review, step-schedule, step-variables)
   - `calls/*` (Algolia search panel, fallback search, transcript player)
   - `conversations/*` (detail modal with dynamic loading)
   - `billing/*` (workspace credits card)
@@ -242,6 +255,11 @@ genius365/
   - Includes realtime hooks (`use-realtime-campaign.ts`, `use-realtime-call-status.ts`)
   - Dashboard/analytics hooks (`use-dashboard-charts.ts`, `use-dashboard-data.ts`)
   - Web call hooks (`use-web-call/vapi.ts`, `use-web-call/retell.ts`)
+  - Campaign hooks (`use-campaign-polling.ts`, `use-campaign-progress.ts`, `use-campaign-draft.ts`)
+  - Webhook hooks (`use-webhook-status.ts`)
+  - Validation hooks (`use-test-call-validations.tsx`)
+- `lib/stores/*`: Zustand stores for local state
+  - `campaign-wizard-store.ts` - Campaign wizard local-first state management
 - `lib/rbac/*`: permission matrix + wrappers
 - `lib/algolia/*`: optional call logs index/search
 - `lib/email/*`: Resend client + email templates
@@ -299,7 +317,8 @@ Actual routes:
 - `/super-admin` (dashboard)
 - `/super-admin/partner-requests` (+ detail)
 - `/super-admin/partners` (+ detail)
-- `/super-admin/variants`
+- `/super-admin/plans` (workspace subscription plans management)
+- `/super-admin/variants` (white-label variant management)
 - `/super-admin/billing`
 
 ### Public pages (agency onboarding)
@@ -354,6 +373,7 @@ This section is intended as a **truthy map** of the API surface. Start here when
 - `GET /api/health` → `app/api/health/route.ts`
 - `POST /api/cron/master` (+ `GET` for docs) → `app/api/cron/master/route.ts`
 - `POST /api/cron/cleanup-expired-campaigns` (+ `GET` for docs) → `app/api/cron/cleanup-expired-campaigns/route.ts`
+- `POST /api/cron/process-campaigns` (+ `GET` for status) → `app/api/cron/process-campaigns/route.ts` (NEW: Background campaign chunk processing)
 - Dev-only utility: `POST /api/dev/reset-password` → `app/api/dev/reset-password/route.ts`
 - Sentry test: `GET /api/sentry-example-api` → `app/api/sentry-example-api/route.ts`
 
@@ -458,7 +478,8 @@ All under: `app/api/w/[workspaceSlug]/*`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/agents/[id]` → `app/api/w/[workspaceSlug]/agents/[id]/route.ts`
 - `POST /api/w/[workspaceSlug]/agents/[id]/test-call` → `app/api/w/[workspaceSlug]/agents/[id]/test-call/route.ts`
 - `POST /api/w/[workspaceSlug]/agents/[id]/outbound-call` → `app/api/w/[workspaceSlug]/agents/[id]/outbound-call/route.ts`
-- `ANY /api/w/[workspaceSlug]/agents/[id]/[...path]` → `app/api/w/[workspaceSlug]/agents/[id]/[...path]/route.ts` (passthrough for provider-specific endpoints)
+- `GET /api/w/[workspaceSlug]/agents/webhook-status` → `app/api/w/[workspaceSlug]/agents/webhook-status/route.ts` (NEW: Check webhook URL configuration)
+- `POST /api/w/[workspaceSlug]/agents/resync-webhooks` → `app/api/w/[workspaceSlug]/agents/resync-webhooks/route.ts` (NEW: Force resync webhook URLs)
 
 **Calls / conversations**
 
@@ -476,14 +497,20 @@ All under: `app/api/w/[workspaceSlug]/*`
 - `GET|POST /api/w/[workspaceSlug]/campaigns` → `app/api/w/[workspaceSlug]/campaigns/route.ts`
 - `GET|PATCH|DELETE /api/w/[workspaceSlug]/campaigns/[id]` → `app/api/w/[workspaceSlug]/campaigns/[id]/route.ts`
 - `GET|POST|DELETE /api/w/[workspaceSlug]/campaigns/[id]/recipients` → `app/api/w/[workspaceSlug]/campaigns/[id]/recipients/route.ts`
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/recipients/import-optimized` → `app/api/w/[workspaceSlug]/campaigns/[id]/recipients/import-optimized/route.ts` (NEW: Optimized bulk import)
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/start` → `app/api/w/[workspaceSlug]/campaigns/[id]/start/route.ts`
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/start-optimized` → `app/api/w/[workspaceSlug]/campaigns/[id]/start-optimized/route.ts` (NEW: Optimized start)
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/start-scalable` → `app/api/w/[workspaceSlug]/campaigns/[id]/start-scalable/route.ts` (NEW: Queue-based scalable start)
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/pause` → `app/api/w/[workspaceSlug]/campaigns/[id]/pause/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/resume` → `app/api/w/[workspaceSlug]/campaigns/[id]/resume/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/terminate` → `app/api/w/[workspaceSlug]/campaigns/[id]/terminate/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/test-call` → `app/api/w/[workspaceSlug]/campaigns/[id]/test-call/route.ts`
 - `POST /api/w/[workspaceSlug]/campaigns/[id]/cleanup` → `app/api/w/[workspaceSlug]/campaigns/[id]/cleanup/route.ts` (cleanup stale calls)
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/process-calls` → `app/api/w/[workspaceSlug]/campaigns/[id]/process-calls/route.ts` (NEW: Process pending calls)
+- `POST /api/w/[workspaceSlug]/campaigns/[id]/process-chunk` → `app/api/w/[workspaceSlug]/campaigns/[id]/process-chunk/route.ts` (NEW: Process campaign chunk)
 - `GET /api/w/[workspaceSlug]/campaigns/draft` → `app/api/w/[workspaceSlug]/campaigns/draft/route.ts` (list drafts)
 - `POST /api/w/[workspaceSlug]/campaigns/draft/create` → `app/api/w/[workspaceSlug]/campaigns/draft/create/route.ts` (create draft)
+- `POST /api/w/[workspaceSlug]/campaigns/process-stuck` → `app/api/w/[workspaceSlug]/campaigns/process-stuck/route.ts` (NEW: Process stuck campaigns)
 
 **Knowledge base**
 
@@ -1069,16 +1096,18 @@ UI editor:
 
 Provider mapping:
 
-- VAPI tool mapping: `lib/integrations/function_tools/vapi/*`
-  - Supports native call control (end call, transfer, DTMF, handoff)
-  - Custom functions with webhook execution
-  - Integration tools (GHL, Google, MCP, Query, Communication)
-  - Code tools (Bash, custom code)
-  - API request tools
+- **VAPI tool mapping**: `lib/integrations/function_tools/vapi/*`
+  - Organized by category:
+    - `tools/call-control/` - Native call control (end-call, transfer-call, dtmf, handoff)
+    - `tools/api/` - API request tools and custom functions
+    - `tools/code/` - Code execution tools (bash, custom code)
+    - `tools/integrations/` - Third-party integrations (GHL, Google, MCP, Query, Communication)
   - Has a "tool sync" flow that creates VAPI tools via `/tool` API and persists `external_tool_id`
     - See `lib/integrations/function_tools/vapi/api/sync.ts` and `lib/integrations/vapi/agent/sync.ts`
-- Retell tool mapping: `lib/integrations/function_tools/retell/*`
+  - Registry and mapper: `lib/integrations/function_tools/vapi/registry.ts`, `mapper.ts`
+- **Retell tool mapping**: `lib/integrations/function_tools/retell/*`
   - Only maps native Retell tools currently (see Retell limitation above)
+  - Registry and mapper: `lib/integrations/function_tools/retell/registry.ts`, `mapper.ts`
 
 ---
 
@@ -1087,8 +1116,23 @@ Provider mapping:
 Storage:
 
 - Uses Supabase tables:
-  - `call_campaigns`
-  - `call_recipients`
+  - `call_campaigns` - Campaign definitions with scheduling, business hours
+  - `call_recipients` - Recipients with call status tracking
+  - `campaign_queue` (NEW) - Queue state for scalable processing
+
+### Campaign Processing Architecture
+
+The campaigns module supports **three processing approaches**:
+
+1. **Legacy/Simple** (`/start`) - Fire-and-forget all calls via Inspra API
+2. **Optimized** (`/start-optimized`) - Batched processing with better error handling
+3. **Scalable Queue-based** (`/start-scalable`) - Self-regulating queue with concurrent limits
+
+The **scalable approach** is recommended for large campaigns:
+- Queues all recipients, starts only N calls at a time (respecting VAPI concurrency limits)
+- Webhooks trigger subsequent calls when calls complete
+- Background cron (`/api/cron/process-campaigns`) processes chunks periodically
+- Supports pause/resume without losing progress
 
 API:
 
@@ -1103,18 +1147,25 @@ API:
 Campaign actions:
 
 - `POST .../campaigns/[id]/start` - Start campaign via Inspra API or VAPI batch fallback
-  - Converts business hours to block rules
-  - Maps recipients to call list
-  - Sends to external outbound API (Inspra primary, VAPI batch as fallback)
+- `POST .../campaigns/[id]/start-optimized` - Optimized start with batching
+- `POST .../campaigns/[id]/start-scalable` - **Recommended**: Queue-based scalable start
 - `POST .../campaigns/[id]/pause` - Pause active campaign
 - `POST .../campaigns/[id]/resume` - Resume paused campaign
 - `POST .../campaigns/[id]/terminate` - Cancel/terminate campaign
 - `POST .../campaigns/[id]/test-call` - Make test call for campaign
 - `POST .../campaigns/[id]/cleanup` - Clean up stale/orphaned calls
+- `POST .../campaigns/[id]/process-calls` - Process pending calls in queue
+- `POST .../campaigns/[id]/process-chunk` - Process a single chunk of recipients
+- `POST .../campaigns/process-stuck` - Process stuck campaigns workspace-wide
+- `POST .../campaigns/[id]/recipients/import-optimized` - Optimized bulk recipient import
 
 Campaign infrastructure:
 
-- `lib/campaigns/batch-caller.ts` - Batch calling logic
+- `lib/campaigns/batch-caller.ts` - Legacy batch calling logic
+- `lib/campaigns/batch-caller-optimized.ts` - Optimized batch calling with chunking
+- `lib/campaigns/queue-processor.ts` - Queue-based campaign processing
+- `lib/campaigns/call-queue-manager.ts` - Call queue management and concurrency control
+- `lib/campaigns/batch-processor.ts` - Batch processing utilities
 - `lib/campaigns/stale-call-cleanup.ts` - Stale call cleanup utilities
 - `lib/campaigns/cleanup-expired.ts` - Expired campaign cleanup
 - `lib/integrations/vapi/batch-calls.ts` - VAPI batch calls (fallback provider)
@@ -1125,17 +1176,31 @@ UI components:
 - `components/workspace/campaigns/campaign-wizard-optimized.tsx` - Performance-optimized wizard
 - `components/workspace/campaigns/campaign-wizard-dynamic.tsx` - Dynamic loading wrapper
 - `components/workspace/campaigns/wizard-draft-card.tsx` - Draft campaign display card
+- `components/workspace/campaigns/campaign-live-dashboard.tsx` - Live campaign monitoring dashboard
+- `components/workspace/campaigns/campaign-analytics.tsx` - Campaign analytics display
+- `components/workspace/campaigns/campaign-hero-stats.tsx` - Hero stats display
+- `components/workspace/campaigns/campaign-card-enhanced.tsx` - Enhanced campaign card with progress
+- `components/workspace/campaigns/campaign-progress-ring.tsx` - Visual progress indicator
+- `components/workspace/campaigns/campaign-activity-feed.tsx` - Activity feed component
+- `components/workspace/campaigns/webhook-status-alert.tsx` - Webhook URL mismatch alert
 - `components/workspace/campaigns/steps/` - Wizard step components
 
 Realtime:
 
 - `lib/hooks/use-realtime-campaign.ts` - Realtime campaign status updates
 - `lib/hooks/use-campaign-draft.ts` - Campaign draft management hook
+- `lib/hooks/use-campaign-polling.ts` - Polling-based campaign status (fallback)
+- `lib/hooks/use-campaign-progress.ts` - Campaign progress tracking
 
 Cron:
 
-- `app/api/cron/master/route.ts` runs `cleanupExpiredCampaigns()`
-  - **Vercel schedule**: `vercel.json` schedules `/api/cron/master` daily at `0 0 * * *`
+- `app/api/cron/master/route.ts` runs `cleanupExpiredCampaigns()` - **Vercel schedule**: daily at `0 0 * * *`
+- `app/api/cron/process-campaigns/route.ts` - **NEW**: Processes active campaign queues
+  - Should run every 1-5 minutes in production (NOT in `vercel.json` - use external cron service)
+  - Processes chunks across multiple campaigns
+  - Respects business hours and rate limits
+  - For Vercel Hobby plans, use external service like cron-job.org
+  - Requires `CRON_SECRET` or `VERCEL_CRON_SECRET` for authorization
 
 ---
 
@@ -1240,7 +1305,9 @@ High-signal variables (non-exhaustive):
 Living docs under `docs/` (useful for onboarding/testing):
 
 - `docs/CAMPAIGN_MODULE_REFERENCE.md` - Campaign module architecture and implementation
+- `docs/CAMPAIGN_MODULE_ARCHITECTURE.md` - Detailed campaign architecture documentation
 - `docs/CAMPAIGN_TESTING_GUIDE.md` - Campaign feature testing procedures
+- `docs/DEVELOPMENT_TESTING_GUIDE.md` - General development testing guide
 - `docs/campaign-test-data-500.csv` - Sample CSV data for campaign testing
 - `docs/inspra_outbound_api_docs.txt` - Inspra outbound API documentation
 
@@ -1271,6 +1338,9 @@ npm run db:pull      # Introspect DB and update schema
 - "Why isn't my agent syncing?" → `lib/integrations/{vapi|retell}/agent/sync.ts` + agent `sync_status` / `last_sync_error`
 - "Why isn't call search working?" → `app/api/w/[workspaceSlug]/calls/route.ts` + `lib/algolia/*`
 - "Why aren't integrations showing?" → `app/api/partner/integrations/*` + `app/api/w/[slug]/assigned-integrations/*`
+- "Why aren't webhooks reaching production?" → `GET /api/w/[slug]/agents/webhook-status` to check URLs, `POST /api/w/[slug]/agents/resync-webhooks` to fix
+- "Why is my campaign stuck?" → Check `campaign_queue` table status, use `POST .../campaigns/process-stuck` or check cron logs
+- "Why aren't campaign calls progressing?" → Check `call_recipients` statuses, verify business hours, check VAPI concurrency limits
 
 ---
 
@@ -1328,6 +1398,19 @@ npm run db:pull      # Introspect DB and update schema
 - VAPI webhook handler (`/api/webhooks/vapi`) forwards function-call events to user's configured URL
 - Backward compatible - existing agents continue working with default behavior
 
+### Webhook URL mismatch (common production issue)
+
+- **Problem**: Agents synced in development (with ngrok/localhost webhook URLs) won't receive webhooks in production
+- **Diagnosis**: Use `GET /api/w/[slug]/agents/webhook-status` to check all agents' webhook URLs
+- **Fix**: Use `POST /api/w/[slug]/agents/resync-webhooks` to force resync all agents with correct production URLs
+- **Prevention**: Ensure `NEXT_PUBLIC_APP_URL` is set correctly in all environments
+
+### Campaign queue table
+
+- The scalable campaign processing uses a `campaign_queue` Supabase table (not a Prisma model)
+- Table stores: campaign_id, workspace_id, status, progress counters, config, timestamps
+- Processed by the `/api/cron/process-campaigns` endpoint
+
 ---
 
 ## Notes / Non-goals of This Document
@@ -1337,4 +1420,4 @@ npm run db:pull      # Introspect DB and update schema
 
 ---
 
-_Last comprehensive update: January 15, 2026_
+_Last comprehensive update: January 16, 2026_
