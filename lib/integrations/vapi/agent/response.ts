@@ -8,6 +8,7 @@ import type { AIAgent } from "@/types/database.types"
 import type { VapiResponse } from "./config"
 import { mapFromVapi, type VapiAssistantResponse } from "./mapper"
 import { env } from "@/lib/env"
+import { attachPhoneNumberToAssistant } from "../phone-numbers"
 
 // ============================================================================
 // TYPES
@@ -119,6 +120,53 @@ export async function processVapiResponse(
 
     console.log(`[VapiResponse] Agent synced successfully. Webhook URL: ${webhookUrl}`)
 
+    // =========================================================================
+    // PHONE NUMBER BINDING FOR INBOUND CALLS
+    // After agent is synced to VAPI, bind the assigned phone number to the
+    // VAPI assistant so inbound calls route to this agent.
+    // =========================================================================
+    const typedAgent = updatedAgent as AIAgent
+    if (typedAgent.assigned_phone_number_id && mappedData.external_agent_id) {
+      console.log(`[VapiResponse] Agent has assigned_phone_number_id: ${typedAgent.assigned_phone_number_id}, binding to VAPI assistant...`)
+      
+      try {
+        // Fetch the phone number to get its VAPI external_id
+        const { data: phoneNumber, error: phoneError } = await supabase
+          .from("phone_numbers")
+          .select("id, external_id, phone_number")
+          .eq("id", typedAgent.assigned_phone_number_id)
+          .single()
+        
+        if (phoneError) {
+          console.error(`[VapiResponse] Failed to fetch phone number: ${phoneError.message}`)
+        } else if (!phoneNumber?.external_id) {
+          console.warn(`[VapiResponse] Phone number ${typedAgent.assigned_phone_number_id} has no external_id (not synced to VAPI)`)
+        } else {
+          // Get VAPI API key to make the binding call
+          const apiKey = await getVapiApiKeyForWorkspace(supabase, currentAgent?.workspace_id)
+          
+          if (apiKey) {
+            const bindResult = await attachPhoneNumberToAssistant({
+              apiKey,
+              phoneNumberId: phoneNumber.external_id,
+              assistantId: mappedData.external_agent_id,
+            })
+            
+            if (bindResult.success) {
+              console.log(`[VapiResponse] Successfully bound phone number ${phoneNumber.phone_number} to VAPI assistant ${mappedData.external_agent_id}`)
+            } else {
+              console.error(`[VapiResponse] Failed to bind phone number to VAPI assistant: ${bindResult.error}`)
+            }
+          } else {
+            console.warn(`[VapiResponse] No VAPI API key found for workspace, cannot bind phone number`)
+          }
+        }
+      } catch (bindError) {
+        console.error(`[VapiResponse] Error binding phone number to VAPI assistant:`, bindError)
+        // Don't fail the overall sync - phone binding is a secondary operation
+      }
+    }
+
     return {
       success: true,
       agent: updatedAgent as AIAgent,
@@ -128,6 +176,160 @@ export async function processVapiResponse(
       success: false,
       error: error instanceof Error ? error.message : "Unknown error processing VAPI response",
     }
+  }
+}
+
+// ============================================================================
+// HELPER: Get VAPI API key for workspace
+// ============================================================================
+
+async function getVapiApiKeyForWorkspace(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  workspaceId: string | undefined
+): Promise<string | null> {
+  if (!workspaceId) return null
+  
+  try {
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("workspace_integration_assignments")
+      .select(`
+        partner_integration:partner_integrations (
+          id,
+          api_keys,
+          is_active
+        )
+      `)
+      .eq("workspace_id", workspaceId)
+      .eq("provider", "vapi")
+      .single()
+    
+    if (assignmentError || !assignment?.partner_integration) {
+      return null
+    }
+    
+    const partnerIntegration = assignment.partner_integration as any
+    if (!partnerIntegration.is_active) {
+      return null
+    }
+    
+    const apiKeys = partnerIntegration.api_keys as any
+    return apiKeys?.default_secret_key || null
+  } catch (error) {
+    console.error("[VapiResponse] Error fetching VAPI API key:", error)
+    return null
+  }
+}
+
+// ============================================================================
+// BIND PHONE NUMBER TO VAPI ASSISTANT
+// Exported helper for binding phone numbers after agent sync or when phone
+// number assignment changes.
+// ============================================================================
+
+export async function bindPhoneNumberToVapiAssistant(params: {
+  agentId: string
+  phoneNumberId: string
+  externalAgentId: string
+  workspaceId: string
+}): Promise<{ success: boolean; error?: string }> {
+  const { agentId, phoneNumberId, externalAgentId, workspaceId } = params
+  
+  try {
+    const supabase = getSupabaseAdmin()
+    
+    // Fetch the phone number to get its VAPI external_id
+    const { data: phoneNumber, error: phoneError } = await supabase
+      .from("phone_numbers")
+      .select("id, external_id, phone_number")
+      .eq("id", phoneNumberId)
+      .single()
+    
+    if (phoneError) {
+      return { success: false, error: `Failed to fetch phone number: ${phoneError.message}` }
+    }
+    
+    if (!phoneNumber?.external_id) {
+      return { success: false, error: `Phone number ${phoneNumberId} has no external_id (not synced to VAPI)` }
+    }
+    
+    // Get VAPI API key
+    const apiKey = await getVapiApiKeyForWorkspace(supabase, workspaceId)
+    
+    if (!apiKey) {
+      return { success: false, error: "No VAPI API key found for workspace" }
+    }
+    
+    const bindResult = await attachPhoneNumberToAssistant({
+      apiKey,
+      phoneNumberId: phoneNumber.external_id,
+      assistantId: externalAgentId,
+    })
+    
+    if (bindResult.success) {
+      console.log(`[VapiResponse] Successfully bound phone number ${phoneNumber.phone_number} to VAPI assistant ${externalAgentId}`)
+      return { success: true }
+    } else {
+      return { success: false, error: bindResult.error }
+    }
+  } catch (error) {
+    console.error("[VapiResponse] Error binding phone number:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+  }
+}
+
+// ============================================================================
+// UNBIND PHONE NUMBER FROM VAPI ASSISTANT
+// Sets assistantId to null on the phone number in VAPI
+// ============================================================================
+
+export async function unbindPhoneNumberFromVapiAssistant(params: {
+  phoneNumberId: string
+  workspaceId: string
+}): Promise<{ success: boolean; error?: string }> {
+  const { phoneNumberId, workspaceId } = params
+  
+  try {
+    const supabase = getSupabaseAdmin()
+    
+    // Fetch the phone number to get its VAPI external_id
+    const { data: phoneNumber, error: phoneError } = await supabase
+      .from("phone_numbers")
+      .select("id, external_id, phone_number")
+      .eq("id", phoneNumberId)
+      .single()
+    
+    if (phoneError) {
+      return { success: false, error: `Failed to fetch phone number: ${phoneError.message}` }
+    }
+    
+    if (!phoneNumber?.external_id) {
+      // Phone number not synced to VAPI, nothing to unbind
+      return { success: true }
+    }
+    
+    // Get VAPI API key
+    const apiKey = await getVapiApiKeyForWorkspace(supabase, workspaceId)
+    
+    if (!apiKey) {
+      return { success: false, error: "No VAPI API key found for workspace" }
+    }
+    
+    // Unbind by setting assistantId to null
+    const unbindResult = await attachPhoneNumberToAssistant({
+      apiKey,
+      phoneNumberId: phoneNumber.external_id,
+      assistantId: null,
+    })
+    
+    if (unbindResult.success) {
+      console.log(`[VapiResponse] Successfully unbound phone number ${phoneNumber.phone_number} from VAPI assistant`)
+      return { success: true }
+    } else {
+      return { success: false, error: unbindResult.error }
+    }
+  } catch (error) {
+    console.error("[VapiResponse] Error unbinding phone number:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 

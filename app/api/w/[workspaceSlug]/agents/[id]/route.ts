@@ -11,6 +11,7 @@ import {
 import { updateWorkspaceAgentSchema } from "@/types/api.types"
 import { safeVapiSync, shouldSyncToVapi } from "@/lib/integrations/vapi/agent/sync"
 import { safeRetellSync, shouldSyncToRetell } from "@/lib/integrations/retell/agent/sync"
+import { bindPhoneNumberToVapiAssistant, unbindPhoneNumberFromVapiAssistant } from "@/lib/integrations/vapi/agent/response"
 import type { AIAgent } from "@/types/database.types"
 import { prisma } from "@/lib/prisma"
 
@@ -334,6 +335,48 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
               needs_resync: true,
             })
             .eq("id", id)
+        }
+      }
+    }
+
+    // =========================================================================
+    // PHONE NUMBER BINDING FOR INBOUND CALLS
+    // Handle phone number assignment changes for VAPI agents
+    // =========================================================================
+    const oldPhoneNumberId = existingAgent.assigned_phone_number_id
+    const newPhoneNumberId = validation.data.assigned_phone_number_id
+    const phoneNumberChanged = oldPhoneNumberId !== newPhoneNumberId
+    
+    if (
+      phoneNumberChanged &&
+      syncedAgent.provider === "vapi" &&
+      syncedAgent.external_agent_id
+    ) {
+      console.log(`[AgentUpdate] Phone number assignment changed: ${oldPhoneNumberId} -> ${newPhoneNumberId}`)
+      
+      // Unbind old phone number if there was one
+      if (oldPhoneNumberId) {
+        console.log(`[AgentUpdate] Unbinding old phone number: ${oldPhoneNumberId}`)
+        const unbindResult = await unbindPhoneNumberFromVapiAssistant({
+          phoneNumberId: oldPhoneNumberId,
+          workspaceId: ctx.workspace.id,
+        })
+        if (!unbindResult.success) {
+          console.error(`[AgentUpdate] Failed to unbind old phone number: ${unbindResult.error}`)
+        }
+      }
+      
+      // Bind new phone number if there is one
+      if (newPhoneNumberId) {
+        console.log(`[AgentUpdate] Binding new phone number: ${newPhoneNumberId}`)
+        const bindResult = await bindPhoneNumberToVapiAssistant({
+          agentId: syncedAgent.id,
+          phoneNumberId: newPhoneNumberId,
+          externalAgentId: syncedAgent.external_agent_id,
+          workspaceId: ctx.workspace.id,
+        })
+        if (!bindResult.success) {
+          console.error(`[AgentUpdate] Failed to bind new phone number: ${bindResult.error}`)
         }
       }
     }
