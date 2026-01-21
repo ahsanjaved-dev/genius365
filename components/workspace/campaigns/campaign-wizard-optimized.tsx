@@ -26,6 +26,7 @@ import {
   Loader2,
   FileText,
   Upload,
+  Variable,
   Clock,
   CheckCircle2,
 } from "lucide-react"
@@ -42,6 +43,7 @@ import { toast } from "sonner"
 // Step components
 import { StepDetails } from "./steps/step-details"
 import { StepImport } from "./steps/step-import"
+import { StepVariables } from "./steps/step-variables"
 import { StepSchedule } from "./steps/step-schedule"
 import { StepReview } from "./steps/step-review"
 
@@ -88,12 +90,18 @@ const WIZARD_STEPS: WizardStep[] = [
   },
   {
     id: 3,
+    title: "Variables",
+    description: "Review available variables",
+    icon: Variable,
+  },
+  {
+    id: 4,
     title: "Schedule",
     description: "Business hours & timing",
     icon: Clock,
   },
   {
-    id: 4,
+    id: 5,
     title: "Review & Launch",
     description: "Confirm settings",
     icon: CheckCircle2,
@@ -407,13 +415,20 @@ export function CampaignWizardOptimized({
             />
           )}
           {currentStep === 3 && (
+            <StepVariables
+              formData={formData}
+              updateFormData={handleUpdateFormData}
+              errors={errors}
+            />
+          )}
+          {currentStep === 4 && (
             <StepSchedule 
               formData={formData} 
               updateFormData={handleUpdateFormData} 
               errors={errors} 
             />
           )}
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <StepReview
               formData={formData}
               updateFormData={handleUpdateFormData}

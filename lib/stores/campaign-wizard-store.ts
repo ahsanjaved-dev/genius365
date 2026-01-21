@@ -35,7 +35,8 @@ export interface WizardFormData {
   csvColumnHeaders: string[]
   importedFileName: string | null
 
-  // Step 3: Schedule
+  // Step 3: Variables (uses workspace custom variables - no stored data)
+  // Step 4: Schedule
   scheduleType: "immediate" | "scheduled"
   scheduledStartAt: string | null
   scheduledExpiresAt: string | null
@@ -136,7 +137,7 @@ const DEFAULT_FORM_DATA: WizardFormData = {
 
 const DEFAULT_STATE: WizardState = {
   currentStep: 1,
-  totalSteps: 4,
+  totalSteps: 5, // Updated: Details, Import, Variables, Schedule, Review
   formData: DEFAULT_FORM_DATA,
   errors: {},
   draftId: null,
@@ -392,6 +393,7 @@ export const useCampaignWizardStore = create<CampaignWizardStore>()(
         const { formData, errors: currentErrors } = get()
         const newErrors: Record<string, string> = {}
 
+        // Step 1: Campaign Details
         if (step === 1) {
           if (!formData.name || !formData.name.trim()) {
             newErrors.name = "Campaign name is required"
@@ -401,7 +403,11 @@ export const useCampaignWizardStore = create<CampaignWizardStore>()(
           }
         }
 
-        if (step === 3) {
+        // Step 2: Import Recipients - no required validation (can proceed without recipients)
+        // Step 3: Variables - no required validation (informational step)
+
+        // Step 4: Schedule
+        if (step === 4) {
           if (formData.scheduleType === "scheduled" && !formData.scheduledStartAt) {
             newErrors.scheduledStartAt = "Please select a start date/time"
           }
@@ -423,7 +429,7 @@ export const useCampaignWizardStore = create<CampaignWizardStore>()(
         const { formData } = get()
         const allErrors: Record<string, string> = {}
 
-        // Step 1 validation
+        // Step 1: Campaign Details validation
         if (!formData.name || !formData.name.trim()) {
           allErrors.name = "Campaign name is required"
         }
@@ -431,7 +437,10 @@ export const useCampaignWizardStore = create<CampaignWizardStore>()(
           allErrors.agent_id = "Please select an AI agent"
         }
 
-        // Step 3 validation
+        // Step 2: Import Recipients - no required validation
+        // Step 3: Variables - no required validation
+
+        // Step 4: Schedule validation
         if (formData.scheduleType === "scheduled" && !formData.scheduledStartAt) {
           allErrors.scheduledStartAt = "Please select a start date/time"
         }
