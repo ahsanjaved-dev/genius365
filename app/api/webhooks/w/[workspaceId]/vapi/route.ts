@@ -894,11 +894,8 @@ async function handleEndOfCallReport(
       `[VAPI Webhook] Indexing UPDATED conversation to Algolia: ${conversationData.id}, workspace: ${actualConversationWorkspaceId}, cost: ${finalConversation.total_cost}`
     )
     try {
-      // Cast finalConversation to Conversation type (already in correct format from Supabase)
-      const mappedConversation = finalConversation as unknown as Conversation
-
       const indexResult = await indexCallLogToAlgolia({
-        conversation: mappedConversation,
+        conversation: finalConversation,
         workspaceId: actualConversationWorkspaceId, // Use conversation's actual workspace
         partnerId: actualConversationPartnerId,
         agentName: agentData.name || "Unknown Agent",
