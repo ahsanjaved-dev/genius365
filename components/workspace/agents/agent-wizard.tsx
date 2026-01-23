@@ -60,9 +60,12 @@ import type {
   AgentDirection,
   WorkspaceSettings,
   CustomVariableDefinition,
+  AgentCustomVariableDefinition,
 } from "@/types/database.types"
 import { STANDARD_CAMPAIGN_VARIABLES } from "@/types/database.types"
 import { FunctionToolEditor } from "./function-tool-editor"
+import { SystemPromptEditor } from "./system-prompt-editor"
+import { AgentCustomVariablesSection } from "./agent-custom-variables-section"
 import { useActiveKnowledgeDocuments } from "@/lib/hooks/use-workspace-knowledge-base"
 import { useAvailablePhoneNumbers } from "@/lib/hooks/use-workspace-agents"
 import { useWorkspaceSettings, useWorkspaceCustomVariables } from "@/lib/hooks/use-workspace-settings"
@@ -116,6 +119,8 @@ interface WizardFormData {
   greeting: string
   style: "formal" | "friendly" | "casual"
   tools: FunctionTool[]
+  // Agent-level custom variables
+  agentCustomVariables: AgentCustomVariableDefinition[]
 }
 
 // Knowledge document type icons
@@ -237,6 +242,7 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
     greeting: "Hello! Thank you for calling. How can I help you today?",
     style: "friendly",
     tools: [],
+    agentCustomVariables: [],
   })
 
   // Fetch Retell voices dynamically
@@ -445,7 +451,9 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
       if (!formData.systemPrompt.trim()) {
         newErrors.systemPrompt = "System prompt is required"
       }
-      if (!formData.greeting.trim()) {
+      // Initial greeting is only required for INBOUND agents
+      // For OUTBOUND agents, the agent waits for the recipient to speak first
+      if (formData.agentDirection !== "outbound" && !formData.greeting.trim()) {
         newErrors.greeting = "Initial greeting is required"
       }
     }
@@ -529,7 +537,8 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
       assigned_phone_number_id: formData.enablePhoneNumber ? formData.phoneNumberId : undefined,
       config: {
         system_prompt: formData.systemPrompt,
-        first_message: formData.greeting,
+        // For OUTBOUND agents, don't send first_message so the agent waits for recipient to speak first
+        first_message: formData.agentDirection === "outbound" ? undefined : formData.greeting,
         voice_id: formData.voice,
         voice_settings: {
           speed: formData.voiceSpeed,
@@ -543,6 +552,10 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               document_ids: formData.knowledgeDocumentIds,
               injection_mode: "system_prompt",
             }
+          : undefined,
+        // Include agent-level custom variables
+        custom_variables: formData.agentCustomVariables.length > 0 
+          ? formData.agentCustomVariables 
           : undefined,
       },
       agent_secret_api_key: [],
@@ -1502,104 +1515,58 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
               <CardDescription>Define how your agent should behave and respond</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* System Prompt */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
+              {/* System Prompt with Fullscreen & Autocomplete */}
+              <SystemPromptEditor
+                value={formData.systemPrompt}
+                onChange={(value) => updateFormData("systemPrompt", value)}
+                placeholder="You are a helpful customer support agent for [Company Name]..."
+                error={errors.systemPrompt}
+                required
+                customVariables={workspaceCustomVariables}
+                agentCustomVariables={formData.agentCustomVariables}
+                showTemplates
+                onApplyTemplate={applyTemplate}
+              />
+
+              {/* Initial Greeting - Only show for INBOUND agents */}
+              {/* For OUTBOUND agents, the agent waits for the recipient to speak first */}
+              {formData.agentDirection !== "outbound" && (
+                <div className="space-y-2">
                   <Label>
-                    System Prompt <span className="text-destructive">*</span>
+                    Initial Greeting <span className="text-destructive">*</span>
                   </Label>
-                  <span className="text-xs text-muted-foreground">
-                    {formData.systemPrompt.length} characters
-                  </span>
+                  <textarea
+                    value={formData.greeting}
+                    onChange={(e) => updateFormData("greeting", e.target.value)}
+                    placeholder="Hello! Thank you for calling. How can I help you today?"
+                    className={cn(
+                      "w-full min-h-[60px] px-3 py-2 text-sm rounded-md border bg-background resize-y",
+                      errors.greeting ? "border-destructive" : "border-input"
+                    )}
+                    rows={2}
+                  />
+                  {errors.greeting && <p className="text-sm text-destructive">{errors.greeting}</p>}
                 </div>
-                <textarea
-                  value={formData.systemPrompt}
-                  onChange={(e) => updateFormData("systemPrompt", e.target.value)}
-                  placeholder="You are a helpful customer support agent for [Company Name]..."
-                  className={cn(
-                    "w-full min-h-[320px] px-3 py-2 text-sm rounded-md border bg-background resize-y font-mono",
-                    errors.systemPrompt ? "border-destructive" : "border-input"
-                  )}
-                />
-                {errors.systemPrompt && (
-                  <p className="text-sm text-destructive">{errors.systemPrompt}</p>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyTemplate("support")}
-                  >
-                    Support Template
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyTemplate("sales")}
-                  >
-                    Sales Template
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyTemplate("booking")}
-                  >
-                    Booking Template
-                  </Button>
-                </div>
-              </div>
+              )}
 
-              {/* Initial Greeting */}
-              <div className="space-y-2">
-                <Label>
-                  Initial Greeting <span className="text-destructive">*</span>
-                </Label>
-                <textarea
-                  value={formData.greeting}
-                  onChange={(e) => updateFormData("greeting", e.target.value)}
-                  placeholder="Hello! Thank you for calling. How can I help you today?"
-                  className={cn(
-                    "w-full min-h-[60px] px-3 py-2 text-sm rounded-md border bg-background resize-y",
-                    errors.greeting ? "border-destructive" : "border-input"
-                  )}
-                  rows={2}
-                />
-                {errors.greeting && <p className="text-sm text-destructive">{errors.greeting}</p>}
-              </div>
-
-              {/* Conversation Style */}
-              <div className="space-y-3">
-                <Label>Conversation Style</Label>
-                <div className="grid grid-cols-3 gap-4">
-                  {[
-                    { value: "formal", label: "Formal", icon: Briefcase },
-                    { value: "friendly", label: "Friendly", icon: Smile },
-                    { value: "casual", label: "Casual", icon: Coffee },
-                  ].map((style) => {
-                    const Icon = style.icon
-                    return (
-                      <div
-                        key={style.value}
-                        onClick={() =>
-                          updateFormData("style", style.value as WizardFormData["style"])
-                        }
-                        className={cn(
-                          "p-3 rounded-lg border cursor-pointer transition-all text-center",
-                          formData.style === style.value
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        <Icon className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
-                        <span className="text-sm font-medium">{style.label}</span>
-                      </div>
-                    )
-                  })}
+              {/* Outbound Agent Info Banner */}
+              {formData.agentDirection === "outbound" && (
+                <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                        Outbound Agent Behavior
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        For outbound calls, the agent will wait for the recipient to speak first 
+                        (e.g., "Hello?") before responding according to the system prompt instructions.
+                        No initial greeting is needed.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1760,14 +1727,60 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   <div className="pt-3 border-t">
                     <div className="text-center p-4 rounded-lg bg-muted/50">
                       <Variable className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">No custom variables defined</p>
+                      <p className="text-sm text-muted-foreground">No workspace custom variables defined</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         Add custom variables in Workspace Settings → Custom Variables
                       </p>
                     </div>
                   </div>
                 )}
+
+                {/* Agent-Specific Variables */}
+                {formData.agentCustomVariables.length > 0 && (
+                  <div className="pt-3 border-t">
+                    <Label className="text-xs text-muted-foreground mb-2 block">Agent-Specific Variables</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.agentCustomVariables.map((variable) => (
+                        <Button
+                          key={variable.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="font-mono text-xs border-amber-500/50 text-amber-600 dark:text-amber-400"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`{{${variable.name}}}`)
+                            toast.success(`Copied {{${variable.name}}} to clipboard`)
+                          }}
+                          title={variable.description}
+                        >
+                          {`{{${variable.name}}}`}
+                          <Copy className="h-3 w-3 ml-1 text-muted-foreground" />
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Agent Custom Variables Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Variable className="w-5 h-5" />
+                Agent-Specific Variables
+              </CardTitle>
+              <CardDescription>
+                Define custom variables unique to this agent. These are separate from workspace-level variables.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AgentCustomVariablesSection
+                variables={formData.agentCustomVariables}
+                onChange={(variables) => updateFormData("agentCustomVariables", variables)}
+                compact
+              />
             </CardContent>
           </Card>
 
@@ -1836,9 +1849,17 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Variables</p>
+                  <p className="text-muted-foreground">Workspace Variables</p>
                   <p className="font-medium">
                     {allAvailableVariables.length} available
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Agent Variables</p>
+                  <p className="font-medium">
+                    {formData.agentCustomVariables.length === 0
+                      ? "None defined"
+                      : `${formData.agentCustomVariables.length} defined`}
                   </p>
                 </div>
               </div>
