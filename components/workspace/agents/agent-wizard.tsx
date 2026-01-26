@@ -270,8 +270,10 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
   } = useActiveKnowledgeDocuments()
 
   // Fetch available phone numbers for assignment
+  // Filter by provider to only show numbers synced to the selected provider
+  // VAPI agents can only use VAPI-synced numbers, Retell agents can only use Retell-synced numbers
   const { data: availablePhoneNumbers, isLoading: isLoadingPhoneNumbers } =
-    useAvailablePhoneNumbers()
+    useAvailablePhoneNumbers({ provider: formData.provider })
 
   // Fetch workspace custom variables
   const { customVariables: workspaceCustomVariables } = useWorkspaceCustomVariables()
@@ -1492,6 +1494,16 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                                           {number.country_code}
                                         </Badge>
                                       )}
+                                      <Badge 
+                                        variant="secondary" 
+                                        className={cn(
+                                          "text-xs uppercase",
+                                          number.provider === "vapi" && "bg-blue-500/10 text-blue-600",
+                                          number.provider === "retell" && "bg-purple-500/10 text-purple-600"
+                                        )}
+                                      >
+                                        {number.provider}
+                                      </Badge>
                                     </div>
                                     {number.friendly_name && (
                                       <p className="text-xs text-muted-foreground truncate">
@@ -1509,16 +1521,21 @@ export function AgentWizard({ onSubmit, isSubmitting, onCancel }: AgentWizardPro
                         </div>
                       </ScrollArea>
                       <p className="text-xs text-muted-foreground">
-                        {availablePhoneNumbers.length} number
+                        {availablePhoneNumbers.length} {formData.provider.toUpperCase()} number
                         {availablePhoneNumbers.length !== 1 ? "s" : ""} available
                       </p>
                     </>
                   ) : (
                     <div className="text-center p-4 rounded-lg bg-muted/50">
                       <Phone className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">No phone numbers available</p>
+                      <p className="text-sm text-muted-foreground">
+                        No {formData.provider.toUpperCase()} phone numbers available
+                      </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Add phone numbers in Organization → Telephony
+                        {formData.provider === "retell" 
+                          ? "Sync phone numbers to Retell in Organization → Telephony, or use a Retell-purchased number"
+                          : "Sync phone numbers to VAPI in Organization → Telephony"
+                        }
                       </p>
                     </div>
                   )}

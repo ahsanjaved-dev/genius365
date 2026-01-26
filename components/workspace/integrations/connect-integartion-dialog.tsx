@@ -53,12 +53,18 @@ const vapiConfigSchema = z.object({
   shared_outbound_phone_number: z.string().optional(),
 })
 
+// Retell-specific config schema for phone number settings
+const retellConfigSchema = z.object({
+  shared_outbound_phone_number: z.string().optional(),
+})
+
 const formSchema = z.object({
   name: z.string().min(1, "Connection name is required").max(255),
   default_secret_key: z.string().min(1, "Default secret API key is required"),
   default_public_key: z.string().optional(),
   additional_keys: z.array(additionalKeySchema).optional().default([]),
   vapi_config: vapiConfigSchema.optional(),
+  retell_config: retellConfigSchema.optional(),
 })
 
 // Schema for manage mode (keys are optional since we're not showing them)
@@ -66,6 +72,7 @@ const manageFormSchema = z.object({
   name: z.string().min(1, "Connection name is required").max(255),
   additional_keys: z.array(additionalKeySchema).optional().default([]),
   vapi_config: vapiConfigSchema.optional(),
+  retell_config: retellConfigSchema.optional(),
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -149,6 +156,9 @@ export function ConnectIntegrationDialog({
         shared_outbound_phone_number_id: "",
         shared_outbound_phone_number: "",
       },
+      retell_config: {
+        shared_outbound_phone_number: "",
+      },
     },
   })
 
@@ -170,12 +180,17 @@ export function ConnectIntegrationDialog({
         shared_outbound_phone_number_id: typeof rawConfig?.shared_outbound_phone_number_id === "string" ? rawConfig.shared_outbound_phone_number_id : "",
         shared_outbound_phone_number: typeof rawConfig?.shared_outbound_phone_number === "string" ? rawConfig.shared_outbound_phone_number : "",
       }
+      // Extract Retell config from integration details
+      const retellConfig = {
+        shared_outbound_phone_number: typeof rawConfig?.shared_outbound_phone_number === "string" ? rawConfig.shared_outbound_phone_number : "",
+      }
       reset({
         name: integrationDetails.name,
         default_secret_key: "",
         default_public_key: "",
         additional_keys: [],
         vapi_config: vapiConfig,
+        retell_config: retellConfig,
       })
     } else if (open && !isManageMode) {
       reset({
@@ -186,6 +201,9 @@ export function ConnectIntegrationDialog({
         vapi_config: {
           sip_trunk_credential_id: "",
           shared_outbound_phone_number_id: "",
+          shared_outbound_phone_number: "",
+        },
+        retell_config: {
           shared_outbound_phone_number: "",
         },
       })
@@ -253,15 +271,28 @@ export function ConnectIntegrationDialog({
           data.vapi_config?.shared_outbound_phone_number !== currentOutboundPhoneNumber
         )
 
-        if (hasKeyChanges || hasVapiConfigChanges) {
+        // Check if Retell config has changed
+        const currentRetellOutboundNumber = typeof currentConfig?.shared_outbound_phone_number === "string" ? currentConfig.shared_outbound_phone_number : ""
+        const hasRetellConfigChanges = integration.id === "retell" && (
+          data.retell_config?.shared_outbound_phone_number !== currentRetellOutboundNumber
+        )
+
+        if (hasKeyChanges || hasVapiConfigChanges || hasRetellConfigChanges) {
           const existingKeys = integrationDetails?.additional_keys || []
 
-          // Build config object for Vapi
-          const config = integration.id === "vapi" && data.vapi_config ? {
-            sip_trunk_credential_id: data.vapi_config.sip_trunk_credential_id || undefined,
-            shared_outbound_phone_number_id: data.vapi_config.shared_outbound_phone_number_id || undefined,
-            shared_outbound_phone_number: data.vapi_config.shared_outbound_phone_number || undefined,
-          } : undefined
+          // Build config object for Vapi or Retell
+          let config: Record<string, unknown> | undefined
+          if (integration.id === "vapi" && data.vapi_config) {
+            config = {
+              sip_trunk_credential_id: data.vapi_config.sip_trunk_credential_id || undefined,
+              shared_outbound_phone_number_id: data.vapi_config.shared_outbound_phone_number_id || undefined,
+              shared_outbound_phone_number: data.vapi_config.shared_outbound_phone_number || undefined,
+            }
+          } else if (integration.id === "retell" && data.retell_config) {
+            config = {
+              shared_outbound_phone_number: data.retell_config.shared_outbound_phone_number || undefined,
+            }
+          }
 
           await updateIntegration.mutateAsync({
             name: data.name,
@@ -281,12 +312,19 @@ export function ConnectIntegrationDialog({
           toast.info("No changes to save")
         }
       } else {
-        // Create mode - build config for Vapi
-        const config = integration.id === "vapi" && data.vapi_config ? {
-          sip_trunk_credential_id: data.vapi_config.sip_trunk_credential_id || undefined,
-          shared_outbound_phone_number_id: data.vapi_config.shared_outbound_phone_number_id || undefined,
-          shared_outbound_phone_number: data.vapi_config.shared_outbound_phone_number || undefined,
-        } : undefined
+        // Create mode - build config for Vapi or Retell
+        let config: Record<string, unknown> | undefined
+        if (integration.id === "vapi" && data.vapi_config) {
+          config = {
+            sip_trunk_credential_id: data.vapi_config.sip_trunk_credential_id || undefined,
+            shared_outbound_phone_number_id: data.vapi_config.shared_outbound_phone_number_id || undefined,
+            shared_outbound_phone_number: data.vapi_config.shared_outbound_phone_number || undefined,
+          }
+        } else if (integration.id === "retell" && data.retell_config) {
+          config = {
+            shared_outbound_phone_number: data.retell_config.shared_outbound_phone_number || undefined,
+          }
+        }
 
         await createIntegration.mutateAsync({
           provider: integration.id as any,
@@ -521,6 +559,37 @@ export function ConnectIntegrationDialog({
                       />
                       <p className="text-xs text-muted-foreground">
                         The E.164 formatted number shown in the UI (e.g., +15551234567).
+                      </p>
+                    </div>
+
+                    <Separator />
+                  </div>
+                )}
+
+                {/* Retell-specific settings */}
+                {integration?.id === "retell" && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-medium flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      Shared Outbound Number
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      All agents in this workspace will use this number for outbound calls (caller ID).
+                      This must be a phone number registered in your Retell account.
+                    </p>
+
+                    {/* Shared Outbound Phone Number */}
+                    <div className="space-y-2">
+                      <Label htmlFor="retell_shared_outbound_phone_number">Phone Number</Label>
+                      <Input
+                        id="retell_shared_outbound_phone_number"
+                        placeholder="+15551234567"
+                        {...register("retell_config.shared_outbound_phone_number")}
+                        disabled={isPending}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Enter your Retell phone number in E.164 format (e.g., +15551234567).
+                        You can find this in your Retell dashboard under Phone Numbers.
                       </p>
                     </div>
 

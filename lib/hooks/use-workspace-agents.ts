@@ -280,14 +280,27 @@ export interface AvailablePhoneNumber {
   display_name: string
 }
 
-export function useAvailablePhoneNumbers() {
+interface UseAvailablePhoneNumbersOptions {
+  /** Filter phone numbers by provider (vapi, retell, sip) */
+  provider?: string
+}
+
+export function useAvailablePhoneNumbers(options: UseAvailablePhoneNumbersOptions = {}) {
   const params = useParams()
   const workspaceSlug = params.workspaceSlug as string
+  const { provider } = options
 
   return useQuery<AvailablePhoneNumber[]>({
-    queryKey: ["available-phone-numbers", workspaceSlug],
+    queryKey: ["available-phone-numbers", workspaceSlug, provider],
     queryFn: async () => {
-      const res = await fetch(`/api/w/${workspaceSlug}/phone-numbers/available`)
+      const searchParams = new URLSearchParams()
+      if (provider) {
+        searchParams.set("provider", provider)
+      }
+      const queryString = searchParams.toString()
+      const url = `/api/w/${workspaceSlug}/phone-numbers/available${queryString ? `?${queryString}` : ""}`
+      
+      const res = await fetch(url)
       if (!res.ok) {
         const error = await res.json()
         throw new Error(error.error || "Failed to fetch available phone numbers")

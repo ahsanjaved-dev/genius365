@@ -3,7 +3,7 @@ import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-
 import { apiResponse, apiError, unauthorized, serverError, notFound } from "@/lib/api/helpers"
 import {
   startNextCalls,
-  getVapiConfigForCampaign,
+  getProviderConfigForCampaign,
   getActiveCampaignCallCount,
   calculateAvailableSlots,
   MAX_CONCURRENT_CALLS_PER_CAMPAIGN,
@@ -58,10 +58,10 @@ export async function POST(
       return apiError(`Campaign is not active (status: ${campaign.status})`)
     }
 
-    // Get VAPI config
-    const vapiConfig = await getVapiConfigForCampaign(id)
-    if (!vapiConfig) {
-      return apiError("VAPI integration not configured properly")
+    // Get provider config (VAPI or Retell based on agent provider)
+    const providerConfig = await getProviderConfigForCampaign(id)
+    if (!providerConfig) {
+      return apiError("Provider integration not configured properly")
     }
 
     // Get current state
@@ -78,7 +78,7 @@ export async function POST(
       .eq("call_status", "pending")
 
     // Start next batch of calls
-    const result = await startNextCalls(id, ctx.workspace.id, vapiConfig)
+    const result = await startNextCalls(id, ctx.workspace.id, providerConfig)
 
     return apiResponse({
       success: true,

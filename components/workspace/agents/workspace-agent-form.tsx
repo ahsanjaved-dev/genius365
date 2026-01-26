@@ -141,13 +141,6 @@ export function WorkspaceAgentForm({
     accent: "all",
   })
 
-  // Fetch available phone numbers for assignment (only for outbound agents)
-  const {
-    data: availablePhoneNumbers,
-    isLoading: isLoadingAvailableNumbers,
-    error: phoneNumbersError,
-  } = useAvailablePhoneNumbers()
-
   // useForm must be defined before watch() is called
   const {
     register,
@@ -176,6 +169,14 @@ export function WorkspaceAgentForm({
   })
 
   const selectedProvider = watch("provider")
+
+  // Fetch available phone numbers for assignment (only for outbound agents)
+  // Filter by provider to only show numbers synced to the selected provider
+  const {
+    data: availablePhoneNumbers,
+    isLoading: isLoadingAvailableNumbers,
+    error: phoneNumbersError,
+  } = useAvailablePhoneNumbers({ provider: selectedProvider })
 
   // Fetch the assigned integration for the selected provider (from org-level)
   const { data: assignedIntegration, isLoading: assignedIntegrationLoading } =
@@ -652,8 +653,8 @@ export function WorkspaceAgentForm({
                 </Label>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Select a phone number to use as caller ID for outbound calls. The number must be
-                synced to your voice provider.
+                Select a phone number to use as caller ID for outbound calls. Only numbers synced to{" "}
+                <span className="font-medium">{selectedProvider?.toUpperCase()}</span> are shown.
               </p>
               {isLoadingAvailableNumbers ? (
                 <Skeleton className="h-10 w-full" />
@@ -687,21 +688,16 @@ export function WorkspaceAgentForm({
                             <span className="font-mono">
                               {number.friendly_name || number.phone_number}
                             </span>
-                            {number.is_assigned_to_this_workspace ? (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              >
-                                Synced
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                              >
-                                Not Synced
-                              </Badge>
-                            )}
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "text-xs uppercase",
+                                number.provider === "vapi" && "bg-blue-500/10 text-blue-600",
+                                number.provider === "retell" && "bg-purple-500/10 text-purple-600"
+                              )}
+                            >
+                              {number.provider}
+                            </Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -717,9 +713,14 @@ export function WorkspaceAgentForm({
               ) : (
                 <div className="text-center p-4 rounded-lg bg-muted/50">
                   <Phone className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No phone numbers available</p>
+                  <p className="text-sm text-muted-foreground">
+                    No {selectedProvider?.toUpperCase()} phone numbers available
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Add phone numbers in Organization → Telephony
+                    {selectedProvider === "retell"
+                      ? "Sync phone numbers to Retell in Organization → Telephony"
+                      : "Sync phone numbers to VAPI in Organization → Telephony"
+                    }
                   </p>
                 </div>
               )}

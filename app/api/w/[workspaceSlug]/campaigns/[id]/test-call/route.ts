@@ -198,9 +198,14 @@ export async function POST(
       return apiError("Agent has not been synced with the voice provider")
     }
 
-    // Get CLI (caller ID) from agent's phone number
+    // =========================================================================
+    // GET CLI (CALLER ID) - Check multiple sources
+    // Priority: 1) Agent's external_phone_number, 2) Agent's assigned phone number,
+    //           3) Provider's shared outbound phone number from integration config
+    // =========================================================================
     let cli = agent.external_phone_number
     
+    // Check agent's assigned phone number
     if (!cli && agent.assigned_phone_number_id) {
       const { data: phoneNumber } = await ctx.adminClient
         .from("phone_numbers")
@@ -213,8 +218,67 @@ export async function POST(
       }
     }
     
+    // Check for shared outbound phone number from integration config
     if (!cli) {
-      return apiError("Agent does not have a phone number assigned")
+      // Determine agent provider (default to vapi if not specified)
+      const agentProvider = (campaign.agent as any)?.provider || "vapi"
+      
+      // Get workspace's partner_id
+      const { data: workspace } = await ctx.adminClient
+        .from("workspaces")
+        .select("partner_id")
+        .eq("id", ctx.workspace.id)
+        .single()
+      
+      if (workspace?.partner_id) {
+        // First try workspace assignment
+        const { data: assignment } = await ctx.adminClient
+          .from("workspace_integration_assignments")
+          .select(`
+            partner_integration:partner_integrations (
+              config,
+              is_active
+            )
+          `)
+          .eq("workspace_id", ctx.workspace.id)
+          .eq("provider", agentProvider)
+          .single()
+        
+        let integrationConfig = null
+        
+        if (assignment?.partner_integration) {
+          const partnerIntegration = assignment.partner_integration as any
+          if (partnerIntegration.is_active) {
+            integrationConfig = partnerIntegration.config
+          }
+        }
+        
+        // Fallback to default partner integration
+        if (!integrationConfig) {
+          const { data: defaultIntegration } = await ctx.adminClient
+            .from("partner_integrations")
+            .select("config, is_active")
+            .eq("partner_id", workspace.partner_id)
+            .eq("provider", agentProvider)
+            .eq("is_default", true)
+            .eq("is_active", true)
+            .single()
+          
+          if (defaultIntegration?.is_active) {
+            integrationConfig = defaultIntegration.config
+          }
+        }
+        
+        // Use shared outbound phone number from integration config
+        if (integrationConfig?.shared_outbound_phone_number) {
+          cli = integrationConfig.shared_outbound_phone_number
+          console.log(`[CampaignTestCall] Using shared outbound phone number from ${agentProvider} integration:`, cli)
+        }
+      }
+    }
+    
+    if (!cli) {
+      return apiError("No phone number available. Set up a shared outbound number in integration settings, or assign a phone number to the agent.")
     }
 
     // =========================================================================

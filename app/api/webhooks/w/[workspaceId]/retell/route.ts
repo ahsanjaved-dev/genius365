@@ -346,6 +346,14 @@ async function handleCallEnded(
   } else {
     console.error(`[Retell Webhook] ❌ Billing failed: ${billingResult.error || billingResult.reason}`)
   }
+
+  // Check if this is a campaign call and trigger next batch
+  // Pass call outcome data for proper success/failure tracking
+  await handleCampaignCallEnded(call.call_id, workspaceId, {
+    callStatus: call.call_status,
+    disconnectionReason: call.disconnection_reason,
+    durationSeconds: durationSeconds,
+  })
 }
 
 async function handleCallAnalyzed(payload: RetellCallEvent, workspaceId: string) {
@@ -455,6 +463,237 @@ async function handleFunctionCall(
       function: functionName,
       error: error instanceof Error ? error.message : "Unknown error",
     }
+  }
+}
+
+// =============================================================================
+// CAMPAIGN CONTINUATION
+// =============================================================================
+
+/**
+ * Determine if a Retell call was successful based on call status and disconnection reason
+ */
+function isRetellCallSuccessful(callStatus: string, disconnectionReason?: string): boolean {
+  // Call is successful if it ended normally and was connected
+  if (callStatus === "ended") {
+    // These disconnection reasons indicate a successful, connected call
+    const successfulReasons = [
+      "agent_hangup",
+      "user_hangup", 
+      "end_call_function_called",
+      "voicemail_reached",
+      "max_duration_reached",
+    ]
+    return !disconnectionReason || successfulReasons.includes(disconnectionReason)
+  }
+  
+  // "not_connected" means the call never connected (failure)
+  // "error" means something went wrong (failure)
+  return false
+}
+
+/**
+ * Map Retell call outcome to a string similar to VAPI's outcome format
+ */
+function getRetellCallOutcome(callStatus: string, disconnectionReason?: string): string {
+  if (callStatus === "not_connected") {
+    // Map disconnection reasons to outcomes
+    if (disconnectionReason === "invalid_destination") return "invalid_number"
+    if (disconnectionReason === "dial_no_answer") return "no_answer"
+    if (disconnectionReason === "dial_busy") return "busy"
+    if (disconnectionReason === "dial_rejected") return "rejected"
+    return "not_connected"
+  }
+  
+  if (callStatus === "ended") {
+    if (disconnectionReason === "user_hangup" || disconnectionReason === "agent_hangup") {
+      return "answered"
+    }
+    if (disconnectionReason === "voicemail_reached") return "voicemail"
+    return "answered" // Default for ended calls
+  }
+  
+  if (callStatus === "error") {
+    return "error"
+  }
+  
+  return disconnectionReason || "unknown"
+}
+
+interface CampaignCallOutcome {
+  callStatus: string
+  disconnectionReason?: string
+  durationSeconds: number
+}
+
+/**
+ * Handle campaign call continuation when a Retell call ends
+ * Triggers the next batch of calls if this was a campaign call
+ * Uses Supabase client (not Prisma) since call_recipients/call_campaigns aren't in Prisma schema
+ */
+async function handleCampaignCallEnded(
+  callId: string, 
+  workspaceId: string,
+  outcome: CampaignCallOutcome
+) {
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/admin")
+    const supabase = createAdminClient()
+
+    // Find the campaign recipient by external_call_id
+    const { data: recipient, error: findError } = await supabase
+      .from("call_recipients")
+      .select("id, campaign_id")
+      .eq("external_call_id", callId)
+      .single()
+
+    if (findError || !recipient) {
+      // Not a campaign call - this is normal for non-campaign calls
+      if (findError?.code !== "PGRST116") {
+        // PGRST116 = no rows returned
+        console.log(`[Retell Webhook] No campaign recipient found for call ${callId}`)
+      }
+      return
+    }
+
+    // Determine success/failure based on Retell call outcome
+    const isSuccessful = isRetellCallSuccessful(outcome.callStatus, outcome.disconnectionReason)
+    const callOutcome = getRetellCallOutcome(outcome.callStatus, outcome.disconnectionReason)
+    const finalStatus = isSuccessful ? "completed" : "failed"
+
+    console.log(`[Retell Webhook] Campaign call ended: ${callId}, campaign: ${recipient.campaign_id}, outcome: ${callOutcome}, successful: ${isSuccessful}`)
+
+    // Get campaign info
+    const { data: campaign, error: campaignError } = await supabase
+      .from("call_campaigns")
+      .select("id, status, completed_calls, successful_calls, failed_calls, pending_calls")
+      .eq("id", recipient.campaign_id)
+      .single()
+
+    if (campaignError || !campaign) {
+      console.error(`[Retell Webhook] Campaign not found: ${recipient.campaign_id}`)
+      return
+    }
+
+    // Update recipient status with outcome - this triggers Supabase Realtime!
+    const { error: updateError } = await supabase
+      .from("call_recipients")
+      .update({
+        call_status: finalStatus,
+        call_outcome: callOutcome,
+        call_ended_at: new Date().toISOString(),
+        call_duration_seconds: outcome.durationSeconds,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", recipient.id)
+
+    if (updateError) {
+      console.error("[Retell Webhook] Error updating recipient:", updateError)
+    }
+
+    console.log(`[Retell Webhook] Campaign recipient ${recipient.id} updated: status=${finalStatus}, outcome=${callOutcome}`)
+
+    // Calculate new campaign stats
+    const newCompletedCalls = (campaign.completed_calls || 0) + 1
+    const newSuccessfulCalls = isSuccessful
+      ? (campaign.successful_calls || 0) + 1
+      : campaign.successful_calls || 0
+    const newFailedCalls = !isSuccessful
+      ? (campaign.failed_calls || 0) + 1
+      : campaign.failed_calls || 0
+
+    // Update campaign stats
+    const { error: statsError } = await supabase
+      .from("call_campaigns")
+      .update({
+        completed_calls: newCompletedCalls,
+        successful_calls: newSuccessfulCalls,
+        failed_calls: newFailedCalls,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", recipient.campaign_id)
+
+    if (statsError) {
+      console.error("[Retell Webhook] Error updating campaign stats:", statsError)
+    } else {
+      console.log(`[Retell Webhook] Campaign stats updated: completed=${newCompletedCalls}, successful=${newSuccessfulCalls}, failed=${newFailedCalls}`)
+    }
+
+    // Check if campaign is still active
+    if (campaign.status !== "active") {
+      console.log(`[Retell Webhook] Campaign ${recipient.campaign_id} is not active, skipping next batch`)
+      return
+    }
+
+    // Check remaining recipients
+    const { count: remainingCount } = await supabase
+      .from("call_recipients")
+      .select("*", { count: "exact", head: true })
+      .eq("campaign_id", recipient.campaign_id)
+      .eq("call_status", "pending")
+
+    console.log(`[Retell Webhook] Remaining recipients to process: ${remainingCount}`)
+
+    if (!remainingCount || remainingCount === 0) {
+      // Check if there are any calls still in progress
+      const { count: callingCount } = await supabase
+        .from("call_recipients")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", recipient.campaign_id)
+        .eq("call_status", "calling")
+
+      if (!callingCount || callingCount === 0) {
+        // All calls done - mark campaign as completed
+        console.log(`[Retell Webhook] Campaign ${recipient.campaign_id} completed - all recipients processed`)
+        await supabase
+          .from("call_campaigns")
+          .update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", recipient.campaign_id)
+      }
+    } else {
+      // Trigger next batch of calls
+      try {
+        const { startNextCalls, getRetellConfigForCampaign } =
+          await import("@/lib/campaigns/call-queue-manager")
+
+        const retellConfig = await getRetellConfigForCampaign(recipient.campaign_id)
+
+        if (retellConfig) {
+          console.log(`[Retell Webhook] Triggering next batch for campaign ${recipient.campaign_id}...`)
+          
+          // Fire-and-forget to not block the webhook response
+          startNextCalls(recipient.campaign_id, workspaceId, retellConfig)
+            .then((result) => {
+              if (result.concurrencyHit) {
+                console.log(
+                  `[Retell Webhook] Next batch: CONCURRENCY LIMIT - in cooldown, ${result.remaining} pending`
+                )
+              } else {
+                console.log(
+                  `[Retell Webhook] Next batch result: started=${result.started}, failed=${result.failed}, remaining=${result.remaining}`
+                )
+              }
+              if (result.errors.length > 0 && !result.concurrencyHit) {
+                console.error(`[Retell Webhook] Next batch errors:`, result.errors)
+              }
+            })
+            .catch((err) => {
+              console.error("[Retell Webhook] Error starting next calls:", err)
+            })
+        } else {
+          console.error(`[Retell Webhook] Could not get Retell config for campaign ${recipient.campaign_id}`)
+        }
+      } catch (err) {
+        console.error("[Retell Webhook] Error importing call-queue-manager:", err)
+      }
+    }
+  } catch (error) {
+    console.error("[Retell Webhook] Error handling campaign call ended:", error)
+    // Don't throw - this is a secondary operation
   }
 }
 

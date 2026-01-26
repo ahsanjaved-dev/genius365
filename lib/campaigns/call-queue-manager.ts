@@ -35,6 +35,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createOutboundCall, type AssistantOverrides } from "@/lib/integrations/vapi/calls"
+import { createRetellOutboundCall } from "@/lib/integrations/retell/calls"
 
 // ============================================================================
 // CONFIGURATION
@@ -115,6 +116,7 @@ export interface QueuedCall {
 }
 
 export interface VapiConfig {
+  provider: "vapi"
   apiKey: string
   assistantId: string
   phoneNumberId: string
@@ -125,6 +127,18 @@ export interface VapiConfig {
   /** Agent's model name (e.g., "gpt-4") */
   modelName?: string
 }
+
+export interface RetellConfig {
+  provider: "retell"
+  apiKey: string
+  agentId: string
+  fromNumber: string
+  /** Dynamic variables for the LLM (Retell-specific) */
+  retellLlmDynamicVariables?: Record<string, unknown>
+}
+
+/** Provider-agnostic config for campaign calls */
+export type ProviderConfig = VapiConfig | RetellConfig
 
 export interface StartCallsResult {
   started: number
@@ -360,6 +374,123 @@ function substituteVariables(template: string, call: QueuedCall): string {
 }
 
 /**
+ * Start a single call via VAPI and update recipient status
+ */
+async function startSingleCallVapi(
+  call: QueuedCall,
+  vapiConfig: VapiConfig
+): Promise<{ success: boolean; callId?: string; error?: string; shouldRetry?: boolean }> {
+  const adminClient = createAdminClient()
+  const now = new Date().toISOString()
+  
+  // Build assistant overrides if we have a system prompt template
+  let assistantOverrides: { model?: { systemPrompt?: string; provider?: string; model?: string } } | undefined
+  
+  if (vapiConfig.systemPromptTemplate) {
+    const substitutedPrompt = substituteVariables(vapiConfig.systemPromptTemplate, call)
+    
+    if (substitutedPrompt) {
+      assistantOverrides = {
+        model: {
+          systemPrompt: substitutedPrompt,
+          ...(vapiConfig.modelProvider && { provider: vapiConfig.modelProvider }),
+          ...(vapiConfig.modelName && { model: vapiConfig.modelName }),
+        },
+      }
+      console.log(`[CallQueue] Using assistantOverrides with substituted system prompt (${substitutedPrompt.length} chars)`)
+    }
+  }
+  
+  const result = await createOutboundCall({
+    apiKey: vapiConfig.apiKey,
+    assistantId: vapiConfig.assistantId,
+    phoneNumberId: vapiConfig.phoneNumberId,
+    customerNumber: call.phone,
+    customerName: [call.firstName, call.lastName].filter(Boolean).join(" ") || undefined,
+    assistantOverrides,
+  })
+  
+  if (!result.success || !result.data) {
+    const errorMsg = result.error || "Failed to create VAPI call"
+    console.error(`[CallQueue] VAPI call creation FAILED for ${call.phone}: ${errorMsg}`)
+    return { success: false, error: errorMsg, shouldRetry: isTransientError(errorMsg) }
+  }
+  
+  // Update recipient with call ID and "calling" status
+  await adminClient
+    .from("call_recipients")
+    .update({
+      call_status: "calling",
+      external_call_id: result.data.id,
+      call_started_at: now,
+      attempts: 1,
+      last_attempt_at: now,
+      updated_at: now,
+    })
+    .eq("id", call.recipientId)
+  
+  console.log(`[CallQueue] VAPI call STARTED for ${call.phone}: callId=${result.data.id}`)
+  return { success: true, callId: result.data.id }
+}
+
+/**
+ * Start a single call via Retell and update recipient status
+ */
+async function startSingleCallRetell(
+  call: QueuedCall,
+  retellConfig: RetellConfig
+): Promise<{ success: boolean; callId?: string; error?: string; shouldRetry?: boolean }> {
+  const adminClient = createAdminClient()
+  const now = new Date().toISOString()
+  
+  // Build dynamic variables for Retell LLM
+  const dynamicVariables: Record<string, unknown> = {
+    first_name: call.firstName || "",
+    last_name: call.lastName || "",
+    email: call.email || "",
+    company: call.company || "",
+    phone_number: call.phone || "",
+    full_name: [call.firstName, call.lastName].filter(Boolean).join(" ") || "",
+    ...(call.customVariables || {}),
+  }
+  
+  const result = await createRetellOutboundCall({
+    apiKey: retellConfig.apiKey,
+    toNumber: call.phone,
+    fromNumber: retellConfig.fromNumber,
+    overrideAgentId: retellConfig.agentId,
+    metadata: {
+      campaign_recipient_id: call.recipientId,
+      campaign_id: call.campaignId,
+      workspace_id: call.workspaceId,
+    },
+    retellLlmDynamicVariables: dynamicVariables,
+  })
+  
+  if (!result.success || !result.data) {
+    const errorMsg = result.error || "Failed to create Retell call"
+    console.error(`[CallQueue] Retell call creation FAILED for ${call.phone}: ${errorMsg}`)
+    return { success: false, error: errorMsg, shouldRetry: isTransientError(errorMsg) }
+  }
+  
+  // Update recipient with call ID and "calling" status
+  await adminClient
+    .from("call_recipients")
+    .update({
+      call_status: "calling",
+      external_call_id: result.data.call_id,
+      call_started_at: now,
+      attempts: 1,
+      last_attempt_at: now,
+      updated_at: now,
+    })
+    .eq("id", call.recipientId)
+  
+  console.log(`[CallQueue] Retell call STARTED for ${call.phone}: callId=${result.data.call_id}`)
+  return { success: true, callId: result.data.call_id }
+}
+
+/**
  * Start a single call and update recipient status
  * 
  * IMPORTANT: This function uses atomic "claim" logic to prevent race conditions.
@@ -368,15 +499,13 @@ function substituteVariables(template: string, call: QueuedCall): string {
  */
 async function startSingleCall(
   call: QueuedCall,
-  vapiConfig: VapiConfig
+  config: ProviderConfig
 ): Promise<{ success: boolean; callId?: string; error?: string; shouldRetry?: boolean }> {
   const adminClient = createAdminClient()
   const now = new Date().toISOString()
   
   try {
     // ATOMIC CLAIM: First, try to claim this recipient by setting status to "processing"
-    // This prevents race conditions when multiple webhooks trigger simultaneously
-    // We use a conditional update that only succeeds if the recipient is still "pending"
     const { data: claimed, error: claimError } = await adminClient
       .from("call_recipients")
       .update({
@@ -384,105 +513,61 @@ async function startSingleCall(
         updated_at: now,
       })
       .eq("id", call.recipientId)
-      .eq("call_status", "pending") // Only update if still pending!
+      .eq("call_status", "pending")
       .select("id")
       .single()
     
     if (claimError || !claimed) {
-      // Another process already claimed this recipient - this is expected in race conditions
       console.log(`[CallQueue] Recipient ${call.recipientId} already claimed by another process - skipping`)
       return { success: false, error: "Already claimed", shouldRetry: false }
     }
     
-    // Create the call via VAPI
-    console.log(`[CallQueue] Starting call for ${call.phone} (recipient: ${call.recipientId})`)
+    console.log(`[CallQueue] Starting ${config.provider} call for ${call.phone} (recipient: ${call.recipientId})`)
     
-    // Build assistant overrides if we have a system prompt template
-    // This allows dynamic variable substitution per recipient
-    let assistantOverrides: { model?: { systemPrompt?: string; provider?: string; model?: string } } | undefined
+    // Route to the appropriate provider
+    let result: { success: boolean; callId?: string; error?: string; shouldRetry?: boolean }
     
-    if (vapiConfig.systemPromptTemplate) {
-      const substitutedPrompt = substituteVariables(vapiConfig.systemPromptTemplate, call)
-      
-      // Only include overrides if we actually have a prompt to send
-      if (substitutedPrompt) {
-        assistantOverrides = {
-          model: {
-            systemPrompt: substitutedPrompt,
-            // Include provider and model if available to ensure consistency
-            ...(vapiConfig.modelProvider && { provider: vapiConfig.modelProvider }),
-            ...(vapiConfig.modelName && { model: vapiConfig.modelName }),
-          },
-        }
-        console.log(`[CallQueue] Using assistantOverrides with substituted system prompt (${substitutedPrompt.length} chars)`)
-      }
+    if (config.provider === "retell") {
+      result = await startSingleCallRetell(call, config)
+    } else {
+      result = await startSingleCallVapi(call, config)
     }
     
-    const result = await createOutboundCall({
-      apiKey: vapiConfig.apiKey,
-      assistantId: vapiConfig.assistantId,
-      phoneNumberId: vapiConfig.phoneNumberId,
-      customerNumber: call.phone,
-      customerName: [call.firstName, call.lastName].filter(Boolean).join(" ") || undefined,
-      assistantOverrides,
-    })
-    
-    if (!result.success || !result.data) {
-      const errorMsg = result.error || "Failed to create call"
-      console.error(`[CallQueue] VAPI call creation FAILED for ${call.phone}: ${errorMsg}`)
-      
-      // Check if this is a TRANSIENT error - revert to pending for retry
-      // Transient errors include: concurrency limits, 5xx errors, timeouts, network issues
-      if (isTransientError(errorMsg)) {
-        console.log(`[CallQueue] Transient error for ${call.phone} - reverting to pending for retry: ${errorMsg}`)
-        // Revert status back to "pending" for retry (was "processing")
+    // Handle errors
+    if (!result.success) {
+      if (result.shouldRetry) {
+        console.log(`[CallQueue] Transient error for ${call.phone} - reverting to pending for retry: ${result.error}`)
         await adminClient
           .from("call_recipients")
           .update({
             call_status: "pending",
-            last_error: errorMsg,
+            last_error: result.error,
             updated_at: now,
           })
           .eq("id", call.recipientId)
-        return { success: false, error: errorMsg, shouldRetry: true }
+        return result
       }
       
-      // For PERMANENT errors (invalid number, auth error, etc.), mark as failed
-      console.log(`[CallQueue] Permanent error for ${call.phone} - marking as failed: ${errorMsg}`)
+      // Permanent error - mark as failed
+      console.log(`[CallQueue] Permanent error for ${call.phone} - marking as failed: ${result.error}`)
       await adminClient
         .from("call_recipients")
         .update({
           call_status: "failed",
-          last_error: errorMsg,
+          last_error: result.error,
           attempts: 1,
           last_attempt_at: now,
           updated_at: now,
         })
         .eq("id", call.recipientId)
-      
-      return { success: false, error: errorMsg, shouldRetry: false }
+      return result
     }
     
-    // Update recipient with call ID and "calling" status
-    await adminClient
-      .from("call_recipients")
-      .update({
-        call_status: "calling",
-        external_call_id: result.data.id,
-        call_started_at: now,
-        attempts: 1,
-        last_attempt_at: now,
-        updated_at: now,
-      })
-      .eq("id", call.recipientId)
-    
-    console.log(`[CallQueue] Call STARTED for ${call.phone}: callId=${result.data.id}`)
-    return { success: true, callId: result.data.id }
+    return result
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error"
     
-    // Update recipient as failed (was "processing")
     await adminClient
       .from("call_recipients")
       .update({
@@ -510,7 +595,9 @@ async function startSingleCall(
  * Start the next call(s) for a campaign - WEBHOOK TRIGGERED VERSION
  * 
  * STRICT MODE: Only starts 1 call per invocation (1-for-1 replacement)
- * This prevents overwhelming VAPI's concurrency limit.
+ * This prevents overwhelming provider concurrency limits.
+ * 
+ * Supports both VAPI and Retell providers.
  * 
  * The flow:
  * 1. Campaign starts → Initial batch of 3 calls
@@ -520,7 +607,7 @@ async function startSingleCall(
 export async function startNextCalls(
   campaignId: string,
   workspaceId: string,
-  vapiConfig: VapiConfig,
+  config: ProviderConfig,
   options?: { isInitialStart?: boolean }
 ): Promise<StartCallsResult> {
   const adminClient = createAdminClient()
@@ -530,7 +617,7 @@ export async function startNextCalls(
   // Determine how many calls to start
   const callsToStart = isInitial ? INITIAL_CONCURRENT_CALLS : CALLS_TO_START_ON_WEBHOOK
   
-  console.log(`[CallQueue] startNextCalls: campaign=${campaignId}, isInitial=${isInitial}, targetCalls=${callsToStart}`)
+  console.log(`[CallQueue] startNextCalls: campaign=${campaignId}, provider=${config.provider}, isInitial=${isInitial}, targetCalls=${callsToStart}`)
   
   // Check cooldown - if we recently hit concurrency limit, wait
   // BUT only for webhook triggers, not initial starts
@@ -557,7 +644,12 @@ export async function startNextCalls(
     }
   }
   
-  console.log(`[CallQueue] VAPI config: assistantId=${vapiConfig.assistantId}, phoneNumberId=${vapiConfig.phoneNumberId}`)
+  // Log provider-specific config
+  if (config.provider === "retell") {
+    console.log(`[CallQueue] Retell config: agentId=${config.agentId}, fromNumber=${config.fromNumber}`)
+  } else {
+    console.log(`[CallQueue] VAPI config: assistantId=${config.assistantId}, phoneNumberId=${config.phoneNumberId}`)
+  }
   
   // Check if campaign is still active
   const { data: campaign } = await adminClient
@@ -654,7 +746,7 @@ export async function startNextCalls(
         await sleep(RETRY_DELAY_MS)
       }
       
-      const result = await startSingleCall(call, vapiConfig)
+      const result = await startSingleCall(call, config)
       
       if (result.success) {
         started++
@@ -731,10 +823,10 @@ export async function startNextCalls(
 export async function onCallEnded(
   campaignId: string,
   workspaceId: string,
-  vapiConfig: VapiConfig
+  config: ProviderConfig
 ): Promise<void> {
   // Start next calls (will respect concurrency limits)
-  await startNextCalls(campaignId, workspaceId, vapiConfig)
+  await startNextCalls(campaignId, workspaceId, config)
 }
 
 /**
@@ -843,6 +935,7 @@ export async function getVapiConfigForCampaign(
   console.log(`[CallQueue] VAPI config resolved: assistantId=${agent.external_agent_id}, phoneNumberId=${phoneNumberId}, hasSystemPrompt=${!!systemPromptTemplate}`)
   
   return {
+    provider: "vapi",
     apiKey: apiKeys.default_secret_key,
     assistantId: agent.external_agent_id,
     phoneNumberId,
@@ -850,6 +943,164 @@ export async function getVapiConfigForCampaign(
     systemPromptTemplate,
     modelProvider,
     modelName,
+  }
+}
+
+/**
+ * Get Retell config for a campaign
+ */
+export async function getRetellConfigForCampaign(
+  campaignId: string
+): Promise<RetellConfig | null> {
+  const adminClient = createAdminClient()
+  
+  console.log(`[CallQueue] Getting Retell config for campaign: ${campaignId}`)
+  
+  // Get campaign with agent
+  const { data: campaign, error: campaignError } = await adminClient
+    .from("call_campaigns")
+    .select(`
+      workspace_id,
+      agent:ai_agents!agent_id(
+        external_agent_id,
+        assigned_phone_number_id,
+        config
+      )
+    `)
+    .eq("id", campaignId)
+    .single()
+  
+  if (campaignError) {
+    console.error(`[CallQueue] Error fetching campaign: ${campaignError.message}`)
+    return null
+  }
+  
+  if (!campaign?.agent) {
+    console.error(`[CallQueue] Campaign ${campaignId} has no agent`)
+    return null
+  }
+  
+  const agent = campaign.agent as any
+  
+  // Get workspace's partner_id
+  const { data: workspace } = await adminClient
+    .from("workspaces")
+    .select("partner_id")
+    .eq("id", campaign.workspace_id)
+    .single()
+  
+  if (!workspace?.partner_id) {
+    return null
+  }
+  
+  // Get Retell integration config
+  const { data: assignment } = await adminClient
+    .from("workspace_integration_assignments")
+    .select(`
+      partner_integration:partner_integrations (
+        api_keys,
+        config,
+        is_active
+      )
+    `)
+    .eq("workspace_id", campaign.workspace_id)
+    .eq("provider", "retell")
+    .single()
+  
+  let integrationConfig = null
+  let apiKeys = null
+  
+  if (assignment?.partner_integration) {
+    const partnerIntegration = assignment.partner_integration as any
+    if (partnerIntegration.is_active) {
+      integrationConfig = partnerIntegration.config || {}
+      apiKeys = partnerIntegration.api_keys
+    }
+  }
+  
+  // Fallback to default partner integration
+  if (!integrationConfig || !apiKeys?.default_secret_key) {
+    const { data: defaultIntegration } = await adminClient
+      .from("partner_integrations")
+      .select("api_keys, config, is_active")
+      .eq("partner_id", workspace.partner_id)
+      .eq("provider", "retell")
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .single()
+    
+    if (defaultIntegration?.is_active) {
+      integrationConfig = defaultIntegration.config || {}
+      apiKeys = defaultIntegration.api_keys
+    }
+  }
+  
+  if (!apiKeys?.default_secret_key) {
+    console.error(`[CallQueue] No Retell API key found for campaign ${campaignId}`)
+    return null
+  }
+  
+  // Get from number - first check agent's assigned phone, then shared outbound
+  let fromNumber = integrationConfig?.shared_outbound_phone_number
+  
+  if (!fromNumber && agent.assigned_phone_number_id) {
+    const { data: phoneNumber } = await adminClient
+      .from("phone_numbers")
+      .select("phone_number_e164, phone_number")
+      .eq("id", agent.assigned_phone_number_id)
+      .single()
+    
+    if (phoneNumber) {
+      fromNumber = phoneNumber.phone_number_e164 || phoneNumber.phone_number
+    }
+  }
+  
+  if (!fromNumber) {
+    console.error(`[CallQueue] No from number found for Retell campaign ${campaignId}`)
+    return null
+  }
+  
+  console.log(`[CallQueue] Retell config resolved: agentId=${agent.external_agent_id}, fromNumber=${fromNumber}`)
+  
+  return {
+    provider: "retell",
+    apiKey: apiKeys.default_secret_key,
+    agentId: agent.external_agent_id,
+    fromNumber,
+  }
+}
+
+/**
+ * Get provider config for a campaign (auto-detects VAPI or Retell)
+ */
+export async function getProviderConfigForCampaign(
+  campaignId: string
+): Promise<ProviderConfig | null> {
+  const adminClient = createAdminClient()
+  
+  // Get campaign with agent to determine provider
+  const { data: campaign, error } = await adminClient
+    .from("call_campaigns")
+    .select(`
+      agent:ai_agents!agent_id(
+        provider
+      )
+    `)
+    .eq("id", campaignId)
+    .single()
+  
+  if (error || !campaign?.agent) {
+    console.error(`[CallQueue] Error determining provider for campaign ${campaignId}:`, error?.message)
+    return null
+  }
+  
+  const provider = (campaign.agent as any).provider
+  console.log(`[CallQueue] Campaign ${campaignId} uses provider: ${provider}`)
+  
+  if (provider === "retell") {
+    return getRetellConfigForCampaign(campaignId)
+  } else {
+    return getVapiConfigForCampaign(campaignId)
   }
 }
 

@@ -405,26 +405,27 @@ export function useUnsyncSipTrunk() {
 // =============================================================================
 
 /**
- * Hook to sync a phone number to Vapi
+ * Hook to sync a phone number to a provider (VAPI or Retell)
  */
 export function useSyncPhoneNumber() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const response = await fetch(`/api/partner/telephony/phone-numbers/${id}/sync`, {
+    mutationFn: async ({ id, provider = "vapi" }: { id: string; provider?: "vapi" | "retell" }) => {
+      const response = await fetch(`/api/partner/telephony/phone-numbers/${id}/sync?provider=${provider}`, {
         method: "POST",
       })
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Failed to sync phone number")
+        throw new Error(error.error || `Failed to sync phone number to ${provider.toUpperCase()}`)
       }
       return response.json()
     },
-    onSuccess: (_, id) => {
+    onSuccess: (data, { id, provider = "vapi" }) => {
       queryClient.invalidateQueries({ queryKey: ["phone-numbers"] })
       queryClient.invalidateQueries({ queryKey: ["phone-numbers", id] })
-      toast.success("Phone number synced to Vapi successfully")
+      queryClient.invalidateQueries({ queryKey: ["available-phone-numbers"] })
+      toast.success(`Phone number synced to ${provider.toUpperCase()} successfully`)
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -433,7 +434,7 @@ export function useSyncPhoneNumber() {
 }
 
 /**
- * Hook to unsync a phone number from Vapi
+ * Hook to unsync a phone number from its current provider
  */
 export function useUnsyncPhoneNumber() {
   const queryClient = useQueryClient()
@@ -449,10 +450,12 @@ export function useUnsyncPhoneNumber() {
       }
       return response.json()
     },
-    onSuccess: (_, id) => {
+    onSuccess: (data, id) => {
       queryClient.invalidateQueries({ queryKey: ["phone-numbers"] })
       queryClient.invalidateQueries({ queryKey: ["phone-numbers", id] })
-      toast.success("Phone number unsynced from Vapi")
+      queryClient.invalidateQueries({ queryKey: ["available-phone-numbers"] })
+      const provider = data?.data?.previousProvider || "provider"
+      toast.success(`Phone number unsynced from ${provider.toUpperCase()}`)
     },
     onError: (error: Error) => {
       toast.error(error.message)

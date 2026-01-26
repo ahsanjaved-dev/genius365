@@ -268,6 +268,327 @@ export async function listRetellCalls(params: RetellListCallsParams): Promise<Re
 }
 
 // ============================================================================
+// CREATE OUTBOUND PHONE CALL
+// ============================================================================
+
+export interface CreateOutboundCallParams {
+  apiKey: string
+  /** The phone number to call (E.164 format, e.g., +14155551234) */
+  toNumber: string
+  /** The phone number to call from (must be imported in Retell) */
+  fromNumber: string
+  /** 
+   * Either agentId OR overrideAgentId must be provided.
+   * Use agentId if the from_number has an outbound_agent_id already assigned.
+   * Use overrideAgentId to specify a different agent for this call.
+   */
+  agentId?: string
+  overrideAgentId?: string
+  /** Optional metadata to attach to the call */
+  metadata?: Record<string, unknown>
+  /** Max call duration in ms (default: 3600000 = 1 hour) */
+  retellLlmDynamicVariables?: Record<string, unknown>
+  /** Drop call if machine detected */
+  dropIfMachineDetected?: boolean
+}
+
+export interface CreateOutboundCallResponse {
+  success: boolean
+  data?: {
+    call_id: string
+    agent_id: string
+    call_type: "phone_call"
+    call_status: string
+    from_number: string
+    to_number: string
+    direction: "outbound"
+    metadata?: Record<string, unknown>
+  }
+  error?: string
+}
+
+/**
+ * Create an outbound phone call via Retell API
+ * @see https://docs.retellai.com/api-references/create-phone-call
+ */
+export async function createRetellOutboundCall(
+  params: CreateOutboundCallParams
+): Promise<CreateOutboundCallResponse> {
+  const {
+    apiKey,
+    toNumber,
+    fromNumber,
+    agentId,
+    overrideAgentId,
+    metadata,
+    retellLlmDynamicVariables,
+    dropIfMachineDetected,
+  } = params
+
+  try {
+    console.log("[RetellCalls] Creating outbound call:", { 
+      to: toNumber, 
+      from: fromNumber, 
+      agentId: overrideAgentId || agentId 
+    })
+
+    const payload: Record<string, unknown> = {
+      to_number: toNumber,
+      from_number: fromNumber,
+    }
+
+    // Use override_agent_id to specify the agent for this call
+    // This is the recommended approach when you want to use a specific agent
+    if (overrideAgentId) {
+      payload.override_agent_id = overrideAgentId
+    }
+
+    if (metadata) {
+      payload.metadata = metadata
+    }
+
+    if (retellLlmDynamicVariables) {
+      payload.retell_llm_dynamic_variables = retellLlmDynamicVariables
+    }
+
+    if (dropIfMachineDetected !== undefined) {
+      payload.drop_if_machine_detected = dropIfMachineDetected
+    }
+
+    const response = await fetch(`${RETELL_BASE_URL}/v2/create-phone-call`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorData: Record<string, unknown> = {}
+      try {
+        errorData = JSON.parse(errorText)
+      } catch {
+        errorData = { message: errorText || `HTTP ${response.status}` }
+      }
+      console.error("[RetellCalls] Create outbound call error:", response.status, errorData)
+      return {
+        success: false,
+        error: (errorData.message as string) || `Retell API error: ${response.status}`,
+      }
+    }
+
+    const data = await response.json()
+    console.log("[RetellCalls] Outbound call created successfully:", data.call_id)
+
+    return {
+      success: true,
+      data: {
+        call_id: data.call_id,
+        agent_id: data.agent_id,
+        call_type: "phone_call",
+        call_status: data.call_status || "registered",
+        from_number: data.from_number,
+        to_number: data.to_number,
+        direction: "outbound",
+        metadata: data.metadata,
+      },
+    }
+  } catch (error) {
+    console.error("[RetellCalls] Create outbound call exception:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error creating outbound call",
+    }
+  }
+}
+
+// ============================================================================
+// REGISTER INBOUND PHONE CALL (for SIP integration)
+// ============================================================================
+
+export interface RegisterPhoneCallParams {
+  apiKey: string
+  /** The Retell agent ID to handle this call */
+  agentId: string
+  /** The phone number the call is coming from */
+  fromNumber: string
+  /** The phone number being called (your number) */
+  toNumber: string
+  /** Direction of the call */
+  direction?: "inbound" | "outbound"
+  /** Optional metadata */
+  metadata?: Record<string, unknown>
+  /** Dynamic variables for the LLM */
+  retellLlmDynamicVariables?: Record<string, unknown>
+}
+
+export interface RegisterPhoneCallResponse {
+  success: boolean
+  data?: {
+    call_id: string
+    agent_id: string
+    call_type: "phone_call"
+    call_status: string
+    from_number: string
+    to_number: string
+    direction: "inbound" | "outbound"
+    sip_endpoint?: string
+    metadata?: Record<string, unknown>
+  }
+  error?: string
+}
+
+/**
+ * Register an inbound phone call with Retell for SIP integration
+ * This is used when handling inbound calls from your own SIP provider.
+ * After registering, you get a SIP endpoint to forward the call to.
+ * 
+ * @see https://docs.retellai.com/api-references/register-phone-call
+ */
+export async function registerRetellPhoneCall(
+  params: RegisterPhoneCallParams
+): Promise<RegisterPhoneCallResponse> {
+  const {
+    apiKey,
+    agentId,
+    fromNumber,
+    toNumber,
+    direction = "inbound",
+    metadata,
+    retellLlmDynamicVariables,
+  } = params
+
+  try {
+    console.log("[RetellCalls] Registering phone call:", { 
+      agentId, 
+      from: fromNumber, 
+      to: toNumber,
+      direction 
+    })
+
+    const payload: Record<string, unknown> = {
+      agent_id: agentId,
+      from_number: fromNumber,
+      to_number: toNumber,
+      direction,
+    }
+
+    if (metadata) {
+      payload.metadata = metadata
+    }
+
+    if (retellLlmDynamicVariables) {
+      payload.retell_llm_dynamic_variables = retellLlmDynamicVariables
+    }
+
+    const response = await fetch(`${RETELL_BASE_URL}/v2/register-phone-call`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorData: Record<string, unknown> = {}
+      try {
+        errorData = JSON.parse(errorText)
+      } catch {
+        errorData = { message: errorText || `HTTP ${response.status}` }
+      }
+      console.error("[RetellCalls] Register phone call error:", response.status, errorData)
+      return {
+        success: false,
+        error: (errorData.message as string) || `Retell API error: ${response.status}`,
+      }
+    }
+
+    const data = await response.json()
+    console.log("[RetellCalls] Phone call registered successfully:", data.call_id)
+
+    return {
+      success: true,
+      data: {
+        call_id: data.call_id,
+        agent_id: data.agent_id,
+        call_type: "phone_call",
+        call_status: data.call_status || "registered",
+        from_number: data.from_number,
+        to_number: data.to_number,
+        direction: data.direction || direction,
+        sip_endpoint: data.sip_endpoint,
+        metadata: data.metadata,
+      },
+    }
+  } catch (error) {
+    console.error("[RetellCalls] Register phone call exception:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error registering phone call",
+    }
+  }
+}
+
+// ============================================================================
+// END CALL
+// ============================================================================
+
+export interface EndCallResponse {
+  success: boolean
+  error?: string
+}
+
+/**
+ * End an ongoing call
+ * @see https://docs.retellai.com/api-references/end-call
+ */
+export async function endRetellCall(params: {
+  apiKey: string
+  callId: string
+}): Promise<EndCallResponse> {
+  const { apiKey, callId } = params
+
+  try {
+    console.log("[RetellCalls] Ending call:", callId)
+
+    const response = await fetch(`${RETELL_BASE_URL}/v2/end-call/${callId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorData: Record<string, unknown> = {}
+      try {
+        errorData = JSON.parse(errorText)
+      } catch {
+        errorData = { message: errorText || `HTTP ${response.status}` }
+      }
+      console.error("[RetellCalls] End call error:", response.status, errorData)
+      return {
+        success: false,
+        error: (errorData.message as string) || `Retell API error: ${response.status}`,
+      }
+    }
+
+    console.log("[RetellCalls] Call ended successfully")
+    return { success: true }
+  } catch (error) {
+    console.error("[RetellCalls] End call exception:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error ending call",
+    }
+  }
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 

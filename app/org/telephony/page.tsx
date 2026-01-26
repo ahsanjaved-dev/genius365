@@ -309,7 +309,7 @@ export default function OrgTelephonyPage() {
                           {number.external_id ? (
                             <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
                               <CloudUpload className="h-3 w-3 mr-1" />
-                              Synced
+                              Synced to {number.provider?.toUpperCase() || "Provider"}
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="text-muted-foreground">
@@ -318,23 +318,44 @@ export default function OrgTelephonyPage() {
                             </Badge>
                           )}
                           
-                          {/* Sync Button */}
-                          {!number.external_id && (number.sipTrunk || number.sip_trunk_id) && (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => syncPhoneNumber.mutate(number.id)}
-                              disabled={syncPhoneNumber.isPending}
-                            >
-                              {syncPhoneNumber.isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <CloudUpload className="h-4 w-4 mr-1" />
-                                  Sync to Vapi
-                                </>
-                              )}
-                            </Button>
+                          {/* Sync Dropdown - Show when not synced */}
+                          {!number.external_id && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  disabled={syncPhoneNumber.isPending}
+                                >
+                                  {syncPhoneNumber.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <CloudUpload className="h-4 w-4 mr-1" />
+                                      Sync to Provider
+                                    </>
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem 
+                                  onClick={() => syncPhoneNumber.mutate({ id: number.id, provider: "vapi" })}
+                                  disabled={!number.sipTrunk && !number.sip_trunk_id}
+                                >
+                                  <CloudUpload className="h-4 w-4 mr-2 text-blue-600" />
+                                  Sync to VAPI
+                                  {!number.sipTrunk && !number.sip_trunk_id && (
+                                    <span className="text-xs text-muted-foreground ml-2">(Requires SIP Trunk)</span>
+                                  )}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => syncPhoneNumber.mutate({ id: number.id, provider: "retell" })}
+                                >
+                                  <CloudUpload className="h-4 w-4 mr-2 text-purple-600" />
+                                  Sync to Retell
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                           
                           <Button
@@ -362,7 +383,7 @@ export default function OrgTelephonyPage() {
                                   disabled={unsyncPhoneNumber.isPending}
                                 >
                                   <CloudOff className="h-4 w-4 mr-2" />
-                                  Unsync from Vapi
+                                  Unsync from {number.provider?.toUpperCase() || "Provider"}
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />

@@ -2089,6 +2089,28 @@ export const vapiIntegrationConfigSchema = z.object({
   shared_outbound_phone_number: z.string().optional(),
 })
 
+/**
+ * Configuration for Retell workspace integration
+ * Stored in workspace_integrations.config for provider="retell"
+ */
+export interface RetellIntegrationConfig {
+  /** Shared outbound phone number (E.164 format, all agents call from this number) */
+  shared_outbound_phone_number?: string
+  /** Default inbound agent ID for new phone numbers */
+  default_inbound_agent_id?: string
+  /** Default outbound agent ID for new phone numbers */
+  default_outbound_agent_id?: string
+}
+
+/**
+ * Zod schema for RetellIntegrationConfig validation
+ */
+export const retellIntegrationConfigSchema = z.object({
+  shared_outbound_phone_number: z.string().optional(),
+  default_inbound_agent_id: z.string().optional(),
+  default_outbound_agent_id: z.string().optional(),
+})
+
 // ============================================================================
 // WORKSPACE CUSTOM VARIABLES
 // ============================================================================

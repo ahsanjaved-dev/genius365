@@ -143,7 +143,7 @@ export const StepDetails = memo(function StepDetails({
                     {formData.selectedAgent.description}
                   </p>
                 )}
-                {/* Show phone number - either external or assigned */}
+                {/* Show phone number - either external, assigned, or shared outbound */}
                 {formData.selectedAgent.external_phone_number ? (
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <Phone className="h-3.5 w-3.5" />
@@ -154,7 +154,12 @@ export const StepDetails = memo(function StepDetails({
                     <Phone className="h-3.5 w-3.5" />
                     <span>Phone number assigned</span>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span>Will use shared outbound number</span>
+                  </div>
+                )}
                 
                 {/* Show a preview of the agent's greeting if available */}
                 {(formData.selectedAgent.config as { greeting?: string })?.greeting && (

@@ -67,8 +67,8 @@ export function WorkspaceAgentCard({ agent, onDelete, onToggleActive }: Workspac
   
   const validation = useTestCallValidation(agent)
   
-  // Check if agent can make outbound calls
-  const canMakeOutboundCall = agent.provider === "vapi" && !!agent.external_agent_id
+  // Check if agent can make outbound calls (both VAPI and Retell support outbound)
+  const canMakeOutboundCall = (agent.provider === "vapi" || agent.provider === "retell") && !!agent.external_agent_id
   const isOutboundAgent = agent.agent_direction === "outbound"
 
   return (

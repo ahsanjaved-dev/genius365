@@ -1390,6 +1390,7 @@ async function updateCampaignRecipientStatus(
           .single()
 
         if (campaignData?.workspace_id) {
+          // For VAPI webhooks, we know the provider is VAPI
           const vapiConfig = await getVapiConfigForCampaign(recipient.campaign_id)
 
           if (vapiConfig) {

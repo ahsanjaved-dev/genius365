@@ -33,12 +33,13 @@ export const StepReview = memo(function StepReview({ formData, goToStep }: StepR
       result.push("No recipients imported - you'll need to add them after creation")
     }
 
-    // Check if agent has a phone number (either external or assigned through our system)
-    const hasPhoneNumber = formData.selectedAgent?.external_phone_number || 
-                           formData.selectedAgent?.assigned_phone_number_id
-    if (!hasPhoneNumber) {
-      result.push("Selected agent doesn't have a phone number assigned")
-    }
+    // Check if agent has a phone number directly assigned
+    // Note: If agent doesn't have a direct phone number, it will use the 
+    // shared outbound phone number configured in Organization → Integrations
+    const hasDirectPhoneNumber = formData.selectedAgent?.external_phone_number || 
+                                 formData.selectedAgent?.assigned_phone_number_id
+    // Don't show warning - shared outbound phone numbers from integration config will be used
+    // The actual call execution will check for shared outbound numbers if agent has none
 
     if (formData.businessHoursConfig.enabled) {
       const hasAnySchedule = Object.values(formData.businessHoursConfig.schedule).some(
@@ -155,7 +156,9 @@ export const StepReview = memo(function StepReview({ formData, goToStep }: StepR
                     <span>{formData.selectedAgent.external_phone_number}</span>
                   ) : formData.selectedAgent.assigned_phone_number_id ? (
                     <span className="text-green-600 dark:text-green-400">Phone assigned</span>
-                  ) : null}
+                  ) : (
+                    <span className="text-blue-600 dark:text-blue-400">Using shared outbound</span>
+                  )}
                 </div>
               </div>
             </div>

@@ -40,10 +40,12 @@ async function getCLIForAgent(
   partnerId: string,
   adminClient: ReturnType<typeof getSupabaseAdmin>
 ): Promise<string | null> {
+  // 1. Check agent's direct external phone number
   if (agent.external_phone_number) {
     return agent.external_phone_number
   }
 
+  // 2. Check agent's assigned phone number from our DB
   if (agent.assigned_phone_number_id) {
     const { data: phoneNumber } = await adminClient
       .from("phone_numbers")
@@ -56,21 +58,50 @@ async function getCLIForAgent(
     }
   }
 
+  // 3. Check for shared outbound phone number from integration config
+  // Determine agent provider (default to vapi if not specified)
+  const agentProvider = agent.provider || "vapi"
+  
   const supabase = getSupabaseAdmin()
+  
+  // First try workspace assignment
   const { data: assignment } = await supabase
     .from("workspace_integration_assignments")
     .select(`
       partner_integration:partner_integrations (
-        config
+        config,
+        is_active
       )
     `)
     .eq("workspace_id", workspaceId)
-    .eq("provider", "vapi")
+    .eq("provider", agentProvider)
     .single()
 
   if (assignment?.partner_integration) {
-    const config = (assignment.partner_integration as any).config
+    const partnerIntegration = assignment.partner_integration as any
+    if (partnerIntegration.is_active) {
+      const config = partnerIntegration.config
+      if (config?.shared_outbound_phone_number) {
+        console.log(`[Campaign] Using shared outbound phone number from ${agentProvider} integration:`, config.shared_outbound_phone_number)
+        return config.shared_outbound_phone_number
+      }
+    }
+  }
+
+  // Fallback to default partner integration
+  const { data: defaultIntegration } = await supabase
+    .from("partner_integrations")
+    .select("config, is_active")
+    .eq("partner_id", partnerId)
+    .eq("provider", agentProvider)
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .single()
+
+  if (defaultIntegration?.is_active) {
+    const config = defaultIntegration.config as any
     if (config?.shared_outbound_phone_number) {
+      console.log(`[Campaign] Using shared outbound phone number from default ${agentProvider} integration:`, config.shared_outbound_phone_number)
       return config.shared_outbound_phone_number
     }
   }

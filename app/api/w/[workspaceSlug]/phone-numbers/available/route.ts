@@ -11,6 +11,9 @@ import { logger } from "@/lib/logger"
  * - Phone numbers assigned to this workspace (available or assigned to agents in this workspace)
  * - Phone numbers not assigned to any workspace (available for any workspace in the partner)
  * 
+ * Query Parameters:
+ * - provider: Filter by provider (vapi, retell, sip) - only show numbers synced to this provider
+ * 
  * Workspace members can access this endpoint to see available phone numbers
  * when creating/editing agents.
  */
@@ -20,6 +23,11 @@ export async function GET(
 ) {
   try {
     const { workspaceSlug } = await params
+    const { searchParams } = new URL(request.url)
+    
+    // Optional provider filter - when creating an agent for a specific provider,
+    // only show phone numbers that are synced to that provider
+    const providerFilter = searchParams.get("provider")
     
     // Get workspace context - this validates the user has access to the workspace
     const context = await getWorkspaceContext(workspaceSlug)
@@ -36,21 +44,32 @@ export async function GET(
       )
     }
 
+    // Build the where clause
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const whereClause: any = {
+      partnerId: partner.id,
+      deletedAt: null,
+      OR: [
+        // Numbers assigned to this workspace
+        { assignedWorkspaceId: workspace.id },
+        // Numbers not assigned to any workspace (available)
+        { assignedWorkspaceId: null },
+      ],
+    }
+    
+    // Add provider filter if specified
+    // This ensures that when creating a VAPI agent, only VAPI-synced numbers are shown
+    // and when creating a Retell agent, only Retell-synced numbers are shown
+    if (providerFilter) {
+      whereClause.provider = providerFilter
+    }
+
     // Fetch phone numbers that are:
     // 1. Assigned to this workspace, OR
     // 2. Not assigned to any workspace (available for assignment)
     // All must belong to the same partner
     const phoneNumbers = await prisma.phoneNumber.findMany({
-      where: {
-        partnerId: partner.id,
-        deletedAt: null,
-        OR: [
-          // Numbers assigned to this workspace
-          { assignedWorkspaceId: workspace.id },
-          // Numbers not assigned to any workspace (available)
-          { assignedWorkspaceId: null },
-        ],
-      },
+      where: whereClause,
       include: {
         sipTrunk: {
           select: {

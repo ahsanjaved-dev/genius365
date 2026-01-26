@@ -3,7 +3,7 @@ import { getWorkspaceContext, checkWorkspacePaywall } from "@/lib/api/workspace-
 import { apiResponse, apiError, unauthorized, serverError, notFound } from "@/lib/api/helpers"
 import {
   startNextCalls,
-  getVapiConfigForCampaign,
+  getProviderConfigForCampaign,
   MAX_CONCURRENT_CALLS_PER_CAMPAIGN,
 } from "@/lib/campaigns/call-queue-manager"
 import type { BusinessHoursConfig } from "@/types/database.types"
@@ -94,10 +94,10 @@ export async function POST(
       return apiError("Agent has not been synced with the voice provider")
     }
 
-    // Get VAPI config
-    const vapiConfig = await getVapiConfigForCampaign(id)
-    if (!vapiConfig) {
-      return apiError("VAPI integration not configured properly")
+    // Get provider config (VAPI or Retell based on agent provider)
+    const providerConfig = await getProviderConfigForCampaign(id)
+    if (!providerConfig) {
+      return apiError(`${agent.provider || "Provider"} integration not configured properly. Check that the integration has API keys and a shared outbound phone number configured.`)
     }
 
     // Get pending recipients count
@@ -153,7 +153,7 @@ export async function POST(
     // STEP 2: START FIRST BATCH OF CALLS (Initial start mode)
     // =========================================================================
     
-    const startResult = await startNextCalls(id, ctx.workspace.id, vapiConfig, { isInitialStart: true })
+    const startResult = await startNextCalls(id, ctx.workspace.id, providerConfig, { isInitialStart: true })
 
     console.log("[CampaignStart:Scalable] Initial calls started:", {
       campaignId: id,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, unauthorized, serverError } from "@/lib/api/helpers"
-import { startNextCalls, getVapiConfigForCampaign } from "@/lib/campaigns/call-queue-manager"
+import { startNextCalls, getProviderConfigForCampaign } from "@/lib/campaigns/call-queue-manager"
 import { cleanupStaleCalls } from "@/lib/campaigns/stale-call-cleanup"
 
 /**
@@ -98,22 +98,22 @@ export async function POST(
           console.log(`[ProcessStuck] Campaign ${campaign.id}: cleaned up ${cleanupResult.staleRecipientsUpdated} stale calls`)
         }
 
-        // STEP 2: Get VAPI config and restart the chain
-        const vapiConfig = await getVapiConfigForCampaign(campaign.id)
-        if (!vapiConfig) {
+        // STEP 2: Get provider config and restart the chain
+        const providerConfig = await getProviderConfigForCampaign(campaign.id)
+        if (!providerConfig) {
           results.push({
             campaignId: campaign.id,
             campaignName: campaign.name,
             started: 0,
             failed: 0,
             remaining: campaign.pending_calls,
-            error: "Could not get VAPI config",
+            error: "Could not get provider config",
           })
           continue
         }
 
         // Restart with isInitialStart=true to kick off a fresh batch
-        const startResult = await startNextCalls(campaign.id, ctx.workspace.id, vapiConfig, { isInitialStart: true })
+        const startResult = await startNextCalls(campaign.id, ctx.workspace.id, providerConfig, { isInitialStart: true })
 
         console.log(`[ProcessStuck] Campaign ${campaign.id}: started ${startResult.started}, failed ${startResult.failed}`)
 
