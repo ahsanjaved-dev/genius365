@@ -4,7 +4,7 @@ import { getPartnerAuthCached } from "@/lib/api/get-auth-cached"
 import { getPartnerFromHost } from "@/lib/api/partner"
 import { WorkspaceSelector } from "@/components/workspace/workspace-selector"
 import { Button } from "@/components/ui/button"
-import { Building2, Plus, Mail, LogOut, Sparkles } from "lucide-react"
+import { Mail, LogOut, Sparkles } from "lucide-react"
 import Link from "next/link"
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -194,7 +194,6 @@ export default async function SelectWorkspacePage() {
           workspaces={auth.workspaces}
           partner={auth.partner}
           user={auth.user}
-          canCreateWorkspace={canCreateWorkspace}
         />
       </div>
     </div>

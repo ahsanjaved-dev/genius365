@@ -15,11 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { 
-  Building2, 
   ChevronRight, 
-  Plus, 
   LogOut, 
-  Sparkles,
   Crown,
   Shield,
   User,
@@ -30,7 +27,6 @@ import {
   ExternalLink,
   Users,
   Bot,
-  Calendar,
 } from "lucide-react"
 import type { AccessibleWorkspace, PartnerAuthUser } from "@/types/database.types"
 import type { ResolvedPartner } from "@/lib/api/partner"
@@ -39,7 +35,6 @@ interface Props {
   workspaces: AccessibleWorkspace[]
   partner: ResolvedPartner
   user: PartnerAuthUser
-  canCreateWorkspace?: boolean
 }
 
 // Threshold for showing search and compact view
@@ -104,7 +99,6 @@ export function WorkspaceSelector({
   workspaces,
   partner,
   user,
-  canCreateWorkspace = false,
 }: Props) {
   const branding = partner.branding
   const primaryColor = branding.primary_color || "#7c3aed"
@@ -310,24 +304,6 @@ export function WorkspaceSelector({
           )}
         </div>
       </ScrollArea>
-
-      {/* Create Workspace Button - Outside ScrollArea for proper layout */}
-      {canCreateWorkspace && (
-        <Link
-          href="/workspace-onboarding"
-          className={cn(
-            "group flex items-center gap-3 rounded-xl mt-3",
-            "border-2 border-dashed border-muted-foreground/20",
-            "hover:border-primary/40 hover:bg-primary/5",
-            "text-muted-foreground hover:text-primary",
-            "transition-all duration-200",
-            "p-3 justify-center"
-          )}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="font-medium text-sm">Create New Workspace</span>
-        </Link>
-      )}
 
       {/* User Footer */}
       <div className="flex items-center justify-between pt-4 mt-4 border-t border-border/50">
