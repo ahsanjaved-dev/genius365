@@ -1,5 +1,13 @@
-import { Resend } from "resend"
+/**
+ * Email Sending Module
+ * 
+ * Uses Nodemailer with SMTP (Mailgun) to send emails.
+ * Templates are React Email components rendered to HTML.
+ */
+
+import { render } from "@react-email/render"
 import { env } from "@/lib/env"
+import { getEmailTransporter, getFromAddress } from "./client"
 import { WorkspaceInvitationEmail } from "./templates/workspace-invitation"
 import { PartnerInvitationEmail } from "./templates/partner-invitation"
 import { PartnerRequestNotificationEmail } from "./templates/partner-request-notification"
@@ -9,36 +17,64 @@ import { PaymentFailedEmail } from "./templates/payment-failed"
 import { LowBalanceAlertEmail } from "./templates/low-balance-alert"
 import { AgencyCheckoutLinkEmail } from "./templates/agency-checkout-link"
 
-const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null
-
 interface SendEmailOptions {
   to: string | string[]
   subject: string
   react: React.ReactElement
 }
 
-async function sendEmail({ to, subject, react }: SendEmailOptions) {
-  if (!resend) {
-    console.warn("Resend API key not configured. Email not sent.")
+interface SendEmailResult {
+  success: boolean
+  data?: { id: string }
+  error?: string
+}
+
+/**
+ * Send an email using SMTP
+ */
+async function sendEmail({ to, subject, react }: SendEmailOptions): Promise<SendEmailResult> {
+  console.log("[Email] Attempting to send email:", { to, subject })
+  
+  const transporter = getEmailTransporter()
+  
+  if (!transporter) {
+    console.warn("[Email] SMTP not configured. Email not sent.")
     return { success: false, error: "Email service not configured" }
   }
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: env.fromEmail,
-      to: Array.isArray(to) ? to : [to],
+    const recipients = Array.isArray(to) ? to : [to]
+    const fromAddress = getFromAddress()
+    
+    console.log("[Email] Sending via SMTP to:", recipients, "from:", fromAddress)
+    
+    // Render React Email template to HTML
+    const html = await render(react)
+    
+    // Generate plain text version (strip HTML tags for fallback)
+    const text = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    
+    // Send the email
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: recipients.join(", "),
       subject,
-      react,
+      html,
+      text,
     })
 
-    if (error) {
-      console.error("Email send error:", error)
-      return { success: false, error: error.message }
+    console.log("[Email] Successfully sent email, Message ID:", info.messageId)
+    return { 
+      success: true, 
+      data: { id: info.messageId } 
     }
-
-    return { success: true, data }
   } catch (error) {
-    console.error("Email send exception:", error)
+    console.error("[Email] Send exception:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -46,7 +82,17 @@ async function sendEmail({ to, subject, react }: SendEmailOptions) {
   }
 }
 
-// Partner organization invitation
+// Test email for development mode
+// Can be configured via TEST_EMAIL environment variable
+const TEST_EMAIL = env.testEmail || "drewcarter112233@gmail.com"
+
+// =============================================================================
+// EMAIL SENDING FUNCTIONS
+// =============================================================================
+
+/**
+ * Partner organization invitation
+ */
 export async function sendPartnerInvitation(
   recipientEmail: string,
   partnerName: string,
@@ -79,7 +125,9 @@ export async function sendPartnerInvitation(
   })
 }
 
-// Client invitation (for partner's clients who get their own workspace)
+/**
+ * Client invitation (for partner's clients who get their own workspace)
+ */
 export async function sendClientInvitation(
   recipientEmail: string,
   partnerName: string,
@@ -111,7 +159,9 @@ export async function sendClientInvitation(
   })
 }
 
-// Workspace invitation
+/**
+ * Workspace invitation
+ */
 export async function sendWorkspaceInvitation(
   recipientEmail: string,
   workspaceName: string,
@@ -140,10 +190,9 @@ export async function sendWorkspaceInvitation(
   })
 }
 
-// Test email for development mode
-const TEST_EMAIL = "drewcarter112233@gmail.com"
-
-// NEW: Partner request notification to super admin
+/**
+ * Partner request notification to super admin
+ */
 export async function sendPartnerRequestNotification(requestData: {
   id: string
   company_name: string
@@ -170,7 +219,9 @@ export async function sendPartnerRequestNotification(requestData: {
   })
 }
 
-// NEW: Partner request approved notification
+/**
+ * Partner request approved notification (with login credentials)
+ */
 export async function sendPartnerApprovalEmail(
   email: string,
   partnerData: {
@@ -197,7 +248,9 @@ export async function sendPartnerApprovalEmail(
   })
 }
 
-// NEW: Partner request rejected notification
+/**
+ * Partner request rejected notification
+ */
 export async function sendPartnerRejectionEmail(
   email: string,
   data: {
@@ -220,7 +273,9 @@ export async function sendPartnerRejectionEmail(
   })
 }
 
-// NEW: Payment failed notification
+/**
+ * Payment failed notification
+ */
 export async function sendPaymentFailedEmail(
   recipientEmails: string[],
   partnerData: {
@@ -247,7 +302,9 @@ export async function sendPaymentFailedEmail(
   })
 }
 
-// NEW: Low balance alert notification
+/**
+ * Low balance alert notification
+ */
 export async function sendLowBalanceAlertEmail(
   recipientEmails: string[],
   alertData: {
@@ -276,7 +333,9 @@ export async function sendLowBalanceAlertEmail(
   })
 }
 
-// NEW: Agency checkout link email (sent after super admin approves request)
+/**
+ * Agency checkout link email (sent after super admin approves request)
+ */
 export async function sendAgencyCheckoutEmail(
   email: string,
   data: {

@@ -342,14 +342,24 @@ export async function provisionPartner(
   await adminClient.from("partners").update({ onboarding_status: "active" }).eq("id", partner.id)
 
   // Step 10: Send welcome email with platform subdomain URL
+  console.log("[Provision] Step 10: Sending welcome email to:", partnerRequest.contact_email)
+  console.log("[Provision] Email data:", {
+    company_name: partnerRequest.company_name,
+    subdomain: fullPlatformHostname,
+    login_url: loginUrl,
+    has_temporary_password: !!temporaryPassword,
+    is_new_user: isNewUser,
+  })
+  
   try {
-    await sendPartnerApprovalEmail(partnerRequest.contact_email, {
+    const emailResult = await sendPartnerApprovalEmail(partnerRequest.contact_email, {
       company_name: partnerRequest.company_name,
       subdomain: fullPlatformHostname,
       login_url: loginUrl,
       temporary_password: temporaryPassword,
       contact_email: partnerRequest.contact_email,
     })
+    console.log("[Provision] Email send result:", emailResult)
   } catch (emailError) {
     console.error("[Provision] Failed to send approval email:", emailError)
   }

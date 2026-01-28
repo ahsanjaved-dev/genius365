@@ -41,10 +41,22 @@ export const env = {
   // Default: 10% (e.g., if workspace pays $100, platform gets $10, agency gets $90)
   stripeConnectPlatformFeePercent: parseFloat(getEnvVar("STRIPE_CONNECT_PLATFORM_FEE_PERCENT", false) || "10"),
 
-  // Resend Email Service
-  resendApiKey: getEnvVar("RESEND_API_KEY", false),
-  fromEmail: getEnvVar("FROM_EMAIL", false),
+  // SMTP Email Service (Mailgun)
+  // SMTP Configuration
+  smtpHost: getEnvVar("SMTP_HOST", false) || "smtp.mailgun.org",
+  smtpPort: parseInt(getEnvVar("SMTP_PORT", false) || "465", 10),
+  smtpSecure: getEnvVar("SMTP_SECURE", false) !== "false", // Default true for port 465
+  smtpUser: getEnvVar("SMTP_USER", false),
+  smtpPass: getEnvVar("SMTP_PASS", false),
+  // Sender configuration
+  fromEmail: getEnvVar("FROM_EMAIL", false) || "noreply@genius365.ai",
+  fromName: getEnvVar("FROM_NAME", false) || "Genius365 AI",
+  // Admin email
   superAdminEmail: getEnvVar("SUPER_ADMIN_EMAIL", false),
+  // Test email address for development mode - all emails will be sent to this address
+  // When not set, defaults to the hardcoded test email
+  testEmail: getEnvVar("TEST_EMAIL", false),
+  
 
   // Supabase Storage
   supabaseStorageBucket: getEnvVar("NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET", false),

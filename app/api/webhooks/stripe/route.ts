@@ -98,11 +98,18 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
   // Handle agency subscription checkout (new checkout-first flow)
   if (type === "agency_subscription" && partnerRequestId) {
     console.log(`[Stripe Webhook] Agency subscription checkout completed: ${session.id} for request ${partnerRequestId}`)
+    console.log(`[Stripe Webhook] Session metadata:`, JSON.stringify(session.metadata, null, 2))
     
     try {
       // Get customer and subscription IDs from the session
       const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id
+
+      console.log(`[Stripe Webhook] Starting partner provisioning with:`, {
+        requestId: partnerRequestId,
+        customerId,
+        subscriptionId,
+      })
 
       // Provision the partner
       const result = await provisionPartner({
@@ -115,9 +122,16 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
         partnerId: result.partner.id,
         partnerName: result.partner.name,
         ownerEmail: result.owner.email,
+        temporaryPassword: result.owner.temporaryPassword ? "[REDACTED]" : null,
+        isExistingUser: result.owner.isExistingUser,
+        loginUrl: result.loginUrl,
       })
     } catch (error) {
       console.error(`[Stripe Webhook] Failed to provision partner from checkout:`, error)
+      console.error(`[Stripe Webhook] Error details:`, {
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
+      })
       // Don't throw - we've already charged them, so we need to handle this manually
       // TODO: Send alert to super admin about failed provisioning
     }
