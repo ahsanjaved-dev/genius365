@@ -12,6 +12,7 @@ import { getWorkspaceContext } from "@/lib/api/workspace-auth"
 import { apiResponse, apiError, unauthorized, forbidden, notFound, serverError } from "@/lib/api/helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getConnectAccountId } from "@/lib/stripe"
+import { isMeteredBillingEnabled } from "@/lib/stripe/metering"
 import { env } from "@/lib/env"
 
 type RouteParams = { params: Promise<{ workspaceSlug: string }> }
@@ -269,18 +270,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (connectAccountId) {
       // Connect account checkout with platform fee
       const platformFeePercent = env.stripeConnectPlatformFeePercent || 10
+
+      // Build line items - include both base and usage prices if metered billing is enabled
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = []
+
+      // Determine which price to use for base subscription
+      const basePriceId = plan.stripeBasePriceId || plan.stripePriceId
+      if (basePriceId) {
+        lineItems.push({
+          price: basePriceId,
+          quantity: 1,
+        })
+      }
+
+      // Add metered usage price if available and metered billing is enabled
+      if (isMeteredBillingEnabled() && plan.stripeUsagePriceId) {
+        lineItems.push({
+          price: plan.stripeUsagePriceId,
+          // No quantity for metered prices - usage comes from meter events
+        })
+      }
       
       session = await stripe.checkout.sessions.create(
         {
           customer: stripeCustomerId,
           mode: "subscription",
           payment_method_types: ["card"],
-          line_items: [
-            {
-              price: plan.stripePriceId,
-              quantity: 1,
-            },
-          ],
+          line_items: lineItems,
           success_url: successUrl || defaultSuccessUrl,
           cancel_url: cancelUrl || defaultCancelUrl,
           subscription_data: {
@@ -289,6 +305,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               workspace_id: context.workspace.id,
               plan_id: plan.id,
               partner_id: context.workspace.partner_id,
+              metered_billing: isMeteredBillingEnabled() && plan.stripeUsagePriceId ? "true" : "false",
             },
           },
           metadata: {

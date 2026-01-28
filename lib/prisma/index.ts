@@ -57,4 +57,5 @@ export {
   ResourceType,
   SyncStatus,
   CreditTransactionType,
+  StripeUsageEventStatus,
 } from "./client"

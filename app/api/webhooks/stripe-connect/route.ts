@@ -13,6 +13,10 @@ import Stripe from "stripe"
 import { getStripe } from "@/lib/stripe"
 import { applyWorkspaceTopup } from "@/lib/stripe/workspace-credits"
 import { resetPostpaidPeriod } from "@/lib/stripe/postpaid-invoices"
+import {
+  isMeteredBillingEnabled,
+  addCustomerBalanceCredits,
+} from "@/lib/stripe/metering"
 import { prisma } from "@/lib/prisma"
 import { env } from "@/lib/env"
 
@@ -75,6 +79,18 @@ export async function POST(request: NextRequest) {
         await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice)
         break
 
+      case "invoice.finalized":
+        await handleInvoiceFinalized(event.data.object as Stripe.Invoice)
+        break
+
+      case "invoice.voided":
+        await handleInvoiceVoided(event.data.object as Stripe.Invoice)
+        break
+
+      case "credit_note.created":
+        await handleCreditNoteCreated(event.data.object as Stripe.CreditNote)
+        break
+
       default:
         console.log(`[Stripe Connect Webhook] Unhandled event type: ${event.type}`)
     }
@@ -107,13 +123,43 @@ async function handleConnectPaymentIntentSucceeded(paymentIntent: Stripe.Payment
     return
   }
 
-  // Apply the top-up (idempotent)
+  // Apply the top-up to our DB (idempotent) - this is for enforcement
   const result = await applyWorkspaceTopup(workspace_id, amountCents, paymentIntent.id)
 
   if (result.alreadyApplied) {
     console.log(`[Stripe Connect Webhook] Workspace credits top-up already applied for PaymentIntent ${paymentIntent.id}`)
   } else {
     console.log(`[Stripe Connect Webhook] Workspace credits top-up applied: Workspace ${workspace_id}, Amount $${(amountCents / 100).toFixed(2)}`)
+
+    // If metered billing is enabled, also add to Stripe customer balance
+    // This will be used to offset usage charges on invoices
+    if (isMeteredBillingEnabled()) {
+      try {
+        const balanceResult = await addCustomerBalanceCredits(
+          workspace_id,
+          amountCents,
+          `Credit top-up: $${(amountCents / 100).toFixed(2)}`,
+          { payment_intent_id: paymentIntent.id }
+        )
+
+        if (balanceResult.success) {
+          console.log(
+            `[Stripe Connect Webhook] Added $${(amountCents / 100).toFixed(2)} to Stripe customer balance ` +
+            `for workspace ${workspace_id}, new balance: $${((balanceResult.newBalance || 0) / 100).toFixed(2)}`
+          )
+        } else {
+          console.error(
+            `[Stripe Connect Webhook] Failed to add to Stripe customer balance: ${balanceResult.error}`
+          )
+        }
+      } catch (error) {
+        console.error(
+          `[Stripe Connect Webhook] Error adding to Stripe customer balance:`,
+          error
+        )
+        // Don't fail the webhook - DB credits are still applied
+      }
+    }
   }
 }
 
@@ -365,3 +411,239 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   }
 }
 
+// =============================================================================
+// METERED BILLING RECONCILIATION HANDLERS
+// =============================================================================
+
+/**
+ * Handle invoice.finalized event
+ * Marks related usage events as reconciled
+ */
+async function handleInvoiceFinalized(invoice: Stripe.Invoice) {
+  console.log(`[Stripe Connect Webhook] Invoice finalized: ${invoice.id}`)
+
+  if (!prisma || !isMeteredBillingEnabled()) {
+    return
+  }
+
+  const customerId = typeof invoice.customer === "string" 
+    ? invoice.customer 
+    : invoice.customer?.id
+
+  if (!customerId) {
+    return
+  }
+
+  try {
+    // Find workspace by Stripe customer ID
+    const workspace = await prisma.workspace.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    })
+
+    if (!workspace) {
+      console.log(
+        `[Stripe Connect Webhook] No workspace found for customer ${customerId}, skipping reconciliation`
+      )
+      return
+    }
+
+    // Get the invoice period
+    const periodStart = invoice.period_start ? new Date(invoice.period_start * 1000) : null
+    const periodEnd = invoice.period_end ? new Date(invoice.period_end * 1000) : null
+
+    // Mark usage events in this period as reconciled
+    const result = await prisma.stripeUsageEvent.updateMany({
+      where: {
+        workspaceId: workspace.id,
+        status: "sent",
+        ...(periodStart && periodEnd
+          ? {
+              eventTimestamp: {
+                gte: periodStart,
+                lte: periodEnd,
+              },
+            }
+          : {}),
+      },
+      data: {
+        status: "reconciled",
+      },
+    })
+
+    console.log(
+      `[Stripe Connect Webhook] Marked ${result.count} usage events as reconciled for workspace ${workspace.id}`
+    )
+  } catch (error) {
+    console.error(`[Stripe Connect Webhook] Failed to reconcile usage events:`, error)
+  }
+}
+
+/**
+ * Handle invoice.voided event
+ * Restores credits that were used if the invoice was voided
+ */
+async function handleInvoiceVoided(invoice: Stripe.Invoice) {
+  console.log(`[Stripe Connect Webhook] Invoice voided: ${invoice.id}`)
+
+  if (!prisma || !isMeteredBillingEnabled()) {
+    return
+  }
+
+  const customerId = typeof invoice.customer === "string" 
+    ? invoice.customer 
+    : invoice.customer?.id
+
+  if (!customerId) {
+    return
+  }
+
+  try {
+    // Find workspace by Stripe customer ID
+    const workspace = await prisma.workspace.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    })
+
+    if (!workspace) {
+      console.log(
+        `[Stripe Connect Webhook] No workspace found for customer ${customerId}, skipping void handling`
+      )
+      return
+    }
+
+    // Use invoice total amount for restoring credits (simplifies SDK v20+ type handling)
+    const totalAmountVoidedCents = invoice.total || 0
+
+    if (totalAmountVoidedCents > 0) {
+      // Restore DB credits (not Stripe balance - that's handled by the credit note)
+      const workspaceCredits = await prisma.workspaceCredits.findUnique({
+        where: { workspaceId: workspace.id },
+      })
+
+      if (workspaceCredits) {
+        await prisma.$transaction([
+          prisma.workspaceCredits.update({
+            where: { id: workspaceCredits.id },
+            data: {
+              balanceCents: { increment: totalAmountVoidedCents },
+            },
+          }),
+          prisma.workspaceCreditTransaction.create({
+            data: {
+              workspaceCreditsId: workspaceCredits.id,
+              type: "refund",
+              amountCents: totalAmountVoidedCents,
+              balanceAfterCents: workspaceCredits.balanceCents + totalAmountVoidedCents,
+              description: `Invoice voided: ${invoice.id} (`,
+            },
+          }),
+        ])
+
+        console.log(
+          `[Stripe Connect Webhook] Restored $${(totalAmountVoidedCents / 100).toFixed(2)} to workspace ${workspace.id} credits due to voided invoice`
+        )
+      }
+    }
+
+    // Mark usage events as failed (they weren't actually billed)
+    const periodStart = invoice.period_start ? new Date(invoice.period_start * 1000) : null
+    const periodEnd = invoice.period_end ? new Date(invoice.period_end * 1000) : null
+
+    await prisma.stripeUsageEvent.updateMany({
+      where: {
+        workspaceId: workspace.id,
+        status: { in: ["sent", "reconciled"] },
+        ...(periodStart && periodEnd
+          ? {
+              eventTimestamp: {
+                gte: periodStart,
+                lte: periodEnd,
+              },
+            }
+          : {}),
+      },
+      data: {
+        status: "failed",
+        errorMessage: `Invoice ${invoice.id} was voided`,
+      },
+    })
+
+    console.log(
+      `[Stripe Connect Webhook] Handled voided invoice ${invoice.id} for workspace ${workspace.id}`
+    )
+  } catch (error) {
+    console.error(`[Stripe Connect Webhook] Failed to handle voided invoice:`, error)
+  }
+}
+
+/**
+ * Handle credit_note.created event
+ * Restores credits when a credit note (partial refund) is issued
+ */
+async function handleCreditNoteCreated(creditNote: Stripe.CreditNote) {
+  console.log(`[Stripe Connect Webhook] Credit note created: ${creditNote.id}`)
+
+  if (!prisma || !isMeteredBillingEnabled()) {
+    return
+  }
+
+  const customerId = typeof creditNote.customer === "string" 
+    ? creditNote.customer 
+    : creditNote.customer?.id
+
+  if (!customerId) {
+    return
+  }
+
+  // Only process if there's an actual credit amount
+  if (creditNote.amount <= 0) {
+    return
+  }
+
+  try {
+    // Find workspace by Stripe customer ID
+    const workspace = await prisma.workspace.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    })
+
+    if (!workspace) {
+      console.log(
+        `[Stripe Connect Webhook] No workspace found for customer ${customerId}, skipping credit note handling`
+      )
+      return
+    }
+
+    // Restore DB credits for the credit note amount
+    const workspaceCredits = await prisma.workspaceCredits.findUnique({
+      where: { workspaceId: workspace.id },
+    })
+
+    if (workspaceCredits) {
+      await prisma.$transaction([
+        prisma.workspaceCredits.update({
+          where: { id: workspaceCredits.id },
+          data: {
+            balanceCents: { increment: creditNote.amount },
+          },
+        }),
+        prisma.workspaceCreditTransaction.create({
+          data: {
+            workspaceCreditsId: workspaceCredits.id,
+            type: "refund",
+            amountCents: creditNote.amount,
+            balanceAfterCents: workspaceCredits.balanceCents + creditNote.amount,
+            description: `Credit note: ${creditNote.id} - ${creditNote.reason || "Refund"}`,
+          },
+        }),
+      ])
+
+      console.log(
+        `[Stripe Connect Webhook] Restored $${(creditNote.amount / 100).toFixed(2)} to workspace ${workspace.id} credits via credit note`
+      )
+    }
+  } catch (error) {
+    console.error(`[Stripe Connect Webhook] Failed to handle credit note:`, error)
+  }
+}

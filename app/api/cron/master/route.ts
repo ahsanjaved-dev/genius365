@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
 import { cleanupExpiredCampaigns } from "@/lib/campaigns/cleanup-expired"
+import {
+  retryPendingUsageEvents,
+  isMeteredBillingEnabled,
+} from "@/lib/stripe/metering"
 
 /**
  * Master Cron Job Orchestrator
@@ -88,16 +92,59 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // TASK 2: Send Expiring Campaign Notifications (PLACEHOLDER)
+    // TASK 2: Retry Pending Stripe Usage Events
+    // ========================================================================
+    if (isMeteredBillingEnabled()) {
+      try {
+        logger.info("[MasterCron] Task 2/4: Retry Billing Usage Events - Starting")
+        const taskStart = Date.now()
+
+        const retryResult = await retryPendingUsageEvents()
+
+        const taskDuration = Date.now() - taskStart
+        results.retryBillingUsageEvents = {
+          success: true,
+          processed: retryResult.processed,
+          succeeded: retryResult.succeeded,
+          failed: retryResult.failed,
+          durationMs: taskDuration,
+        }
+
+        logger.info("[MasterCron] Task 2/4: Retry Billing Usage Events - Complete", {
+          processed: retryResult.processed,
+          succeeded: retryResult.succeeded,
+          failed: retryResult.failed,
+          durationMs: taskDuration,
+        })
+      } catch (error) {
+        const taskError = error instanceof Error ? error.message : String(error)
+        logger.error("[MasterCron] Task 2/4: Retry Billing Usage Events - Failed", {
+          message: taskError,
+        })
+        results.retryBillingUsageEvents = {
+          success: false,
+          error: taskError,
+        }
+        errors.push("Billing usage retry task failed")
+      }
+    } else {
+      results.retryBillingUsageEvents = {
+        skipped: true,
+        reason: "Metered billing not enabled",
+      }
+    }
+
+    // ========================================================================
+    // TASK 3: Send Expiring Campaign Notifications (PLACEHOLDER)
     // ========================================================================
     // Uncomment when implemented
     // try {
-    //   logger.info("[MasterCron] Task 2/3: Send Expiring Notifications - Starting")
+    //   logger.info("[MasterCron] Task 3/4: Send Expiring Notifications - Starting")
     //   const notifyResult = await sendCampaignExpiringNotifications()
     //   results.sendExpiringNotifications = notifyResult
-    //   logger.info("[MasterCron] Task 2/3: Send Expiring Notifications - Complete")
+    //   logger.info("[MasterCron] Task 3/4: Send Expiring Notifications - Complete")
     // } catch (error) {
-    //   logger.error("[MasterCron] Task 2/3: Send Expiring Notifications - Failed", {
+    //   logger.error("[MasterCron] Task 3/4: Send Expiring Notifications - Failed", {
     //     message: error instanceof Error ? error.message : String(error),
     //   })
     //   results.sendExpiringNotifications = { success: false, error: String(error) }
@@ -105,17 +152,17 @@ export async function POST(request: NextRequest) {
     // }
 
     // ========================================================================
-    // TASK 3: Sync Agents to Providers (PLACEHOLDER)
+    // TASK 4: Sync Agents to Providers (PLACEHOLDER)
     // ========================================================================
     // Uncomment when implemented
     // Note: This is a heavy operation - consider running less frequently
     // try {
-    //   logger.info("[MasterCron] Task 3/3: Sync Agents - Starting")
+    //   logger.info("[MasterCron] Task 4/4: Sync Agents - Starting")
     //   const syncResult = await syncAgentsToProviders()
     //   results.syncAgentsToProviders = syncResult
-    //   logger.info("[MasterCron] Task 3/3: Sync Agents - Complete")
+    //   logger.info("[MasterCron] Task 4/4: Sync Agents - Complete")
     // } catch (error) {
-    //   logger.error("[MasterCron] Task 3/3: Sync Agents - Failed", {
+    //   logger.error("[MasterCron] Task 4/4: Sync Agents - Failed", {
     //     message: error instanceof Error ? error.message : String(error),
     //   })
     //   results.syncAgentsToProviders = { success: false, error: String(error) }
@@ -182,6 +229,13 @@ export async function GET() {
         name: "cleanupExpiredCampaigns",
         description: "Cancel campaigns that have passed their expiry date without being started",
         status: "enabled",
+        frequency: "every 12 hours",
+      },
+      {
+        name: "retryBillingUsageEvents",
+        description: "Retry pending/failed Stripe meter event submissions",
+        status: isMeteredBillingEnabled() ? "enabled" : "disabled",
+        note: "Only runs when ENABLE_STRIPE_METERED_BILLING=true",
         frequency: "every 12 hours",
       },
       {

@@ -15,6 +15,12 @@ import { getPartnerAuthContext } from "@/lib/api/auth"
 import { apiResponse, apiError, unauthorized, forbidden, serverError } from "@/lib/api/helpers"
 import { prisma } from "@/lib/prisma"
 import { getStripe, getConnectAccountId } from "@/lib/stripe"
+import {
+  isMeteredBillingEnabled,
+  ensureMeterExists,
+  createMeteredUsagePrice,
+  DEFAULT_METER_EVENT_NAME,
+} from "@/lib/stripe/metering"
 
 // Billing type enum - currently only prepaid is supported for agencies
 const billingTypeEnum = z.enum(["prepaid", "postpaid"])
@@ -102,6 +108,8 @@ export async function GET() {
         sortOrder: plan.sortOrder,
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
+        stripeBasePriceId: plan.stripeBasePriceId,
+        stripeUsagePriceId: plan.stripeUsagePriceId,
         subscriberCount: plan._count.subscriptions,
         createdAt: plan.createdAt.toISOString(),
         updatedAt: plan.updatedAt.toISOString(),
@@ -109,6 +117,7 @@ export async function GET() {
       // Include Stripe Connect status for UI
       isPlatformPartner,
       hasStripeConnect,
+      meteredBillingEnabled: isMeteredBillingEnabled(),
     })
   } catch (error) {
     console.error("GET /api/partner/subscription-plans error:", error)
@@ -172,11 +181,14 @@ export async function POST(request: NextRequest) {
 
     let stripeProductId: string | undefined
     let stripePriceId: string | undefined
+    let stripeBasePriceId: string | undefined
+    let stripeUsagePriceId: string | undefined
 
     // Create Stripe Product/Price for paid plans
     if (data.monthlyPriceCents > 0) {
       try {
         const stripe = getStripe()
+        const useMeteredBilling = isMeteredBillingEnabled() && !isPlatformPartner && connectAccountId
 
         if (isPlatformPartner) {
           // Platform partner: create on main Stripe account
@@ -217,7 +229,10 @@ export async function POST(request: NextRequest) {
             { stripeAccount: connectAccountId }
           )
 
-          const price = await stripe.prices.create(
+          stripeProductId = product.id
+
+          // Create base recurring price for the monthly fee
+          const basePrice = await stripe.prices.create(
             {
               product: product.id,
               unit_amount: data.monthlyPriceCents,
@@ -227,18 +242,48 @@ export async function POST(request: NextRequest) {
               },
               metadata: {
                 partner_id: auth.partner.id,
+                type: "base_subscription",
               },
             },
             { stripeAccount: connectAccountId }
           )
 
-          stripeProductId = product.id
-          stripePriceId = price.id
+          stripePriceId = basePrice.id
+          stripeBasePriceId = basePrice.id
 
           console.log(
-            `[Subscription Plans] Created Stripe product/price on Connect account ${connectAccountId}: ` +
-            `product=${product.id}, price=${price.id}`
+            `[Subscription Plans] Created Stripe product/base price on Connect account ${connectAccountId}: ` +
+            `product=${product.id}, price=${basePrice.id}`
           )
+
+          // If metered billing is enabled, also create a metered usage price for overage
+          if (useMeteredBilling && data.overageRateCents > 0) {
+            try {
+              // Ensure meter exists on the Connect account
+              const meterInfo = await ensureMeterExists(
+                connectAccountId,
+                DEFAULT_METER_EVENT_NAME
+              )
+
+              // Create metered usage price
+              const usagePrice = await createMeteredUsagePrice(
+                connectAccountId,
+                product.id,
+                data.overageRateCents,
+                meterInfo.id
+              )
+
+              stripeUsagePriceId = usagePrice.id
+
+              console.log(
+                `[Subscription Plans] Created metered usage price on Connect account ${connectAccountId}: ` +
+                `price=${usagePrice.id}, rate=$${(data.overageRateCents / 100).toFixed(2)}/min`
+              )
+            } catch (meterError) {
+              console.error("Failed to create metered usage price:", meterError)
+              // Continue without metered pricing - base subscription still works
+            }
+          }
         }
       } catch (stripeError) {
         console.error("Failed to create Stripe product/price:", stripeError)
@@ -271,6 +316,8 @@ export async function POST(request: NextRequest) {
         sortOrder: data.sortOrder,
         stripeProductId,
         stripePriceId,
+        stripeBasePriceId,
+        stripeUsagePriceId,
       },
     })
 
@@ -292,9 +339,12 @@ export async function POST(request: NextRequest) {
         sortOrder: plan.sortOrder,
         stripeProductId: plan.stripeProductId,
         stripePriceId: plan.stripePriceId,
+        stripeBasePriceId: plan.stripeBasePriceId,
+        stripeUsagePriceId: plan.stripeUsagePriceId,
         createdAt: plan.createdAt.toISOString(),
       },
       stripeConfigured: !!stripePriceId,
+      meteredBillingConfigured: !!stripeUsagePriceId,
     }, 201)
   } catch (error) {
     console.error("POST /api/partner/subscription-plans error:", error)

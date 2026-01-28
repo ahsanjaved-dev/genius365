@@ -40,6 +40,8 @@ export const env = {
   // Stripe Connect: Global platform fee percentage taken from each payment on Connect accounts
   // Default: 10% (e.g., if workspace pays $100, platform gets $10, agency gets $90)
   stripeConnectPlatformFeePercent: parseFloat(getEnvVar("STRIPE_CONNECT_PLATFORM_FEE_PERCENT", false) || "10"),
+  // Feature flag for Stripe metered billing (usage-based billing via meters)
+  enableStripeMeteredBilling: getEnvVar("ENABLE_STRIPE_METERED_BILLING", false) === "true",
 
   // Resend Email Service
   resendApiKey: getEnvVar("RESEND_API_KEY", false),

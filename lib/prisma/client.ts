@@ -58,6 +58,7 @@ export {
   ResourceType,
   SyncStatus,
   CreditTransactionType,
+  StripeUsageEventStatus,
 } from "@/lib/generated/prisma"
 
 // Extend the global type to include prisma

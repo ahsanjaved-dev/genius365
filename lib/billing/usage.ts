@@ -14,6 +14,11 @@
 import { prisma } from "@/lib/prisma"
 import { deductUsage, hasSufficientCredits as checkCredits } from "@/lib/stripe/credits"
 import { deductWorkspaceUsage, canMakePostpaidCall } from "@/lib/stripe/workspace-credits"
+import {
+  isMeteredBillingEnabled,
+  enqueueUsageEvent,
+  ensureWorkspaceStripeCustomer,
+} from "@/lib/stripe/metering"
 
 // =============================================================================
 // TYPES
@@ -215,6 +220,17 @@ export async function processCallCompletion(
       `billed to: ${usageResult.deductedFrom}`
     )
 
+    // 4. If metered billing is enabled, send meter event to Stripe for billable minutes
+    // Only report usage that should be invoiced (not included subscription minutes, not partner credits)
+    if (isMeteredBillingEnabled()) {
+      await sendMeterEventIfApplicable(
+        workspaceId,
+        conversationId,
+        minutes,
+        usageResult
+      )
+    }
+
     return {
       success: true,
       amountDeducted: usageResult.amountDeducted,
@@ -227,6 +243,84 @@ export async function processCallCompletion(
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     }
+  }
+}
+
+/**
+ * Send meter event to Stripe for billable usage
+ * Only sends events for usage that should appear on invoices (overage/credits usage)
+ */
+async function sendMeterEventIfApplicable(
+  workspaceId: string,
+  conversationId: string,
+  totalMinutes: number,
+  usageResult: {
+    deductedFrom: string
+    overageMinutes?: number
+  }
+): Promise<void> {
+  try {
+    // Determine billable minutes based on deduction source
+    let billableMinutes = 0
+
+    switch (usageResult.deductedFrom) {
+      case "workspace":
+        // All minutes came from prepaid credits - report all
+        billableMinutes = totalMinutes
+        break
+      case "subscription":
+        // Only overage minutes are billable (included minutes are part of subscription)
+        billableMinutes = usageResult.overageMinutes || 0
+        break
+      case "partner":
+        // Partner credits - not billable via Stripe meters
+        return
+      case "postpaid":
+        // Postpaid is handled separately (invoice at period end)
+        return
+      default:
+        return
+    }
+
+    // Skip if no billable minutes
+    if (billableMinutes <= 0) {
+      return
+    }
+
+    // Ensure workspace has a Stripe customer
+    const customerInfo = await ensureWorkspaceStripeCustomer(workspaceId)
+    if (!customerInfo) {
+      console.log(
+        `[Billing] Skipping meter event for workspace ${workspaceId}: no Stripe customer configured`
+      )
+      return
+    }
+
+    // Enqueue the meter event (with immediate submission attempt)
+    const result = await enqueueUsageEvent(
+      workspaceId,
+      conversationId,
+      billableMinutes,
+      customerInfo.customerId,
+      customerInfo.connectAccountId,
+      new Date() // Use current timestamp for the event
+    )
+
+    if (result.submitted) {
+      console.log(
+        `[Billing] Meter event sent for workspace ${workspaceId}: ${billableMinutes} min`
+      )
+    } else {
+      console.log(
+        `[Billing] Meter event queued for workspace ${workspaceId}: ${billableMinutes} min (will retry)`
+      )
+    }
+  } catch (error) {
+    // Log but don't fail - DB billing already succeeded
+    console.error(
+      `[Billing] Failed to send meter event for workspace ${workspaceId}:`,
+      error
+    )
   }
 }
 

@@ -382,6 +382,7 @@ model Workspace {
   // Billing fields
   isBillingExempt     Boolean   @default(false) @map("is_billing_exempt")
   perMinuteRateCents  Int       @default(20) @map("per_minute_rate_cents")
+  stripeCustomerId    String?   @map("stripe_customer_id") @db.VarChar(100) // Stripe Customer on partner's Connect account
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -400,6 +401,7 @@ model Workspace {
   workspaceCredits         WorkspaceCredits?
   subscription             WorkspaceSubscription?
   assignedPhoneNumbers     PhoneNumber[]
+  stripeUsageEvents        StripeUsageEvent[]
 
   @@unique([partnerId, slug])
   @@map("workspaces")
@@ -1149,7 +1151,9 @@ model WorkspaceSubscriptionPlan {
   slug                     String?     @db.VarChar(50) // URL-friendly identifier (e.g., "free", "starter")
   description              String?
   stripeProductId          String?     @map("stripe_product_id") @db.VarChar(100)
-  stripePriceId            String?     @map("stripe_price_id") @db.VarChar(100)
+  stripePriceId            String?     @map("stripe_price_id") @db.VarChar(100) // Legacy - base recurring price
+  stripeBasePriceId        String?     @map("stripe_base_price_id") @db.VarChar(100) // Base recurring price for metered billing
+  stripeUsagePriceId       String?     @map("stripe_usage_price_id") @db.VarChar(100) // Metered usage price (overage)
   monthlyPriceCents        Int         @default(0) @map("monthly_price_cents")
   includedMinutes          Int         @default(0) @map("included_minutes")
   overageRateCents         Int         @default(20) @map("overage_rate_cents") // $0.20/min default
@@ -1216,3 +1220,42 @@ model WorkspaceSubscription {
   @@schema("public")
 }
 
+// =============================================================================
+// STRIPE USAGE EVENTS (Outbox for metered billing)
+// =============================================================================
+
+enum StripeUsageEventStatus {
+  pending
+  sent
+  failed
+  reconciled
+
+  @@map("stripe_usage_event_status")
+  @@schema("public")
+}
+
+model StripeUsageEvent {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String                  @map("workspace_id") @db.Uuid
+  conversationId    String?                 @unique @map("conversation_id") @db.Uuid // For idempotency
+  minutes           Int                     // Billable minutes (overage)
+  status            StripeUsageEventStatus  @default(pending)
+  stripeEventId     String?                 @map("stripe_event_id") @db.VarChar(100) // Meter event ID from Stripe
+  stripeCustomerId  String?                 @map("stripe_customer_id") @db.VarChar(100)
+  stripeAccountId   String?                 @map("stripe_account_id") @db.VarChar(100) // Connect account
+  errorMessage      String?                 @map("error_message")
+  retryCount        Int                     @default(0) @map("retry_count")
+  eventTimestamp    DateTime                @map("event_timestamp") @db.Timestamptz // When the call ended
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([status, retryCount])
+  @@index([createdAt])
+  @@map("stripe_usage_events")
+  @@schema("public")
+}
