@@ -46,7 +46,7 @@ import {
   Monitor,
   FileJson,
   ExternalLink,
-  Radio,
+  Mic,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import type { ConversationWithAgent, Conversation } from "@/types/database.types"
@@ -620,24 +620,6 @@ export default function CallsPage() {
                 {currentTotal || 0} total calls
               </CardDescription>
             </div>
-            {/* Real-time connection indicator */}
-            <div className="flex items-center gap-2 text-sm">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  realtimeConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"
-                }`}
-              />
-              <span className="text-muted-foreground">
-                {realtimeConnected ? (
-                  <span className="flex items-center gap-1">
-                    <Radio className="h-3 w-3" />
-                    Live Updates
-                  </span>
-                ) : (
-                  "Offline"
-                )}
-              </span>
-            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -762,7 +744,7 @@ export default function CallsPage() {
                       <div className="flex items-center gap-2">
                         {call.recording_url && (
                           <span title="Has recording">
-                            <Radio className="h-4 w-4 text-green-600" />
+                            <Mic className="h-4 w-4 text-green-600" />
                           </span>
                         )}
                         {call.transcript && (
